@@ -1,11 +1,11 @@
-/* src/App.css */
 .App {
   text-align: center;
+  font-family: Arial, sans-serif;
 }
 
 .gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 20px;
   padding: 20px;
 }
@@ -15,6 +15,7 @@
   padding: 10px;
   border-radius: 8px;
   box-shadow: 2px 2px 12px rgba(0, 0, 0, 0.1);
+  text-align: center;
 }
 
 .photo-card img {
