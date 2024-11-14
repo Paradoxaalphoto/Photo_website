@@ -46,3 +46,4 @@ MEDIA_ROOT = BASE_DIR / 'media'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  # Allow React app running on port 3000
 ]
+nano backend/settings.py
