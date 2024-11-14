@@ -1,1 +1,23 @@
+/* src/App.css */
+.App {
+  text-align: center;
+}
 
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  padding: 20px;
+}
+
+.photo-card {
+  border: 1px solid #ddd;
+  padding: 10px;
+  border-radius: 8px;
+  box-shadow: 2px 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.photo-card img {
+  max-width: 100%;
+  border-radius: 8px;
+}
