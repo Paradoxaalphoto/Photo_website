@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN Alpha — BlazeFace First + Preprocess</title>
+<title>YorN Alpha — Auto‑Analyze + Auto‑Zoom</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;margin:0;padding:16px;background:#0b1220;color:#E6EAF2}
-  .row{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end}
+  .row{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:end}
   .card{background:#0f172a;border:1px solid #233046;border-radius:12px;padding:12px;margin-top:12px}
   #progressContainer{height:8px;background:#1e293b;border-radius:6px;overflow:hidden;margin-top:8px}
   #progressBar{height:100%;width:0;background:#38bdf8;transition:width .25s}
@@ -19,19 +19,15 @@
   .btn-secondary{background:#0b1220}
   .controls{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
   label{font-size:12px;color:#A9B4C8}
-  input[type="range"], select, input[type="text"], input[type="number"]{width:100%}
-  select, input[type="text"], input[type="number"]{padding:8px;border:1px solid #233046;border-radius:8px;background:#0b1220;color:#E6EAF2}
+  input[type="range"], input[type="number"]{width:100%}
+  input[type="number"], input[type="range"]{padding:6px;border:1px solid #233046;border-radius:8px;background:#0b1220;color:#E6EAF2}
 </style>
-
-<!-- TFJS + backends (face-api fallback needs these) -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@3.21.0/dist/tf-backend-webgl.min.js"></script>
 
 <!-- BlazeFace (primary) -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
 
-<!-- face-api.js (fallback) -->
+<!-- face-api.js (fallback if needed) -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 </head>
 <body>
@@ -42,6 +38,7 @@
   <div class="row">
     <input id="fileInput" type="file" accept="image/*" />
     <button id="sampleBtn" class="btn btn-secondary">Load Sample Image</button>
+    <button id="enhanceBtn" class="btn btn-secondary" disabled>Auto‑Enhance & Retry</button>
     <button id="analyzeBtn" class="btn" disabled>Analyze</button>
   </div>
 
@@ -85,61 +82,64 @@
 <script>
 /* ---------- UI helpers ---------- */
 const $ = id => document.getElementById(id);
-const fileInput = $("fileInput"), sampleBtn = $("sampleBtn"), analyzeBtn = $("analyzeBtn");
+const fileInput = $("fileInput"), sampleBtn = $("sampleBtn"), analyzeBtn = $("analyzeBtn"), enhanceBtn = $("enhanceBtn");
 const overlay = $("overlay"), thumb = $("thumb");
 const progressBar = $("progressBar"), progressText = $("progressText");
 const diagnostics = $("diagnostics");
 const rotDeg = $("rotDeg"), zoom = $("zoom"), zoomLabel = $("zoomLabel");
 const bri = $("bri"), briLabel = $("briLabel"); const con = $("con"), conLabel = $("conLabel");
 
-let WEIGHTS = null;  // set only if you paste an override (not required now)
-let imageBlob = null, baseBitmap = null, workCanvas = null; // baseBitmap is the decoded original
-let blazeModel = null, faceapiReady = false;
+let imageBlob = null, baseBitmap = null, workCanvas = null, blazeModel = null, faceApiReady = false;
 
 function setProgress(p,t){ progressBar.style.width=(p||0)+'%'; progressText.textContent=t||''; }
 function logDiag(obj){ const now=new Date().toISOString(); const txt=typeof obj==='string'?obj:JSON.stringify(obj); diagnostics.textContent=`[${now}] ${txt}\n`+diagnostics.textContent; }
 function setError(msg){ setProgress(0,""); logDiag({ error: msg }); }
 
-/* ---------- Decode + store original as ImageBitmap ---------- */
+/* ---------- Decode helpers ---------- */
 async function decodeOriginal(fileOrBlob){
-  // Prefer createImageBitmap (fast, respects EXIF with imageOrientation in draw step we do)
   const bmp = await createImageBitmap(fileOrBlob).catch(async ()=>{
     const url = URL.createObjectURL(fileOrBlob);
     const img = new Image(); await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=url; });
-    const c = document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight;
-    c.getContext("2d").drawImage(img,0,0); URL.revokeObjectURL(url);
-    return createImageBitmap(c);
+    const c = document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext("2d").drawImage(img,0,0);
+    URL.revokeObjectURL(url); return createImageBitmap(c);
   });
   return bmp;
 }
-
-/* ---------- Re-render working canvas with preprocess controls ---------- */
 function ensureWorkCanvas(){ if(!workCanvas){ workCanvas = document.createElement("canvas"); } return workCanvas; }
 
-function renderWorkingCanvas(targetMax=1024){
+/* ---------- Render working canvas with controls ---------- */
+function renderWorkingCanvas(targetMax=1024, centerBox=null){
   if(!baseBitmap) return null;
   const angle = (parseInt(rotDeg.value,10)||0) % 360;
-  const z = parseFloat(zoom.value)||1.0;
+  let z = parseFloat(zoom.value)||1.0;
   const br = parseFloat(bri.value)||1.0;
   const cr = parseFloat(con.value)||1.0;
 
-  // Start from a fit-inside box
+  // scale to target
   const maxSide = Math.max(baseBitmap.width, baseBitmap.height);
   const scale0 = Math.min(1, targetMax / maxSide);
   const w0 = Math.max(1, Math.round(baseBitmap.width * scale0));
   const h0 = Math.max(1, Math.round(baseBitmap.height * scale0));
 
-  // After zoom we crop to the center region to keep size manageable
+  // choose crop area
+  let cx = baseBitmap.width/2, cy = baseBitmap.height/2;
+  if(centerBox){ // center on detected box
+    cx = centerBox.x + centerBox.width/2;
+    cy = centerBox.y + centerBox.height/2;
+    // auto bump zoom so box fills frame
+    const zx = (w0 / (centerBox.width*scale0)) * 0.9;
+    const zy = (h0 / (centerBox.height*scale0)) * 0.9;
+    z = Math.max(z, Math.min(zx, zy, 1.8));
+    logDiag({ autoZoomApplied: z.toFixed(2) });
+  }
+
   const dstW = w0, dstH = h0;
-  const cx = baseBitmap.width/2, cy = baseBitmap.height/2;
   const srcW = Math.round(dstW / (scale0*z));
   const srcH = Math.round(dstH / (scale0*z));
   const sx = Math.max(0, Math.round(cx - srcW/2));
   const sy = Math.max(0, Math.round(cy - srcH/2));
 
   const c = ensureWorkCanvas();
-
-  // Adjust canvas size considering rotation
   if ((angle % 180) === 0) { c.width = dstW; c.height = dstH; }
   else { c.width = dstH; c.height = dstW; }
 
@@ -149,27 +149,25 @@ function renderWorkingCanvas(targetMax=1024){
   ctx.translate(c.width/2, c.height/2);
   ctx.rotate(angle * Math.PI/180);
   ctx.filter = `brightness(${br}) contrast(${cr})`;
-  // draw such that image center ends at (0,0)
   ctx.drawImage(baseBitmap, sx, sy, srcW, srcH, -dstW/2, -dstH/2, dstW, dstH);
   ctx.restore();
 
   return c;
 }
 
-/* ---------- BlazeFace (primary) ---------- */
+/* ---------- BlazeFace primary ---------- */
 async function ensureBlaze(){
   if(blazeModel) return;
   if(!window.blazeface) throw new Error("BlazeFace script not loaded");
   blazeModel = await window.blazeface.load();
-  logDiag({ fallbackLoaded:"BlazeFace UMD" });
+  logDiag({ blazefaceReady:true });
 }
-async function detectWithBlaze(canvas){
-  await ensureBlaze();
-  // Downscale to speed up then map back
-  const pad = 0;
-  const tmpW = 256, tmpH = Math.round(tmpW * (canvas.height/canvas.width));
-  const tmp = Object.assign(document.createElement("canvas"), { width: tmpW, height: tmpH });
-  tmp.getContext("2d").drawImage(canvas, 0, 0, tmpW, tmpH);
+
+// quick rough pass at tiny size to get a center box
+async function roughLocate(canvas){
+  const tinyW = 160, tinyH = Math.round(tinyW * (canvas.height/canvas.width));
+  const tmp = Object.assign(document.createElement("canvas"), { width: tinyW, height: tinyH });
+  tmp.getContext("2d").drawImage(canvas, 0, 0, tinyW, tinyH);
   const t0 = performance.now();
   const faces = await blazeModel.estimateFaces(tmp, false);
   const ms = Math.round(performance.now()-t0);
@@ -177,22 +175,33 @@ async function detectWithBlaze(canvas){
     const f = faces[0];
     const tl = Array.isArray(f.topLeft) ? f.topLeft : await f.topLeft.array();
     const br = Array.isArray(f.bottomRight) ? f.bottomRight : await f.bottomRight.array();
-    const sx = canvas.width / tmpW, sy = canvas.height / tmpH;
-    const box = { x: tl[0]*sx - pad, y: tl[1]*sy - pad, width: (br[0]-tl[0])*sx + 2*pad, height: (br[1]-tl[1])*sy + 2*pad };
-    return { type:"blazeface", det:{ detection:{ box, score: 0.9 } }, elapsed_ms: ms };
+    const sx = canvas.width / tinyW, sy = canvas.height / tinyH;
+    const box = { x: tl[0]*sx, y: tl[1]*sy, width: (br[0]-tl[0])*sx, height: (br[1]-tl[1])*sy };
+    logDiag({ roughLocate_ms: ms, box });
+    return box;
   }
-  throw new Error("blaze: no face");
+  logDiag({ roughLocate_ms: ms, box: null });
+  return null;
 }
 
-/* ---------- face-api Tiny (secondary) ---------- */
-async function fetchJson(url){ const r = await fetch(url, { cache:"no-store" }); if(!r.ok) throw new Error("status "+r.status); return r.json(); }
-async function verifyManifestAndShards(base, name){
-  const mani = await fetchJson(`${base}/${name}`);
-  const shards = (mani.weights||[]).flatMap(w=>w.paths||[]).map(p=>`${base}/${p}`);
-  for(const u of shards){ const r = await fetch(u, { cache:"no-store" }); if(!r.ok) throw new Error("shard 404: "+u); }
+async function detectBlaze(canvas){
+  const t0 = performance.now();
+  const faces = await blazeModel.estimateFaces(canvas, false);
+  const ms = Math.round(performance.now()-t0);
+  if(faces && faces.length){
+    const f = faces[0];
+    const tl = Array.isArray(f.topLeft) ? f.topLeft : await f.topLeft.array();
+    const br = Array.isArray(f.bottomRight) ? f.bottomRight : await f.bottomRight.array();
+    const box = { x: tl[0], y: tl[1], width: (br[0]-tl[0]), height: (br[1]-tl[1]) };
+    return { elapsed_ms: ms, box };
+  }
+  return null;
 }
+
+/* ---------- face-api fallback (only if BlazeFace fails) ---------- */
+let FA_WEIGHTS=null;
 async function pickWeights(){
-  if(WEIGHTS) return WEIGHTS;
+  if(FA_WEIGHTS) return FA_WEIGHTS;
   const bases = [
     "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights",
     "https://unpkg.com/face-api.js@0.22.2/weights",
@@ -202,59 +211,76 @@ async function pickWeights(){
   ];
   for(const b of bases){
     try{
-      await verifyManifestAndShards(b, "tiny_face_detector_model-weights_manifest.json");
-      await verifyManifestAndShards(b, "face_landmark_68_model-weights_manifest.json");
-      WEIGHTS = b.replace(/\/$/,""); logDiag({ usingWeightsFrom: WEIGHTS, verified:true }); return WEIGHTS;
-    }catch(e){ logDiag({ cdnAttempt:b, fail:e.message }); }
+      // assume reachable; we already know jsdelivr/unpkg are flaky, gh mirrors okay
+      FA_WEIGHTS = b.replace(/\/$/,""); logDiag({ usingWeightsFrom: FA_WEIGHTS }); return FA_WEIGHTS;
+    }catch(_){}
   }
-  throw new Error("No working CDN with complete manifests + shards");
+  throw new Error("No weights base found");
 }
 async function ensureFaceApi(){
-  if(faceapiReady) return;
+  if(faceApiReady) return;
   const base = await pickWeights();
-  // default to CPU (most compatible)
-  try { await tf.setBackend("cpu"); await tf.ready(); logDiag({ backendSelected: tf.getBackend() }); } catch(e){ logDiag({ backendFail:"cpu", msg:e.message }); }
   await faceapi.nets.tinyFaceDetector.loadFromUri(base);
   await faceapi.nets.faceLandmark68Net.loadFromUri(base);
-  await tf.tidy(()=> tf.zeros([1,64,64,3]));
-  faceapiReady = true; logDiag({ faceapiReady:true });
-}
-function detectWithTimeout(promise, ms){
-  let to; const t = new Promise((_,rej)=> to=setTimeout(()=>rej(new Error("Detection timeout")), ms));
-  return Promise.race([promise, t]).finally(()=> clearTimeout(to));
-}
-async function detectWithFaceApi(canvas, timeoutMs){
-  const sizes = [256, 192, 160, 128];
-  for(const s of sizes){
-    try{
-      setProgress(70, `face-api: detecting (size ${s})…`);
-      const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: s, scoreThreshold: 0.2 });
-      const det = await detectWithTimeout(faceapi.detectSingleFace(canvas, opts).withFaceLandmarks(), timeoutMs);
-      if(det) return { type:"face-api", det, size:s };
-    }catch(e){ logDiag({ faceapi_attemptFail:{ size:s, msg:e && e.message } }); await tf.nextFrame(); }
-  }
-  throw new Error("face-api timeout");
+  faceApiReady = true; logDiag({ faceapiReady:true });
 }
 
-/* ---------- Draw ---------- */
-function drawResults(canvas, overlay, result){
+function drawBox(canvas, box, label){
   const ctx = overlay.getContext("2d");
   overlay.width = canvas.width; overlay.height = canvas.height;
   ctx.clearRect(0,0,overlay.width,overlay.height);
   ctx.drawImage(canvas, 0, 0, overlay.width, overlay.height);
-  if(result.type === "face-api"){
-    const r = faceapi.resizeResults(result.det, { width: canvas.width, height: canvas.height });
-    new faceapi.draw.DrawBox(r.detection.box, { label:`score ${r.detection.score.toFixed(2)} • ${result.size}` }).draw(overlay);
-    try{ faceapi.draw.drawFaceLandmarks(overlay, r); }catch(_){}
-  }else{
-    const b = result.det.detection.box;
-    ctx.strokeStyle = "#22c55e"; ctx.lineWidth = 3;
-    ctx.strokeRect(b.x, b.y, b.width, b.height);
-    ctx.fillStyle = "#22c55e";
-    ctx.font = "12px ui-monospace,monospace";
-    ctx.fillText(`BlazeFace`, b.x, Math.max(12, b.y-4));
-  }
+  ctx.strokeStyle = "#22c55e"; ctx.lineWidth = 3; ctx.strokeRect(box.x, box.y, box.width, box.height);
+  ctx.fillStyle = "#22c55e"; ctx.font = "12px ui-monospace,monospace";
+  ctx.fillText(label, box.x, Math.max(12, box.y-4));
   overlay.classList.remove("hidden");
+}
+
+/* ---------- Flow ---------- */
+async function analyzeFlow(auto=false){
+  try{
+    if(!baseBitmap){ setError("No image decoded."); return; }
+    setProgress(10, auto ? "Auto-analyzing…" : "Analyzing…");
+    await ensureBlaze();
+
+    // Step 1: render current settings
+    let canvas = renderWorkingCanvas(1024);
+    // Step 2: rough locate to auto-zoom if possible
+    const rough = await roughLocate(canvas);
+    if(rough){
+      canvas = renderWorkingCanvas(1024, rough);
+    }
+
+    // Step 3: main BlazeFace detect
+    const det = await detectBlaze(canvas);
+    if(det){
+      drawBox(canvas, det.box, `BlazeFace • ${det.elapsed_ms}ms`);
+      setProgress(100, "Done (BlazeFace).");
+      return;
+    }
+    logDiag({ blazeface: "no face" });
+
+    // Step 4: fallback to face-api tiny
+    await ensureFaceApi();
+    const sizes = [256,192,160,128];
+    for(const s of sizes){
+      const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: s, scoreThreshold: 0.2 });
+      try{
+        setProgress(70, `face-api: size ${s}…`);
+        const r = await faceapi.detectSingleFace(canvas, opts).withFaceLandmarks();
+        if(r){
+          const rr = faceapi.resizeResults(r, { width: canvas.width, height: canvas.height });
+          drawBox(canvas, rr.detection.box, `face-api • ${s}`);
+          setProgress(100, "Done (face-api).");
+          return;
+        }
+      }catch(e){ logDiag({ faceapi_attemptFail:{ size:s, msg:e && e.message } }); }
+    }
+
+    setError("No face detected. Try Auto‑Enhance & Retry (or rotate/zoom higher).");
+  }catch(e){
+    setError(e.message || String(e));
+  }
 }
 
 /* ---------- Events ---------- */
@@ -265,7 +291,7 @@ rotDeg.addEventListener("change", ()=>{ if(baseBitmap){ renderWorkingCanvas(); }
 
 fileInput.addEventListener("change", async ()=>{
   overlay.classList.add("hidden"); progressText.textContent="";
-  if(!fileInput.files.length){ analyzeBtn.disabled=true; return; }
+  if(!fileInput.files.length){ analyzeBtn.disabled=true; enhanceBtn.disabled=true; return; }
   const f = fileInput.files[0];
   imageBlob = f;
   thumb.src = URL.createObjectURL(f); thumb.classList.remove("hidden");
@@ -273,7 +299,7 @@ fileInput.addEventListener("change", async ()=>{
   baseBitmap = await decodeOriginal(f);
   setProgress(12,"Ready. Adjust controls if needed, then Analyze.");
   renderWorkingCanvas(1024);
-  analyzeBtn.disabled = false;
+  analyzeBtn.disabled = false; enhanceBtn.disabled = false;
   logDiag({ fileName:f.name, type:f.type, size_bytes:f.size, w:baseBitmap.width, h:baseBitmap.height });
 });
 
@@ -286,39 +312,22 @@ sampleBtn.addEventListener("click", async ()=>{
   thumb.src = URL.createObjectURL(blob); thumb.classList.remove("hidden");
   setProgress(8,"Decoding sample…");
   baseBitmap = await decodeOriginal(blob);
-  setProgress(12,"Sample ready. Adjust controls if needed, then Analyze.");
+  setProgress(12,"Sample ready. Running analyze…");
   renderWorkingCanvas(1024);
-  analyzeBtn.disabled = false;
+  analyzeBtn.disabled = false; enhanceBtn.disabled = false;
+  // auto-run analyze right after sample load
+  analyzeFlow(true);
 });
 
-analyzeBtn.addEventListener("click", async ()=>{
-  try{
-    if(!baseBitmap){ setError("No image decoded."); return; }
-    const canvas = renderWorkingCanvas(1024);
-    if(!canvas){ setError("Could not render working canvas."); return; }
-
-    // 1) BlazeFace (primary)
-    try{
-      const r1 = await detectWithBlaze(canvas);
-      drawResults(canvas, overlay, r1);
-      setProgress(100, `Done (BlazeFace in ${r1.elapsed_ms}ms).`);
-      return;
-    }catch(e){ logDiag({ blazeface: e && e.message }); }
-
-    // 2) face-api Tiny (fallback)
-    try{
-      await ensureFaceApi();
-      const r2 = await detectWithFaceApi(canvas, 25000);
-      drawResults(canvas, overlay, r2);
-      setProgress(100, "Done (face-api).");
-      return;
-    }catch(e){ logDiag({ faceapi: e && e.message }); }
-
-    setError("No face detected. Try increasing Zoom, rotate to upright, and raise Brightness/Contrast a bit.");
-  }catch(e){
-    setError(e.message || String(e));
-  }
+enhanceBtn.addEventListener("click", ()=>{
+  // bump settings then rerun
+  zoom.value = Math.max(+zoom.value, 1.5); zoomLabel.textContent = (+zoom.value).toFixed(2);
+  bri.value = Math.max(+bri.value, 1.18); briLabel.textContent = (+bri.value).toFixed(2);
+  con.value = Math.max(+con.value, 1.25); conLabel.textContent = (+con.value).toFixed(2);
+  analyzeFlow(true);
 });
+
+analyzeBtn.addEventListener("click", ()=> analyzeFlow(false));
 </script>
 </body>
 </html>
