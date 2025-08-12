@@ -155,5 +155,60 @@ async function analyze(){
 
 document.getElementById("analyzeBtn").addEventListener("click", analyze);
 </script>
+<script>
+// ---- BEGIN PATCH: robust multi-CDN + shard verification ----
+const CDN_BASES = [
+  "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights",
+  "https://unpkg.com/face-api.js@0.22.2/weights",
+  "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights",
+  "https://rawcdn.githack.com/justadudewhohacks/face-api.js/0.22.2/weights",
+  // Reliable community mirror with models folder
+  "https://cdn.jsdelivr.net/gh/vladmandic/face-api/model"
+];
+
+let WEIGHTS = null;
+
+async function fetchJsonNoStore(url) {
+  const res = await fetch(url, { method: "GET", cache: "no-store" });
+  if (!res.ok) throw new Error(`status ${res.status}`);
+  return res.json();
+}
+
+async function verifyManifestAndShards(base, manifestName) {
+  const manifestUrl = `${base}/${manifestName}`;
+  const manifest = await fetchJsonNoStore(manifestUrl);
+  // face-api manifests list shards in .weights[].paths (array)
+  const shards = (manifest.weights || [])
+    .flatMap(w => w.paths || [])
+    .map(p => `${base}/${p}`);
+  // Some mirrors put shards alongside the manifest; ensure we test all of them
+  for (const shardUrl of shards) {
+    const r = await fetch(shardUrl, { method: "GET", cache: "no-store" });
+    if (!r.ok) throw new Error(`shard 404: ${shardUrl}`);
+  }
+}
+
+async function verifyWeightsBase(base) {
+  // Try Tiny + Landmarks; if one fails, reject the base
+  await verifyManifestAndShards(base, "tiny_face_detector_model-weights_manifest.json");
+  await verifyManifestAndShards(base, "face_landmark_68_model-weights_manifest.json");
+  return true;
+}
+
+async function pickWeightsCdn() {
+  for (const base of CDN_BASES) {
+    try {
+      await verifyWeightsBase(base);
+      WEIGHTS = base.replace(/\/$/, "");
+      logDiag({ usingWeightsFrom: WEIGHTS, verified: true });
+      return;
+    } catch (e) {
+      logDiag({ cdnAttempt: base, fail: (e && e.message) || String(e) });
+    }
+  }
+  throw new Error("No working CDN with complete manifests + shards");
+}
+// ---- END PATCH ----
+</script>
 </body>
 </html>
