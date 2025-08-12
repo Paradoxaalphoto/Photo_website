@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN Alpha (Stable Fallback)</title>
+<title>YorN Alpha (Triple‑Fallback: FaceDetector → BlazeFace → face‑api)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;margin:0;padding:16px;background:#f7f7f8;color:#111}
@@ -28,10 +28,10 @@
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@3.21.0/dist/tf-backend-webgl.min.js"></script>
 
-<!-- face-api.js (primary) -->
+<!-- face-api.js (tertiary detector) -->
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
-<!-- BlazeFace fallback (UMD via script tag) -->
+<!-- BlazeFace fallback (UMD) -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
 </head>
 <body>
@@ -47,7 +47,7 @@
 
   <div class="controls" style="margin-top:8px">
     <div>
-      <label>Backend</label>
+      <label>Backend (for TFJS models)</label>
       <select id="backendSel">
         <option value="cpu" selected>cpu (most compatible)</option>
         <option value="wasm">wasm</option>
@@ -56,11 +56,11 @@
       </select>
     </div>
     <div>
-      <label>Timeout (sec): <span id="timeoutLabel">25</span></label>
+      <label>Timeout per attempt (sec): <span id="timeoutLabel">25</span></label>
       <input id="timeoutSec" type="range" min="8" max="30" step="1" value="25" />
     </div>
     <div>
-      <label>Weights override (optional)</label>
+      <label>Weights override (face‑api, optional)</label>
       <input id="weightsOverride" type="text" placeholder="https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights" />
     </div>
   </div>
@@ -135,7 +135,7 @@ async function pickWeights(){
   throw new Error("No working CDN with complete manifests + shards");
 }
 
-/* ---------- Backend selection ---------- */
+/* ---------- Backend selection (for TFJS models) ---------- */
 async function setBackend(){
   if (tf?.wasm?.setWasmPaths) {
     tf.wasm.setWasmPaths("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/");
@@ -196,7 +196,7 @@ fileInput.addEventListener("change", async ()=>{
 
 sampleBtn.addEventListener("click", async ()=>{
   clearDiag(); setProgress(0,"");
-  const sampleURL = "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
+  const sampleURL = "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png";
   logDiag({ sampleImage: sampleURL });
   analyzeBtn.disabled = true; setProgress(8,"Fetching sample…");
   try{
@@ -224,12 +224,12 @@ function detectWithTimeout(promise, ms){
 
 async function ensureFaceApi(){
   if(faceapiReady) return;
-  setProgress(18,"Verifying weights…"); await pickWeights();
-  setProgress(22,"Initializing backend…"); await setBackend();
-  setProgress(28,"Loading TinyFaceDetector…"); await faceapi.nets.tinyFaceDetector.loadFromUri(WEIGHTS);
-  setProgress(36,"Loading Landmarks…"); await faceapi.nets.faceLandmark68Net.loadFromUri(WEIGHTS);
-  await tf.tidy(()=> tf.zeros([1,64,64,3]));  // tiny warmup
-  faceapiReady = true; setProgress(44,"Models ready (face-api).");
+  await pickWeights();
+  await setBackend();
+  await faceapi.nets.tinyFaceDetector.loadFromUri(WEIGHTS);
+  await faceapi.nets.faceLandmark68Net.loadFromUri(WEIGHTS);
+  await tf.tidy(()=> tf.zeros([1,64,64,3]));  // warmup
+  faceapiReady = true; logDiag({ faceapiReady:true });
 }
 
 async function detectWithFaceApi(canvas, timeoutMs){
@@ -247,11 +247,9 @@ async function detectWithFaceApi(canvas, timeoutMs){
 
 async function ensureBlaze(){
   if(blazeModel) return;
-  setProgress(52, "Loading BlazeFace…");
-  // UMD global is window.blazeface
   if(!window.blazeface) throw new Error("BlazeFace script not loaded");
   blazeModel = await window.blazeface.load();
-  logDiag({ fallbackLoaded: "BlazeFace UMD" });
+  logDiag({ fallbackLoaded:"BlazeFace UMD" });
 }
 
 async function detectWithBlaze(canvas){
@@ -261,7 +259,6 @@ async function detectWithBlaze(canvas){
   const faces = await blazeModel.estimateFaces(canvas, false); // returnTensors=false
   const ms = Math.round(performance.now()-t0);
   if(faces && faces.length){
-    // faces[0] has topLeft [x,y], bottomRight [x,y]
     const f = faces[0];
     const tl = Array.isArray(f.topLeft) ? f.topLeft : await f.topLeft.array();
     const br = Array.isArray(f.bottomRight) ? f.bottomRight : await f.bottomRight.array();
@@ -269,6 +266,20 @@ async function detectWithBlaze(canvas){
     return { type:"blazeface", det:{ detection:{ box, score: 0.9 } }, elapsed_ms: ms };
   }
   throw new Error("blaze: no face");
+}
+
+async function detectWithFaceDetector(canvas){
+  if(!("FaceDetector" in window)){ throw new Error("FaceDetector API not available"); }
+  const d = new FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+  setProgress(60, "FaceDetector API: detecting…");
+  const t0 = performance.now();
+  const faces = await d.detect(canvas);
+  const ms = Math.round(performance.now() - t0);
+  if(faces && faces.length){
+    const b = faces[0].boundingBox; // DOMRect
+    return { type:"facedetector", det:{ detection:{ box:{ x:b.x, y:b.y, width:b.width, height:b.height }, score: 0.9 } }, elapsed_ms: ms };
+  }
+  throw new Error("FaceDetector: no face");
 }
 
 function drawResults(canvas, overlay, result){
@@ -283,44 +294,59 @@ function drawResults(canvas, overlay, result){
     try{ faceapi.draw.drawFaceLandmarks(overlay, r); }catch(_) {}
   }else{
     const b = result.det.detection.box;
-    ctx.strokeStyle = "#22c55e"; ctx.lineWidth = 3;
+    ctx.strokeStyle = result.type === "facedetector" ? "#06b6d4" : "#22c55e";
+    ctx.lineWidth = 3;
     ctx.strokeRect(b.x, b.y, b.width, b.height);
-    ctx.fillStyle = "#22c55e";
+    ctx.fillStyle = ctx.strokeStyle;
     ctx.font = "12px ui-monospace,monospace";
-    ctx.fillText(`BlazeFace`, b.x, Math.max(12, b.y - 4));
+    ctx.fillText(result.type, b.x, Math.max(12, b.y - 4));
   }
   overlay.classList.remove("hidden");
 }
 
-/* ---------- Analyze with auto-fallback ---------- */
+/* ---------- Analyze with triple cascade ---------- */
 analyzeBtn.addEventListener("click", async ()=>{
   try{
     if(!prepared && preparePromise) prepared = await preparePromise;
     if(!prepared){ setError("No prepared photo."); return; }
 
     const timeoutMs = Number(timeoutSec.value) * 1000;
-    // 1) Try face-api Tiny
+
+    // 0) Zero-download path first
+    try{
+      const r0 = await detectWithFaceDetector(prepared.canvas);
+      drawResults(prepared.canvas, overlay, r0);
+      setProgress(100, `Done (FaceDetector API in ${r0.elapsed_ms}ms).`);
+      return;
+    }catch(e){ logDiag({ facedetector: e && e.message }); }
+
+    // 1) Fast fallback: BlazeFace
+    try{
+      const r1 = await detectWithBlaze(prepared.canvas);
+      drawResults(prepared.canvas, overlay, r1);
+      setProgress(100, `Done (BlazeFace in ${r1.elapsed_ms}ms).`);
+      return;
+    }catch(e){ logDiag({ blazeface: e && e.message }); }
+
+    // 2) Last resort: face-api Tiny (with timeout/retries)
     try{
       await ensureFaceApi();
-      const r = await detectWithFaceApi(prepared.canvas, timeoutMs);
-      drawResults(prepared.canvas, overlay, r);
+      const r2 = await detectWithFaceApi(prepared.canvas, timeoutMs);
+      drawResults(prepared.canvas, overlay, r2);
       setProgress(100, "Done (face-api).");
       return;
-    }catch(e){ logDiag({ primaryFailed: e && e.message }); }
+    }catch(e){ logDiag({ faceapi: e && e.message }); setError("No face detected with any engine. Try a closer, front-facing photo."); }
 
-    // 2) Fallback: BlazeFace
-    try{
-      const r = await detectWithBlaze(prepared.canvas);
-      drawResults(prepared.canvas, overlay, r);
-      setProgress(100, `Done (fallback BlazeFace in ${r.elapsed_ms}ms).`);
-      return;
-    }catch(e){
-      logDiag({ fallbackFailed: e && e.message });
-      setError("No face detected with either engine. Try a closer, front-facing photo.");
-    }
   }catch(e){
     setError(e.message || String(e));
   }
+});
+
+/* ---------- Weights override ---------- */
+weightsOverride.addEventListener("change", ()=>{
+  const v = weightsOverride.value.trim();
+  WEIGHTS = v ? v.replace(/\/$/,"") : null;
+  faceapiReady = false;
 });
 </script>
 
