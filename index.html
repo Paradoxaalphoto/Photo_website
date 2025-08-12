@@ -3,19 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YorN — Alpha (Patched Multi‑CDN)</title>
+  <title>YorN — Alpha (WASM Patched)</title>
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- TFJS core + backends -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.js"></script>
+
+  <!-- face-api.js 0.22.2 -->
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-  <style>
-    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace}
-  </style>
+
+  <style>.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}</style>
 </head>
 <body class="bg-gray-50 text-gray-900">
   <div class="max-w-4xl mx-auto p-4 space-y-4">
     <header>
       <h1 class="text-2xl font-bold">YorN — Alpha</h1>
-      <p class="text-sm text-gray-600">Patched loader with multi‑CDN + shard verification. Mobile‑friendly detection.</p>
+      <p class="text-sm text-gray-600">WASM-first backend, multi-CDN with shard verification, mobile-friendly detection.</p>
     </header>
 
     <section class="bg-white p-4 rounded-xl shadow grid gap-3">
@@ -24,18 +28,26 @@
         <button id="analyzeBtn" class="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50" disabled>Analyze</button>
       </div>
 
-      <div class="grid md:grid-cols-2 gap-3 text-xs">
+      <div class="grid md:grid-cols-3 gap-3 text-xs">
         <div>
           <label class="block mb-1">Weights base override</label>
           <input id="weightsOverride" class="border p-1 rounded w-full" placeholder="https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights">
           <button id="applyOverride" class="mt-1 px-2 py-1 border rounded">Use override</button>
-          <p class="mt-1 text-[11px] text-gray-500">Leave blank to auto-pick a working mirror.</p>
         </div>
-        <div class="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+        <label class="grid grid-cols-[auto_1fr_auto] items-center gap-2">
           <span>Timeout</span>
-          <input id="timeoutSec" type="range" min="5" max="15" step="1" value="10" class="w-full">
-          <span id="timeoutLabel">10</span>
-        </div>
+          <input id="timeoutSec" type="range" min="5" max="20" step="1" value="15" class="w-full">
+          <span id="timeoutLabel">15</span>
+        </label>
+        <label class="grid grid-cols-[auto_1fr] gap-2 items-center">
+          <span>Backend</span>
+          <select id="backendSel" class="border rounded p-1">
+            <option value="auto" selected>auto (wasm→webgl→cpu)</option>
+            <option value="wasm">wasm</option>
+            <option value="webgl">webgl</option>
+            <option value="cpu">cpu</option>
+          </select>
+        </label>
       </div>
 
       <div class="w-full bg-gray-200 h-2 rounded overflow-hidden">
@@ -68,7 +80,7 @@ const progressBar = $("progressBar"), progressText = $("progressText");
 const thumb = $("thumb"), overlay = $("overlay");
 const diag = $("diag"), errorBox = $("errorBox");
 const weightsOverride = $("weightsOverride"), applyOverride = $("applyOverride");
-const timeoutSec = $("timeoutSec"), timeoutLabel = $("timeoutLabel");
+const timeoutSec = $("timeoutSec"), timeoutLabel = $("timeoutLabel"), backendSel = $("backendSel");
 
 timeoutSec.addEventListener("input", ()=> timeoutLabel.textContent = timeoutSec.value);
 
@@ -94,7 +106,7 @@ applyOverride.addEventListener("click", ()=>{
   if(v){ WEIGHTS = v.replace(/\/$/, ""); logDiag({ manualOverride: WEIGHTS }); modelsLoaded = false; }
 });
 
-// ---------- Patched robust multi‑CDN + shard verification ----------
+// ---------- Robust multi‑CDN + shard verification ----------
 const CDN_BASES = [
   "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights",
   "https://unpkg.com/face-api.js@0.22.2/weights",
@@ -112,10 +124,7 @@ async function fetchJsonNoStore(url){
 async function verifyManifestAndShards(base, manifestName){
   const manifestUrl = `${base}/${manifestName}`;
   const manifest = await fetchJsonNoStore(manifestUrl);
-  const shards = (manifest.weights || [])
-    .flatMap(w => w.paths || [])
-    .map(p => `${base}/${p}`);
-  // Ensure every shard exists
+  const shards = (manifest.weights || []).flatMap(w => w.paths || []).map(p => `${base}/${p}`);
   for(const shardUrl of shards){
     const r = await fetch(shardUrl, { method: "GET", cache: "no-store" });
     if(!r.ok) throw new Error(`shard 404: ${shardUrl}`);
@@ -129,18 +138,11 @@ async function verifyWeightsBase(base){
 }
 
 async function pickWeightsCdn(){
-  // If user pasted an override, just verify that one
   if(WEIGHTS){
-    try{
-      await verifyWeightsBase(WEIGHTS);
-      logDiag({ usingWeightsFrom: WEIGHTS, verified: true, source: "override" });
-      return;
-    }catch(e){
-      logDiag({ overrideFailed: WEIGHTS, msg: e && e.message });
-      throw new Error("Manual override failed verification. Clear it or paste a valid base.");
-    }
+    await verifyWeightsBase(WEIGHTS);
+    logDiag({ usingWeightsFrom: WEIGHTS, verified: true, source: "override" });
+    return;
   }
-
   for(const base of CDN_BASES){
     try{
       await verifyWeightsBase(base);
@@ -154,14 +156,51 @@ async function pickWeightsCdn(){
   throw new Error("No working CDN with complete manifests + shards");
 }
 
+// ---------- Backend selection & model warmup ----------
+async function setBestBackend(){
+  const choice = backendSel.value;
+  const tryOrder = choice === "auto" ? ["wasm","webgl","cpu"] : [choice];
+
+  // Point TFJS WASM to its .wasm bundle
+  if (tf && tf.wasm && tf.wasm.setWasmPaths) {
+    tf.wasm.setWasmPaths("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/");
+  }
+
+  let ok = false, chosen = null;
+  for(const b of tryOrder){
+    try{
+      await tf.setBackend(b);
+      await tf.ready();
+      chosen = tf.getBackend();
+      ok = true;
+      logDiag({ backendSelected: chosen });
+      break;
+    }catch(e){
+      logDiag({ backendFail: b, msg: e && e.message });
+    }
+  }
+  if(!ok) throw new Error("Failed to init any TFJS backend");
+  return chosen;
+}
+
+async function warmupTiny(){
+  // Create a tiny tensor to compile kernels before real run
+  await tf.tidy(async () => {
+    const dummy = tf.zeros([1, 128, 128, 3], "float32");
+    // No direct forward here; warming TF is enough. The first detect will compile face-api graph.
+    dummy.dispose?.();
+  });
+  await tf.nextFrame();
+}
+
 // ---------- Models / detection ----------
 async function ensureModels(){
   if(modelsLoaded) return;
-  setProgress(6, "Selecting & verifying weights…");
+  setProgress(6, "Verifying weights…");
   await pickWeightsCdn();
 
-  setProgress(12, "Initializing TFJS…");
-  await tf.ready();
+  setProgress(12, "Initializing backend…");
+  const backend = await setBestBackend();
 
   setProgress(22, "Loading TinyFaceDetector…");
   await faceapi.nets.tinyFaceDetector.loadFromUri(WEIGHTS);
@@ -169,28 +208,24 @@ async function ensureModels(){
   setProgress(40, "Loading Face Landmarks…");
   await faceapi.nets.faceLandmark68Net.loadFromUri(WEIGHTS);
 
+  setProgress(48, `Warming up (${backend})…`);
+  await warmupTiny();
+
   modelsLoaded = true;
-  setProgress(50, "Models ready.");
+  setProgress(52, "Models ready.");
 }
 
 function centerCrop(img, target=768){
   const side = Math.min(img.width, img.height);
   const sx = (img.width - side)/2, sy = (img.height - side)/2;
-  const c = document.createElement('canvas');
-  c.width = target; c.height = target;
-  const ctx = c.getContext('2d');
-  ctx.drawImage(img, sx, sy, side, side, 0, 0, target, target);
-  const out = new Image();
-  out.src = c.toDataURL('image/jpeg', 0.92);
-  out.width = target; out.height = target;
+  const c = document.createElement('canvas'); c.width = target; c.height = target;
+  const ctx = c.getContext('2d'); ctx.drawImage(img, sx, sy, side, side, 0, 0, target, target);
+  const out = new Image(); out.src = c.toDataURL('image/jpeg', 0.92); out.width = target; out.height = target;
   return new Promise(res => out.onload = () => res(out));
 }
 
 function detectWithTimeout(promise, ms){
-  return Promise.race([
-    promise,
-    new Promise((_, rej) => setTimeout(() => rej(new Error("Detection timeout")), ms))
-  ]);
+  return Promise.race([promise, new Promise((_,rej)=> setTimeout(()=> rej(new Error("Detection timeout")), ms))]);
 }
 
 async function analyze(){
@@ -207,10 +242,10 @@ async function analyze(){
       const img = await centerCrop(raw, 768);
       overlay.width = img.width; overlay.height = img.height;
 
-      const sizes = [224, 192, 160, 128];
+      const sizes = [192, 160, 128]; // smaller first = faster on mobile
       const timeoutMs = Number(timeoutSec.value) * 1000;
 
-      let det = null, used = null;
+      let det=null, used=null;
       for(const s of sizes){
         try{
           setProgress(70, `Detecting (size ${s}, ${timeoutSec.value}s)…`);
@@ -223,14 +258,8 @@ async function analyze(){
           await tf.nextFrame();
         }
       }
+      if(!det){ setProgress(0,""); setError("Timeout or no face. Try backend=wasm and timeout 18–20s, or use a closer, front‑facing photo."); return; }
 
-      if(!det){
-        setProgress(0,"");
-        setError("Timeout or no face. Try increasing timeout, using a front‑facing photo, or pasting a different weights base.");
-        return;
-      }
-
-      // Draw overlay
       const ctx = overlay.getContext('2d');
       ctx.clearRect(0,0,overlay.width,overlay.height);
       ctx.drawImage(img,0,0,img.width,img.height);
