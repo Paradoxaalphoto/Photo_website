@@ -1,12 +1,14 @@
-YorN Alpha — Mobile Preprocess + Retry + Analyze Button
-------------------------------------------------------
-Improves detection for "Could not detect a face" by:
-  - Downscaling to max 1024px
-  - Auto-rotate attempts (0°, 90°, 270°)
-  - Brightness/contrast variants (normal, +15% brightness, +20% contrast)
-  - TinyFaceDetector retries inputSize 480 → 416 → 320 → 256 with lower scoreThreshold (0.3)
-  - On-screen diagnostics
+YorN Alpha — Mobile Detection Fix Build
+--------------------------------------
+Fixes:
+- Removed wrong `.withFaceLandmarks(true)` (should be `.withFaceLandmarks()`).
+- Force TFJS backend webgl→cpu fallback.
+- TinyFaceDetector retries inputSize 320 → 224 → 160; 6s timeout.
+- Preprocess: scale≤1024, rotations 0/90/270, brightness +15%, contrast +20%, optional grayscale.
+- Draws detection box + confidence in overlay.
+- "Load Sample Image" button to verify environment.
+- Diagnostics panel shows every attempt.
 
-Deploy (GitHub → Vercel):
-  1) Upload all files in this folder to a GitHub repo (index.html at repo root).
-  2) Vercel: Import → Framework: Other → Build: (empty) → Output: .
+Deploy:
+  1) Upload to GitHub (index.html + vercel.json + README.md)
+  2) Vercel → Import → Framework: Other → Build: (empty) → Output: .
