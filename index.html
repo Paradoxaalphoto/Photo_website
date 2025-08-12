@@ -1,1 +1,200 @@
-<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>YorN</title><script src='https://cdn.tailwindcss.com'></script><script src='https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js'></script><script src='https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js'></script><script src='https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js'></script></head><body><div class='p-4'><input id='fileInput' type='file' accept='image/*'><button id='analyzeBtn'>Analyze</button><div style='height:8px;background:#eee;margin-top:8px;'><div id='pb' style='height:8px;width:0;background:#3b82f6;'></div></div><div id='pt' style='font-size:12px;color:#666;margin-top:4px;'></div><img id='thumb' style='max-width:100%;display:none;margin-top:8px;'/><canvas id='overlay' style='display:none;margin-top:8px;border:1px solid #ddd;'></canvas><pre id='diag' style='font-size:12px;background:#f9fafb;border:1px solid #e5e7eb;padding:8px;margin-top:8px;max-height:200px;overflow:auto;'>No diagnostics yet.</pre></div><script>const CDNS=['https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights','https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights'];let WEIGHTS=null,modelsLoaded=false,imageBlobUrl=null;const $=id=>document.getElementById(id),pb=$('pb'),pt=$('pt'),diag=$('diag'),overlay=$('overlay'),thumb=$('thumb');function log(x){const now=new Date().toISOString();diag.textContent='['+now+']\n'+x+'\n\n'+diag.textContent;}function setP(p,t){pb.style.width=(p||0)+'%';pt.textContent=t||'';}$('fileInput').addEventListener('change',e=>{if(!e.target.files.length)return;imageBlobUrl=URL.createObjectURL(e.target.files[0]);thumb.src=imageBlobUrl;thumb.style.display='block';});async function pickCDN(){for(const b of CDNS){try{const r=await fetch(b+'/face_landmark_68_model-weights_manifest.json',{method:'HEAD'});if(r.ok){WEIGHTS=b;log('Using weights: '+b);return;}}catch(e){log('CDN err '+b+': '+e.message);}}throw new Error('No working CDN');}async function ensure(){if(modelsLoaded)return;setP(6,'Selecting CDN…');if(!WEIGHTS)await pickCDN();setP(12,'TFJS…');await tf.ready();setP(22,'TinyFaceDetector…');await faceapi.nets.tinyFaceDetector.loadFromUri(WEIGHTS);setP(40,'Landmarks…');await faceapi.nets.faceLandmark68Net.loadFromUri(WEIGHTS);modelsLoaded=true;setP(50,'Ready');}function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}function compute(pts){const f=dist(pts[2],pts[14])/Math.max(1,dist(pts[27],pts[51]));let d=0,n=0;for(let i=0;i<=8;i++){const L=pts[i],R=pts[16-i];d+=Math.abs(L.y-R.y)+Math.abs((L.x+R.x)-pts[8].x*2);n++;}const sym=Math.max(0,10-(d/Math.max(1,n))/10);const eye=(pts[37].y+pts[44].y)/2,mouth=(pts[62].y+pts[66].y)/2,chin=pts[8].y,top=pts[27].y;const seg1=Math.abs(mouth-eye),seg2=Math.abs(chin-top);const golden=Math.max(0,10-Math.abs(1.618-(seg2/Math.max(1,seg1))/1.618)*10);const agg=Number(((sym+golden+(Math.min(f,2.2)/2.0)*10)/3).toFixed(2));return {fWHR:Number(f.toFixed(2)),symmetry:Number(sym.toFixed(2)),golden:Number(golden.toFixed(2)),aggregate:agg};}function downscale(img,maxDim=1024){const sc=Math.min(1,maxDim/Math.max(img.width,img.height));const c=document.createElement('canvas');c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);c.getContext('2d').drawImage(img,0,0,c.width,c.height);const out=new Image();out.width=c.width;out.height=c.height;out.src=c.toDataURL('image/jpeg',0.92);return new Promise(r=>out.onload=()=>r(out));}function detectWithTimeout(img,opts,ms=3500){return Promise.race([faceapi.detectSingleFace(img,opts).withFaceLandmarks(true),new Promise((_,rej)=>setTimeout(()=>rej(new Error('Detection timeout')),ms))]);}async function analyze(){try{setP(5,'Starting…');await ensure();if(!imageBlobUrl){setP(0,'Choose a photo first.');return;}setP(60,'Preparing image…');const raw=new Image();raw.onload=async()=>{const img=await downscale(raw,1024);overlay.width=img.width;overlay.height=img.height;const ctx=overlay.getContext('2d');const sizes=[416,320,256];let det=null,used=null;for(const s of sizes){try{setP(70,'Detecting (Tiny '+s+')…');const opts=new faceapi.TinyFaceDetectorOptions({inputSize:s,scoreThreshold:0.5});det=await detectWithTimeout(img,opts,3500);used=s;if(det)break;}catch(e){log('Retry '+s+' err: '+e.message);await tf.nextFrame();}}if(!det){setP(0,'Could not detect a face.');return;}setP(86,'Computing…');const sc=compute(det.landmarks.positions);ctx.clearRect(0,0,overlay.width,overlay.height);ctx.drawImage(img,0,0,img.width,img.height);const resized=faceapi.resizeResults(det,{width:img.width,height:img.height});faceapi.draw.drawFaceLandmarks(overlay,resized);overlay.style.display='block';setP(100,'Done (Tiny '+used+')');setTimeout(()=>setP(0,''),1500);};raw.src=imageBlobUrl;}catch(e){setP(0,'Error: '+e.message);log('Error: '+e.message);} } $('analyzeBtn').addEventListener('click', analyze);</script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YorN — Alpha (Mobile Retry + Analyze)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <style>.mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}</style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div class="max-w-4xl mx-auto p-4 space-y-4">
+    <header>
+      <h1 class="text-2xl font-bold">YorN — Alpha</h1>
+      <p class="text-sm text-gray-600">Select a photo → Preview → <b>Analyze</b>. Mobile-optimized with retries & scaling.</p>
+    </header>
+
+    <section class="grid md:grid-cols-[1fr_auto] gap-3 items-end bg-white p-4 rounded-xl shadow">
+      <input id="fileInput" type="file" accept="image/*" class="border p-2 rounded w-full" />
+      <div class="flex gap-2">
+        <button id="analyzeBtn" class="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50" disabled>Analyze</button>
+      </div>
+      <div class="col-span-full w-full bg-gray-200 h-2 rounded overflow-hidden">
+        <div id="progressBar" class="bg-blue-600 h-2 w-0"></div>
+      </div>
+      <div id="progressText" class="col-span-full text-xs text-gray-600"></div>
+    </section>
+
+    <section class="grid md:grid-cols-2 gap-4">
+      <div class="bg-white p-4 rounded-xl shadow">
+        <h2 class="text-sm font-semibold mb-2">Preview</h2>
+        <img id="thumb" class="hidden w-full max-h-96 object-contain rounded border bg-white" alt="Selected preview" />
+        <canvas id="overlay" class="hidden border rounded bg-white mt-3"></canvas>
+      </div>
+      <div class="bg-white p-4 rounded-xl shadow">
+        <h2 class="text-sm font-semibold mb-2">Diagnostics</h2>
+        <div id="diag" class="text-xs mono whitespace-pre-wrap bg-gray-50 border rounded p-2 max-h-80 overflow-auto">No diagnostics yet.</div>
+        <div id="errorBox" class="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2 mt-2 hidden"></div>
+      </div>
+    </section>
+
+    <section class="bg-white p-4 rounded-xl shadow">
+      <h2 class="text-sm font-semibold mb-2">Chart</h2>
+      <canvas id="scoreChart" class="hidden"></canvas>
+    </section>
+  </div>
+
+<script>
+// --- Config ---
+const CDNS = [
+  "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights",
+  "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights"
+];
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+// --- State ---
+let WEIGHTS = null;
+let modelsLoaded = false;
+let imageBlobUrl = null;
+
+// --- DOM helpers ---
+const $ = id => document.getElementById(id);
+const fileInput = $("fileInput"), analyzeBtn = $("analyzeBtn");
+const progressBar = $("progressBar"), progressText = $("progressText");
+const thumb = $("thumb"), overlay = $("overlay"), chart = $("scoreChart");
+const diag = $("diag"), errorBox = $("errorBox");
+
+function setProgress(p,t){ progressBar.style.width=(p||0)+'%'; progressText.textContent=t||''; }
+function logDiag(obj){ const now=new Date().toISOString(); const txt=typeof obj==='string'?obj:JSON.stringify(obj,null,2); diag.textContent=`[${now}]\n${txt}\n\n`+diag.textContent; }
+function setError(msg){ errorBox.textContent=msg; errorBox.classList.remove("hidden"); logDiag({ error: msg }); }
+function clearError(){ errorBox.textContent=""; errorBox.classList.add("hidden"); }
+
+fileInput.addEventListener("change", ()=>{
+  if(!fileInput.files.length){ analyzeBtn.disabled=true; return; }
+  const f=fileInput.files[0]; imageBlobUrl=URL.createObjectURL(f);
+  thumb.src=imageBlobUrl; thumb.classList.remove("hidden"); analyzeBtn.disabled=false;
+  overlay.classList.add("hidden"); chart.classList.add("hidden"); clearError(); setProgress(0,"");
+  logDiag({ fileName:f.name, type:f.type, size_bytes:f.size });
+});
+
+async function pickWeightsCdn(){
+  for(const b of CDNS){
+    try{
+      const res=await fetch(b+"/face_landmark_68_model-weights_manifest.json",{method:"HEAD"});
+      if(res.ok){ WEIGHTS=b; logDiag({ usingWeightsFrom:b }); return; }
+      logDiag({ cdnAttempt:b, status:res.status });
+    }catch(e){ logDiag({ cdnAttempt:b, error:e && e.message }); }
+  }
+  throw new Error("No working CDN for weights");
+}
+
+async function ensureModels(){
+  if(modelsLoaded) return;
+  setProgress(6,"Selecting CDN…"); if(!WEIGHTS) await pickWeightsCdn();
+  setProgress(12,"Loading TFJS…"); await tf.ready();
+  setProgress(22,"Loading TinyFaceDetector…"); await faceapi.nets.tinyFaceDetector.loadFromUri(WEIGHTS);
+  setProgress(40,"Loading landmarks…"); await faceapi.nets.faceLandmark68Net.loadFromUri(WEIGHTS);
+  modelsLoaded=true; setProgress(50,"Models ready.");
+  logDiag({ detector: "TinyFaceDetector", modelsLoaded });
+}
+
+function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+function computeScores(pts){
+  const left=pts[2], right=pts[14], brow=pts[27], lip=pts[51];
+  const fWHR = dist(left,right)/Math.max(1, dist(brow,lip));
+  let dev=0,n=0; for(let i=0;i<=8;i++){ const L=pts[i],R=pts[16-i]; dev += Math.abs(L.y-R.y) + Math.abs((L.x+R.x)-pts[8].x*2); n++; }
+  const symmetry = Math.max(0, 10 - (dev/Math.max(1,n))/10);
+  const eyeAvgY=(pts[37].y+pts[44].y)/2, mouthAvgY=(pts[62].y+pts[66].y)/2, chin=pts[8].y, top=pts[27].y;
+  const seg1=Math.abs(mouthAvgY-eyeAvgY), seg2=Math.abs(chin-top);
+  const golden = Math.max(0, 10 - Math.abs(1.618 - (seg2/Math.max(1,seg1))/1.618)*10);
+  const aggregate = Number(((symmetry + golden + (Math.min(fWHR,2.2)/2.0)*10)/3).toFixed(2));
+  return { fWHR:Number(fWHR.toFixed(2)), symmetry:Number(symmetry.toFixed(2)), golden:Number(golden.toFixed(2)), aggregate };
+}
+
+function downscaleImageToMax(img, maxDim=1024){
+  const scale = Math.min(1, maxDim/Math.max(img.width, img.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.width*scale);
+  canvas.height = Math.round(img.height*scale);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0,0, canvas.width, canvas.height);
+  const scaled = new Image();
+  scaled.width = canvas.width; scaled.height = canvas.height;
+  scaled.src = canvas.toDataURL("image/jpeg", 0.92);
+  return new Promise(res=>{ scaled.onload = ()=> res(scaled); });
+}
+
+function detectWithTimeout(img, opts, ms=3500){
+  return Promise.race([
+    faceapi.detectSingleFace(img, opts).withFaceLandmarks(true),
+    new Promise((_,rej)=> setTimeout(()=> rej(new Error("Detection timeout")), ms))
+  ]);
+}
+
+async function analyze(){
+  try{
+    clearError(); setProgress(5,"Starting…"); await ensureModels();
+    if(!imageBlobUrl){ setProgress(0,"Choose a photo first."); return; }
+    setProgress(60,"Preparing image…");
+    const raw = new Image();
+    raw.onload = async ()=>{
+      const img = await downscaleImageToMax(raw, 1024);
+      overlay.width = img.width; overlay.height = img.height;
+      const displaySize = { width: img.width, height: img.height };
+
+      const sizes = [416, 320, 256];
+      let det=null, usedSize=null, lastErr=null;
+      for(const s of sizes){
+        try{
+          setProgress(70, "Detecting face (Tiny, "+s+")…");
+          const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: s, scoreThreshold: 0.5 });
+          det = await detectWithTimeout(img, opts, 3500);
+          usedSize = s;
+          if(det) break;
+        }catch(e){
+          lastErr = e;
+          logDiag({ retryAfter:s, error:e && e.message });
+          await tf.nextFrame();
+          continue;
+        }
+      }
+      if(!det){ setProgress(0,""); setError("Could not detect a face. Try a clearer, front-facing photo."); return; }
+
+      setProgress(86,"Computing metrics…");
+      const scores = computeScores(det.landmarks.positions);
+
+      // Draw overlay
+      const ctx = overlay.getContext('2d');
+      ctx.clearRect(0,0,overlay.width,overlay.height);
+      ctx.drawImage(img,0,0,img.width,img.height);
+      const resized = faceapi.resizeResults(det, displaySize);
+      faceapi.draw.drawFaceLandmarks(overlay, resized);
+      overlay.classList.remove("hidden");
+
+      // Chart (simple)
+      chart.classList.remove("hidden");
+      new Chart(chart, {
+        type:'bar',
+        data:{ labels:['20-29','30-39','40-49','50-59','60+'],
+               datasets:[{ label:'Attractiveness Score', data:[scores.aggregate, scores.aggregate-0.3, scores.aggregate-0.6, scores.aggregate-0.9, scores.aggregate-1.2] }]},
+        options:{ responsive:true, scales:{ y:{ beginAtZero:true, max:10 } } }
+      });
+
+      setProgress(100,"Done. (Tiny "+usedSize+")");
+      setTimeout(()=> setProgress(0,""), 1500);
+    };
+    raw.src = imageBlobUrl;
+  }catch(e){
+    setError("Error during analysis: " + (e && e.message));
+    setProgress(0,"");
+  }
+}
+
+// Wire up button
+document.getElementById("analyzeBtn").addEventListener("click", analyze);
+</script>
+</body>
+</html>
