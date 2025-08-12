@@ -3,177 +3,213 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YorN — Alpha</title>
+  <title>YorN — Alpha (Mobile Diagnostics)</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 </head>
 <body class="bg-gray-50 text-gray-900">
-  <div class="max-w-4xl mx-auto p-4">
-    <h1 class="text-2xl font-bold mb-2">YorN — Alpha</h1>
-    <p class="mb-4 text-sm text-gray-600">Select a photo → preview → click Analyze (progress shows each step).</p>
+  <div class="max-w-4xl mx-auto p-4 space-y-4">
+    <header>
+      <h1 class="text-2xl font-bold">YorN — Alpha</h1>
+      <p class="text-sm text-gray-600">Select photo → Preview → Analyze. This build shows diagnostics on screen (no console needed).</p>
+    </header>
 
-    <div class="grid md:grid-cols-[1fr_auto] gap-3 items-end">
+    <section class="grid md:grid-cols-[1fr_auto] gap-3 items-end bg-white p-4 rounded-xl shadow">
       <input id="fileInput" type="file" accept="image/*" class="border p-2 rounded w-full" />
       <div class="flex gap-2">
         <button id="analyzeBtn" class="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50" disabled>Analyze</button>
         <button id="cancelBtn" class="px-4 py-2 bg-gray-400 text-white rounded hidden">Cancel</button>
       </div>
-    </div>
+      <div class="col-span-full flex items-center gap-2 text-xs">
+        <label class="flex items-center gap-1"><input id="forceSSD" type="checkbox" class="scale-110"> Force SSD (desktop model)</label>
+        <button id="runNetTest" class="px-2 py-1 border rounded text-xs">Test Weights Network</button>
+      </div>
+      <div class="col-span-full w-full bg-gray-200 h-2 rounded overflow-hidden">
+        <div id="progressBar" class="bg-blue-600 h-2 w-0"></div>
+      </div>
+      <div id="progressText" class="col-span-full text-xs text-gray-600"></div>
+    </section>
 
-    <!-- Progress -->
-    <div class="mt-4 w-full bg-gray-200 h-2 rounded">
-      <div id="progressBar" class="bg-blue-600 h-2 rounded" style="width:0%"></div>
-    </div>
-    <p id="progressText" class="text-xs mt-1 text-gray-500"></p>
-
-    <!-- Preview row -->
-    <div class="mt-4 grid md:grid-cols-2 gap-4">
-      <div>
-        <h2 class="text-sm font-semibold mb-1">Preview</h2>
+    <section class="grid md:grid-cols-2 gap-4">
+      <div class="bg-white p-4 rounded-xl shadow">
+        <h2 class="text-sm font-semibold mb-2">Preview</h2>
         <img id="thumb" class="hidden w-full max-h-96 object-contain rounded border bg-white" alt="Selected preview" />
+        <canvas id="overlay" class="hidden border rounded bg-white mt-3"></canvas>
       </div>
-      <div>
-        <h2 class="text-sm font-semibold mb-1">Landmarks Overlay</h2>
-        <canvas id="overlay" class="hidden border rounded bg-white"></canvas>
+      <div class="bg-white p-4 rounded-xl shadow">
+        <h2 class="text-sm font-semibold mb-2">Diagnostics</h2>
+        <div id="diag" class="text-xs whitespace-pre-wrap font-mono bg-gray-50 border rounded p-2 max-h-80 overflow-auto">No diagnostics yet.</div>
+        <div id="errorBox" class="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2 mt-2 hidden"></div>
       </div>
-    </div>
+    </section>
 
-    <div class="mt-6">
+    <section class="bg-white p-4 rounded-xl shadow">
+      <h2 class="text-sm font-semibold mb-2">Chart</h2>
       <canvas id="scoreChart" class="hidden"></canvas>
-    </div>
+    </section>
   </div>
 
   <script>
-    const MODELS_BASE = "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights";
-    let cancelRequested = false, modelsLoaded = false, imageBlobUrl = null, imageEl = null;
+    const WEIGHTS = "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights";
+    const UA = navigator.userAgent;
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(UA);
+
+    let modelsLoaded = false, cancelRequested = false, imageBlobUrl = null, imageEl = null;
+    let detectorUsed = null;
 
     const $ = id => document.getElementById(id);
-    const fileInput = $("fileInput");
-    const analyzeBtn = $("analyzeBtn");
-    const cancelBtn = $("cancelBtn");
-    const progressBar = $("progressBar");
-    const progressText = $("progressText");
-    const thumb = $("thumb");
-    const overlay = $("overlay");
-    const scoreChartCanvas = $("scoreChart");
+    const fileInput = $("fileInput"), analyzeBtn = $("analyzeBtn"), cancelBtn = $("cancelBtn");
+    const progressBar = $("progressBar"), progressText = $("progressText");
+    const thumb = $("thumb"), overlay = $("overlay"), chart = $("scoreChart");
+    const diag = $("diag"), errorBox = $("errorBox"), forceSSD = $("forceSSD"), runNetTest = $("runNetTest");
 
-    function setProgress(percent, text) { progressBar.style.width = percent + '%'; progressText.textContent = text || ''; }
+    function setProgress(p, t){ progressBar.style.width = (p||0) + "%"; progressText.textContent = t || ""; }
+    function logDiag(obj){
+      const now = new Date().toISOString();
+      const text = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+      diag.textContent = `[${now}]
+` + text + "\n\n" + diag.textContent;
+    }
+    function setError(msg){ errorBox.textContent = msg; errorBox.classList.remove("hidden"); logDiag({ error: msg }); }
+    function clearError(){ errorBox.textContent = ""; errorBox.classList.add("hidden"); }
 
-    fileInput.addEventListener('change', () => {
+    runNetTest.addEventListener("click", async () => {
+      setProgress(3, "Testing network to weights…");
+      try{
+        const url = WEIGHTS + "/face_landmark_68_model-weights_manifest.json";
+        const res = await fetch(url, { method: "HEAD" });
+        logDiag({ networkTest: url, status: res.status });
+        if(res.ok){ setProgress(6, "Weights reachable (HEAD 200)."); }
+        else { setError("Weights not reachable. Status " + res.status); }
+      }catch(e){
+        setError("Network test failed: " + (e && e.message));
+      } finally {
+        setTimeout(()=>setProgress(0,""), 800);
+      }
+    });
+
+    fileInput.addEventListener("change", () => {
       if (!fileInput.files.length) { analyzeBtn.disabled = true; return; }
       const file = fileInput.files[0];
       imageBlobUrl = URL.createObjectURL(file);
       thumb.src = imageBlobUrl;
-      thumb.classList.remove('hidden');
+      thumb.classList.remove("hidden");
       analyzeBtn.disabled = false;
-      // reset UI
-      overlay.classList.add('hidden'); scoreChartCanvas.classList.add('hidden');
-      setProgress(0, '');
+      overlay.classList.add("hidden"); chart.classList.add("hidden");
+      clearError(); setProgress(0,"");
+      logDiag({ fileName: file.name, type: file.type, size_bytes: file.size });
     });
 
-    cancelBtn.addEventListener('click', () => {
+    cancelBtn.addEventListener("click", () => {
       cancelRequested = true;
-      setProgress(0, 'Cancelled.');
+      setProgress(0, "Cancelled.");
+      logDiag("User cancelled.");
     });
 
-    analyzeBtn.addEventListener('click', async () => {
+    analyzeBtn.addEventListener("click", async () => {
       if (!fileInput.files.length) return;
       cancelRequested = false;
-      cancelBtn.classList.remove('hidden');
+      cancelBtn.classList.remove("hidden");
       analyzeBtn.disabled = true;
       await runAnalysis();
-      cancelBtn.classList.add('hidden');
+      cancelBtn.classList.add("hidden");
       analyzeBtn.disabled = false;
     });
 
-    async function ensureModels() {
-      if (modelsLoaded) return;
-      setProgress(8, 'Loading detector...');
-      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODELS_BASE);
-      setProgress(35, 'Loading landmarks...');
-      await faceapi.nets.faceLandmark68Net.loadFromUri(MODELS_BASE);
-      modelsLoaded = true;
-      setProgress(48, 'Models ready.');
+    async function ensureModels(){
+      if(modelsLoaded) return;
+      setProgress(8, "Loading TFJS…");
+      await tf.ready();
+      try{
+        if (isMobile && !forceSSD.checked){
+          setProgress(20, "Loading TinyFaceDetector…");
+          await faceapi.nets.tinyFaceDetector.loadFromUri(WEIGHTS);
+          detectorUsed = "TinyFaceDetector";
+        } else {
+          setProgress(20, "Loading SSD Mobilenet v1…");
+          await faceapi.nets.ssdMobilenetv1.loadFromUri(WEIGHTS);
+          detectorUsed = "SSD Mobilenet v1";
+        }
+        setProgress(45, "Loading Landmarks…");
+        await faceapi.nets.faceLandmark68Net.loadFromUri(WEIGHTS);
+        modelsLoaded = true;
+        setProgress(55, "Models ready.");
+        logDiag({ detectorUsed, modelsLoaded });
+      }catch(e){
+        setError("Failed to load models: " + (e && e.message));
+        throw e;
+      }
     }
 
     function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
-    function computeMetrics(landmarks){
+    function computeScores(landmarks){
       const pts = landmarks.positions;
       const leftCheek = pts[2], rightCheek = pts[14], browMid = pts[27], upperLip = pts[51];
-      const width = dist(leftCheek, rightCheek);
-      const height = dist(browMid, upperLip);
-      const fWHR = width / Math.max(1, height);
-      let dev = 0, n=0;
-      for(let i=0;i<=8;i++){
-        const L = pts[i], R = pts[16-i];
-        dev += Math.abs((L.y - R.y)) + Math.abs((L.x + R.x - pts[8].x*2));
-        n++;
-      }
-      const symRaw = dev / Math.max(1,n);
-      const symmetryScore = Math.max(0, 10 - (symRaw / 10));
-      const eyeAvgY = (pts[37].y + pts[44].y)/2;
-      const mouthAvgY = (pts[62].y + pts[66].y)/2;
-      const chin = pts[8].y;
-      const top = pts[27].y;
-      const seg1 = Math.abs(mouthAvgY - eyeAvgY);
-      const seg2 = Math.abs(chin - top);
-      const phi = seg2 / Math.max(1, seg1);
-      const goldenScore = Math.max(0, 10 - Math.abs(1.618 - (phi/1.618))*10);
+      const width = dist(leftCheek,rightCheek), height = dist(browMid,upperLip);
+      const fWHR = width/Math.max(1,height);
+      let dev=0,n=0;
+      for(let i=0;i<=8;i++){ const L=pts[i], R=pts[16-i]; dev += Math.abs(L.y-R.y) + Math.abs((L.x+R.x) - pts[8].x*2); n++; }
+      const symmetryScore = Math.max(0, 10 - (dev/Math.max(1,n))/10);
+      const eyeAvgY = (pts[37].y + pts[44].y)/2, mouthAvgY = (pts[62].y + pts[66].y)/2, chin=pts[8].y, top=pts[27].y;
+      const seg1 = Math.abs(mouthAvgY-eyeAvgY), seg2 = Math.abs(chin-top);
+      const goldenScore = Math.max(0, 10 - Math.abs(1.618 - (seg2/Math.max(1,seg1))/1.618)*10);
       const aggregate = Number(((symmetryScore + goldenScore + (Math.min(fWHR,2.2)/2.0)*10)/3).toFixed(2));
       return { fWHR:Number(fWHR.toFixed(2)), symmetryScore:Number(symmetryScore.toFixed(2)), goldenScore:Number(goldenScore.toFixed(2)), aggregate };
     }
 
-    function drawOverlay(img, det){
-      const displaySize = { width: img.width, height: img.height };
-      faceapi.matchDimensions(overlay, displaySize);
-      const ctx = overlay.getContext('2d');
-      overlay.width = img.width; overlay.height = img.height;
-      ctx.clearRect(0,0,overlay.width,overlay.height);
-      ctx.drawImage(img, 0, 0, img.width, img.height);
-      const resized = faceapi.resizeResults(det, displaySize);
-      faceapi.draw.drawFaceLandmarks(overlay, resized);
-      overlay.classList.remove('hidden');
-    }
-
-    function renderChart(scores){
-      scoreChartCanvas.classList.remove('hidden');
-      new Chart(scoreChartCanvas, {
-        type: 'bar',
-        data: {
-          labels: ['20-29','30-39','40-49','50-59','60+'],
-          datasets: [{ label:'Attractiveness Score', data:[scores.aggregate, scores.aggregate-0.3, scores.aggregate-0.6, scores.aggregate-0.9, scores.aggregate-1.2] }]
-        },
-        options: { responsive:true, scales:{ y:{ beginAtZero:true, max:10 } } }
-      });
-    }
-
     async function runAnalysis(){
-      try {
-        setProgress(5, 'Starting...');
-        await ensureModels();
-        if (cancelRequested) return;
-        if (!imageBlobUrl) { setProgress(0, 'Please choose a photo first.'); return; }
-        setProgress(60, 'Preparing image...');
+      try{
+        clearError(); setProgress(5,"Starting…"); await ensureModels();
+        if(cancelRequested) return;
+        if(!imageBlobUrl){ setProgress(0,"Please choose a photo first."); return; }
+
+        setProgress(62,"Preparing image…");
         imageEl = new Image();
         imageEl.onload = async () => {
+          logDiag({ imgWidth: imageEl.width, imgHeight: imageEl.height, UA, detectorUsed });
           if (cancelRequested) return;
-          setProgress(75, 'Detecting face...');
-          const det = await faceapi.detectSingleFace(imageEl).withFaceLandmarks();
-          if (!det) { setProgress(0, 'No face detected. Try a clearer, front-facing photo.'); return; }
-          if (cancelRequested) return;
-          setProgress(86, 'Computing metrics...');
-          const scores = computeMetrics(det.landmarks);
-          drawOverlay(imageEl, det);
-          setProgress(92, 'Building chart...');
-          renderChart(scores);
-          setProgress(100, 'Done.');
-          setTimeout(()=>setProgress(0,''), 1500);
+          setProgress(74, "Detecting face…");
+          let det;
+          if (detectorUsed === "TinyFaceDetector"){
+            const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+            det = await faceapi.detectSingleFace(imageEl, opts).withFaceLandmarks(true);
+          } else {
+            det = await faceapi.detectSingleFace(imageEl).withFaceLandmarks();
+          }
+          if (!det) { setProgress(0,""); setError("No face detected. Try a clearer, front-facing photo."); return; }
+
+          setProgress(86, "Computing metrics…");
+          const scores = computeScores(det.landmarks);
+
+          // Draw overlay
+          const displaySize = { width: imageEl.width, height: imageEl.height };
+          overlay.width = imageEl.width; overlay.height = imageEl.height;
+          const ctx = overlay.getContext('2d');
+          ctx.clearRect(0,0,overlay.width,overlay.height);
+          ctx.drawImage(imageEl,0,0,imageEl.width,imageEl.height);
+          const resized = faceapi.resizeResults(det, displaySize);
+          faceapi.draw.drawFaceLandmarks(overlay, resized);
+          overlay.classList.remove("hidden");
+
+          // Chart
+          setProgress(92, "Building chart…");
+          chart.classList.remove("hidden");
+          new Chart(chart, {
+            type: 'bar',
+            data: { labels: ['20-29','30-39','40-49','50-59','60+'],
+                    datasets: [{ label: 'Attractiveness Score', data: [scores.aggregate, scores.aggregate-0.3, scores.aggregate-0.6, scores.aggregate-0.9, scores.aggregate-1.2] }]},
+            options: { responsive: true, scales: { y: { beginAtZero: true, max: 10 } } }
+          });
+
+          setProgress(100, "Done.");
+          setTimeout(()=>setProgress(0,""), 1500);
         };
         imageEl.src = imageBlobUrl;
       } catch (e){
-        console.error(e);
-        setProgress(0, 'Error during analysis. See console.');
+        setError("Error during analysis: " + (e && e.message));
+        setProgress(0,"");
       }
     }
   </script>

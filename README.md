@@ -1,8 +1,13 @@
-## YorN Alpha — Analyze + Progress + Thumbnail Preview
+YorN Alpha — Mobile Diagnostics Build
+-------------------------------------
+Adds visible on-screen diagnostics so you don't need DevTools:
+  - Shows last error message & step
+  - Model load status
+  - Detector used (Tiny or SSD)
+  - File type/size, image dimensions
+  - Quick network test for model weights (jsDelivr)
 
-### Deploy (GitHub → Vercel)
-1) Upload all files to a GitHub repo (keep index.html at repo root).
-2) In Vercel: Import Git Repository → Framework: Other → Build Command: (empty) → Output Directory: `.`
-3) Deploy.
-
-Notes: Uses CDN face-api weights; no local /models required.
+Deploy:
+  1) Upload all files to a GitHub repo (index.html + vercel.json + README.md).
+  2) Vercel → Import Git Repository → Framework: Other → Build Command: (empty) → Output Directory: .
+  3) Deploy.
