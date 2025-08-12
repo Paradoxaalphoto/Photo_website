@@ -1,199 +1,278 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>YorN Alpha</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<title>YorN Alpha (WASM + Timeout)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<!-- TFJS core + WASM backend -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.js"></script>
+<!-- face-api.js -->
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <style>
-  body { font-family: sans-serif; padding: 10px; }
-  #progressContainer { height: 20px; background: #eee; border-radius: 5px; overflow: hidden; margin: 10px 0; }
-  #progressBar { height: 100%; width: 0%; background: #4caf50; transition: width 0.3s; }
-  #overlay { position: relative; display: block; margin-top: 10px; }
-  #diagnostics { font-size: 0.8em; white-space: pre-wrap; background: #f5f5f5; padding: 5px; border: 1px solid #ccc; margin-top: 10px; }
-  #thumb { max-width: 100%; margin-top: 10px; }
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;margin:0;padding:16px;background:#f7f7f8;color:#111}
+  .row{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-top:12px}
+  #progressContainer{height:8px;background:#e5e7eb;border-radius:6px;overflow:hidden;margin-top:8px}
+  #progressBar{height:100%;width:0;background:#2563eb;transition:width .25s}
+  #overlay{display:block;max-width:100%;margin-top:10px;background:#fff;border:1px solid #e5e7eb;border-radius:8px}
+  #thumb{max-width:100%;margin-top:10px;background:#fff;border:1px solid #e5e7eb;border-radius:8px}
+  #diagnostics{white-space:pre-wrap;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:8px;max-height:260px;overflow:auto}
+  button{cursor:pointer}
+  .btn{padding:10px 14px;border-radius:8px;border:1px solid #e5e7eb;background:#111;color:#fff}
+  .btn[disabled]{opacity:.5;cursor:not-allowed}
+  .btn-secondary{background:#fff;color:#111}
+  .controls{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  label{font-size:12px;color:#374151}
+  input[type="range"]{width:100%}
+  select, input[type="text"]{width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;background:#fff}
 </style>
 </head>
 <body>
 
-<h2>YorN Alpha – Face Analysis</h2>
+<h2>YorN Alpha — Face Analysis</h2>
 
-<input type="file" id="fileInput" accept="image/*"><br><br>
-<div id="progressContainer"><div id="progressBar"></div></div>
-<p id="progressText"></p>
+<div class="card">
+  <div class="row">
+    <input id="fileInput" type="file" accept="image/*" />
+    <button id="sampleBtn" class="btn btn-secondary">Load Sample Image</button>
+    <button id="analyzeBtn" class="btn" disabled>Analyze</button>
+  </div>
 
-<button id="analyzeBtn" disabled>Analyze</button>
-<canvas id="overlay" class="hidden"></canvas>
-<img id="thumb" class="hidden" alt="Preview">
+  <div class="controls" style="margin-top:8px">
+    <div>
+      <label>Backend</label>
+      <select id="backendSel">
+        <option value="auto" selected>auto (wasm → webgl → cpu)</option>
+        <option value="wasm">wasm</option>
+        <option value="webgl">webgl</option>
+        <option value="cpu">cpu</option>
+      </select>
+    </div>
+    <div>
+      <label>Timeout (seconds): <span id="timeoutLabel">20</span></label>
+      <input id="timeoutSec" type="range" min="5" max="25" step="1" value="20" />
+    </div>
+    <div>
+      <label>Weights override (optional)</label>
+      <input id="weightsOverride" type="text" placeholder="https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights" />
+    </div>
+  </div>
 
-<h3>Diagnostics</h3>
-<div id="diagnostics"></div>
+  <div id="progressContainer"><div id="progressBar"></div></div>
+  <p id="progressText" style="font-size:12px;color:#4b5563;margin:6px 2px 0 2px;"></p>
+</div>
+
+<div class="card">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div>
+      <strong style="font-size:13px">Preview</strong>
+      <img id="thumb" class="hidden" alt="Preview" />
+      <canvas id="overlay" class="hidden"></canvas>
+    </div>
+    <div>
+      <strong style="font-size:13px">Diagnostics</strong>
+      <div id="diagnostics">No diagnostics yet.</div>
+    </div>
+  </div>
+</div>
 
 <script>
-const fileInput = document.getElementById("fileInput");
-const analyzeBtn = document.getElementById("analyzeBtn");
-const overlay = document.getElementById("overlay");
-const progressBar = document.getElementById("progressBar");
-const progressText = document.getElementById("progressText");
-const diagnostics = document.getElementById("diagnostics");
-const thumb = document.getElementById("thumb");
+/* ---------- UI helpers ---------- */
+const $ = id => document.getElementById(id);
+const fileInput = $("fileInput"), sampleBtn = $("sampleBtn"), analyzeBtn = $("analyzeBtn");
+const overlay = $("overlay"), thumb = $("thumb");
+const progressBar = $("progressBar"), progressText = $("progressText");
+const diagnostics = $("diagnostics");
+const backendSel = $("backendSel"), timeoutSec = $("timeoutSec"), timeoutLabel = $("timeoutLabel");
+const weightsOverride = $("weightsOverride");
 
-let preparePromise = null;
-let preparedImage = null;
-let WEIGHTS = null;
+let WEIGHTS = null, modelsReady = false, imageFile = null, prepared = null, preparePromise = null;
 
-function setProgress(pct, text) {
-  progressBar.style.width = pct + "%";
-  progressText.textContent = text || "";
-}
-function logDiag(obj) {
-  diagnostics.textContent += JSON.stringify(obj) + "\n";
-}
-function clearDiag() { diagnostics.textContent = ""; }
-function setError(msg) {
-  logDiag({ error: msg });
-  progressText.textContent = msg;
-}
+timeoutSec.addEventListener("input", () => timeoutLabel.textContent = timeoutSec.value);
 
-async function fetchJsonNoStore(url) {
-  const res = await fetch(url, { method: "GET", cache: "no-store" });
-  if (!res.ok) throw new Error(`status ${res.status}`);
-  return res.json();
+function setProgress(p, t){ progressBar.style.width = (p||0) + "%"; progressText.textContent = t || ""; }
+function logDiag(obj){ const now=new Date().toISOString(); const s=typeof obj==="string"?obj:JSON.stringify(obj); diagnostics.textContent = `[${now}] ${s}\n` + diagnostics.textContent; }
+function clearDiag(){ diagnostics.textContent = ""; }
+function setError(msg){ setProgress(0,""); logDiag({ error: msg }); }
+
+/* ---------- Robust multi-CDN + shard verification ---------- */
+async function fetchJson(url){ const r = await fetch(url, { cache:"no-store" }); if(!r.ok) throw new Error("status "+r.status); return r.json(); }
+async function verifyManifestAndShards(base, name){
+  const mani = await fetchJson(`${base}/${name}`);
+  const shards = (mani.weights||[]).flatMap(w=>w.paths||[]).map(p=>`${base}/${p}`);
+  for(const u of shards){ const r = await fetch(u, { cache:"no-store" }); if(!r.ok) throw new Error("shard 404: "+u); }
 }
-async function verifyManifestAndShards(base, manifestName) {
-  const manifestUrl = `${base}/${manifestName}`;
-  const manifest = await fetchJsonNoStore(manifestUrl);
-  const shards = (manifest.weights || [])
-    .flatMap(w => w.paths || [])
-    .map(p => `${base}/${p}`);
-  for (const shardUrl of shards) {
-    const r = await fetch(shardUrl, { method: "GET", cache: "no-store" });
-    if (!r.ok) throw new Error(`shard 404: ${shardUrl}`);
+async function pickWeights(){
+  if(WEIGHTS){ // manual override present
+    await verifyManifestAndShards(WEIGHTS, "tiny_face_detector_model-weights_manifest.json");
+    await verifyManifestAndShards(WEIGHTS, "face_landmark_68_model-weights_manifest.json");
+    logDiag({ usingWeightsFrom: WEIGHTS, verified:true, source:"override" });
+    return;
   }
-}
-async function verifyWeightsBase(base) {
-  await verifyManifestAndShards(base, "tiny_face_detector_model-weights_manifest.json");
-  await verifyManifestAndShards(base, "face_landmark_68_model-weights_manifest.json");
-  return true;
-}
-async function pickWeightsCdn() {
-  const CDN_BASES = [
+  const BASES = [
     "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights",
     "https://unpkg.com/face-api.js@0.22.2/weights",
     "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights",
     "https://rawcdn.githack.com/justadudewhohacks/face-api.js/0.22.2/weights",
     "https://cdn.jsdelivr.net/gh/vladmandic/face-api/model"
   ];
-  for (const base of CDN_BASES) {
-    try {
-      await verifyWeightsBase(base);
-      WEIGHTS = base.replace(/\/$/, "");
+  for(const b of BASES){
+    try{
+      await verifyManifestAndShards(b, "tiny_face_detector_model-weights_manifest.json");
+      await verifyManifestAndShards(b, "face_landmark_68_model-weights_manifest.json");
+      WEIGHTS = b.replace(/\/$/, "");
       logDiag({ usingWeightsFrom: WEIGHTS, verified: true });
       return;
-    } catch (e) {
-      logDiag({ cdnAttempt: base, fail: e.message });
-    }
+    }catch(e){ logDiag({ cdnAttempt:b, fail: e.message }); }
   }
   throw new Error("No working CDN with complete manifests + shards");
 }
 
-async function decodeAndPrepare(file, targetMax = 1024) {
-  if (file.size > 15 * 1024 * 1024) {
-    throw new Error("Photo is too large. Please pick one under 15MB.");
+/* ---------- Backend selection ---------- */
+async function setBackend(){
+  // WASM bundle path
+  if (tf?.wasm?.setWasmPaths) {
+    tf.wasm.setWasmPaths("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/");
   }
+  const mode = backendSel.value;
+  const order = mode==="auto" ? ["wasm","webgl","cpu"] : [mode];
+  for(const b of order){
+    try{
+      await tf.setBackend(b);
+      await tf.ready();
+      logDiag({ backendSelected: tf.getBackend() });
+      return;
+    }catch(e){ logDiag({ backendFail:b, msg:e && e.message }); }
+  }
+  throw new Error("Failed to init any TFJS backend");
+}
+
+/* ---------- Image prep (EXIF-aware decode + downscale) ---------- */
+async function decodeAndPrepare(file, targetMax=1024){
+  if(file.size > 15*1024*1024) throw new Error("Photo too large (>15MB)");
   const opts = { imageOrientation: "from-image" };
-  let bmp = await createImageBitmap(file, opts).catch(async () => {
+  let bmp = await createImageBitmap(file, opts).catch(async ()=>{
     const url = URL.createObjectURL(file);
     const img = new Image();
-    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+    await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=url; });
     await img.decode?.().catch(()=>{});
     const c = document.createElement("canvas");
     c.width = img.naturalWidth; c.height = img.naturalHeight;
-    c.getContext("2d").drawImage(img, 0, 0);
+    c.getContext("2d").drawImage(img,0,0);
     URL.revokeObjectURL(url);
     bmp = await createImageBitmap(c);
   });
   const maxSide = Math.max(bmp.width, bmp.height);
   const scale = Math.min(1, targetMax / maxSide);
-  const w = Math.round(bmp.width * scale);
-  const h = Math.round(bmp.height * scale);
+  const w = Math.max(1, Math.round(bmp.width * scale));
+  const h = Math.max(1, Math.round(bmp.height * scale));
   let canvas;
-  try { canvas = new OffscreenCanvas(w, h); } catch { canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h; }
+  try{ canvas = new OffscreenCanvas(w,h); }catch{ canvas = Object.assign(document.createElement("canvas"), {width:w, height:h}); }
   const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
   ctx.drawImage(bmp, 0, 0, w, h);
-  return { canvas, ctx, width: w, height: h };
+  return { canvas, width:w, height:h };
 }
 
-fileInput.addEventListener("change", async () => {
-  clearDiag();
-  if (!fileInput.files.length) { analyzeBtn.disabled = true; return; }
-  const f = fileInput.files[0];
-  thumb.src = URL.createObjectURL(f);
-  thumb.classList.remove("hidden");
-  logDiag({ fileName: f.name, type: f.type, size_bytes: f.size });
-  analyzeBtn.disabled = true;
-  setProgress(10, "Preparing photo…");
-  try {
-    preparePromise = decodeAndPrepare(f, 1024);
-    preparedImage = await preparePromise;
-    analyzeBtn.disabled = false;
-    setProgress(15, "Photo ready.");
-  } catch (e) {
-    setError("Could not prepare photo: " + e.message);
-    analyzeBtn.disabled = true;
-  }
+/* ---------- File + sample handlers ---------- */
+fileInput.addEventListener("change", async ()=>{
+  clearDiag(); setProgress(0,"");
+  if(!fileInput.files.length){ analyzeBtn.disabled = true; return; }
+  imageFile = fileInput.files[0];
+  thumb.src = URL.createObjectURL(imageFile); thumb.classList.remove("hidden");
+  analyzeBtn.disabled = true; setProgress(8,"Preparing photo…");
+  try{
+    preparePromise = decodeAndPrepare(imageFile, 1024);
+    prepared = await preparePromise;
+    analyzeBtn.disabled = false; setProgress(12,"Photo ready.");
+    logDiag({ fileName:imageFile.name, type:imageFile.type, size_bytes:imageFile.size, w:prepared.width, h:prepared.height });
+  }catch(e){ setError("Could not prepare photo: "+(e && e.message)); }
 });
 
-async function detectWithTimeout(promise, ms) {
-  let timeoutId;
-  const timeout = new Promise((_, rej) => {
-    timeoutId = setTimeout(() => rej(new Error("Detection timeout")), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+sampleBtn.addEventListener("click", async ()=>{
+  clearDiag(); setProgress(0,"");
+  // CC0 portrait (static fallback)
+  const sampleURL = "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1200&auto=format&fit=crop";
+  logDiag({ sampleImage: sampleURL });
+  analyzeBtn.disabled = true; setProgress(8,"Fetching sample…");
+  try{
+    const res = await fetch(sampleURL, { cache:"no-store" });
+    const blob = await res.blob();
+    thumb.src = URL.createObjectURL(blob); thumb.classList.remove("hidden");
+    preparePromise = decodeAndPrepare(blob, 1024);
+    prepared = await preparePromise;
+    analyzeBtn.disabled = false; setProgress(12,"Sample ready.");
+  }catch(e){ setError("Sample load failed: " + (e && e.message)); }
+});
+
+/* ---------- Weights override ---------- */
+weightsOverride.addEventListener("change", ()=>{
+  const v = weightsOverride.value.trim();
+  WEIGHTS = v ? v.replace(/\/$/,"") : null;
+  modelsReady = false;
+});
+
+/* ---------- Detection with timeout & retries ---------- */
+function detectWithTimeout(promise, ms){
+  let to; const t = new Promise((_,rej)=> to=setTimeout(()=>rej(new Error("Detection timeout")), ms));
+  return Promise.race([promise, t]).finally(()=> clearTimeout(to));
 }
 
-analyzeBtn.addEventListener("click", async () => {
-  if (!preparedImage && preparePromise) preparedImage = await preparePromise;
-  if (!preparedImage) { setError("No prepared photo."); return; }
-  if (!WEIGHTS) await pickWeightsCdn();
-  setProgress(20, "Loading models…");
-  await faceapi.nets.tinyFaceDetector.loadFromUri(WEIGHTS);
-  await faceapi.nets.faceLandmark68Net.loadFromUri(WEIGHTS);
-  setProgress(40, "Models loaded.");
-  let imgBitmap;
-  if (preparedImage.canvas instanceof OffscreenCanvas) {
-    imgBitmap = await preparedImage.canvas.convertToBlob({ type: "image/jpeg", quality: 0.92 })
-      .then(blob => createImageBitmap(blob));
-  } else {
-    imgBitmap = await createImageBitmap(preparedImage.canvas);
-  }
-  overlay.width = preparedImage.width;
-  overlay.height = preparedImage.height;
-  const sizes = [192, 160, 128];
-  let det = null, used = null;
-  for (const s of sizes) {
-    try {
-      setProgress(70, `Detecting (size ${s})…`);
-      const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: s, scoreThreshold: 0.3 });
-      det = await detectWithTimeout(faceapi.detectSingleFace(imgBitmap, opts).withFaceLandmarks(), 15000);
-      used = s;
-      if (det) break;
-    } catch (e) {
-      logDiag({ attemptFail: { size: s, msg: e.message } });
+async function ensureModels(){
+  if(modelsReady) return;
+  setProgress(18,"Verifying weights…"); await pickWeights();
+  setProgress(22,"Initializing backend…"); await setBackend();
+  setProgress(28,"Loading TinyFaceDetector…"); await faceapi.nets.tinyFaceDetector.loadFromUri(WEIGHTS);
+  setProgress(36,"Loading Landmarks…"); await faceapi.nets.faceLandmark68Net.loadFromUri(WEIGHTS);
+  // quick warmup
+  await tf.tidy(()=> tf.zeros([1,64,64,3]));
+  modelsReady = true; setProgress(44,"Models ready.");
+}
+
+analyzeBtn.addEventListener("click", async ()=>{
+  try{
+    if(!prepared && preparePromise) prepared = await preparePromise;
+    if(!prepared){ setError("No prepared photo."); return; }
+
+    await ensureModels();
+
+    // Convert prepared canvas to ImageBitmap
+    let imgBitmap;
+    if(prepared.canvas instanceof OffscreenCanvas){
+      const blob = await prepared.canvas.convertToBlob({ type:"image/jpeg", quality:0.92 });
+      imgBitmap = await createImageBitmap(blob);
+    }else{
+      imgBitmap = await createImageBitmap(prepared.canvas);
     }
+
+    overlay.width = prepared.width; overlay.height = prepared.height;
+    const sizes = [192, 160, 128];            // mobile-friendly sizes
+    const timeoutMs = Number(timeoutSec.value) * 1000;
+
+    let det=null, used=null;
+    for(const s of sizes){
+      try{
+        setProgress(70, `Detecting (size ${s}, ${timeoutSec.value}s)…`);
+        const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: s, scoreThreshold: 0.3 });
+        det = await detectWithTimeout(faceapi.detectSingleFace(imgBitmap, opts).withFaceLandmarks(), timeoutMs);
+        used = s; if(det) break;
+      }catch(e){ logDiag({ attemptFail:{ size:s, msg:e && e.message } }); await tf.nextFrame(); }
+    }
+
+    if(!det){ setError("Timeout or no face. Try backend=wasm or cpu, increase timeout, and use a closer, front-facing photo."); return; }
+
+    const ctx = overlay.getContext("2d");
+    ctx.clearRect(0,0,overlay.width,overlay.height);
+    ctx.drawImage(imgBitmap, 0, 0, prepared.width, prepared.height);
+    const r = faceapi.resizeResults(det, { width: prepared.width, height: prepared.height });
+    new faceapi.draw.DrawBox(r.detection.box, { label:`score ${r.detection.score.toFixed(2)} • ${used}` }).draw(overlay);
+    faceapi.draw.drawFaceLandmarks(overlay, r);
+    overlay.classList.remove("hidden");
+    setProgress(100,"Done.");
+  }catch(e){
+    setError(e.message || String(e));
   }
-  if (!det) { setError("Timeout or no face."); return; }
-  const ctx = overlay.getContext("2d");
-  ctx.clearRect(0,0,overlay.width,overlay.height);
-  ctx.drawImage(imgBitmap, 0, 0, preparedImage.width, preparedImage.height);
-  const r = faceapi.resizeResults(det, { width: preparedImage.width, height: preparedImage.height });
-  new faceapi.draw.DrawBox(r.detection.box, { label: `score ${r.detection.score.toFixed(2)} • ${used}` }).draw(overlay);
-  faceapi.draw.drawFaceLandmarks(overlay, r);
-  overlay.classList.remove("hidden");
-  setProgress(100, "Done.");
 });
 </script>
 
