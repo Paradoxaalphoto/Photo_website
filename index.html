@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YorN — Alpha (Timeout Hardening)</title>
+  <title>YorN — Alpha (Multi‑CDN)</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
@@ -14,7 +14,7 @@
   <div class="max-w-4xl mx-auto p-4 space-y-4">
     <header>
       <h1 class="text-2xl font-bold">YorN — Alpha</h1>
-      <p class="text-sm text-gray-600">Timeout-hardened detection for mobile. Try center-crop + smaller input sizes.</p>
+      <p class="text-sm text-gray-600">Multi‑CDN loader + mobile‑friendly detection.</p>
     </header>
 
     <section class="bg-white p-4 rounded-xl shadow grid gap-3">
@@ -22,17 +22,17 @@
         <input id="fileInput" type="file" accept="image/*" class="border p-2 rounded w-full" />
         <button id="analyzeBtn" class="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50" disabled>Analyze</button>
       </div>
-      <div class="grid md:grid-cols-3 gap-3 text-xs">
-        <label class="flex items-center gap-2"><input id="altEngine" type="checkbox"> Alt Engine (SSD on desktop)</label>
-        <label class="flex items-center gap-2"> Timeout (sec)
-          <input id="timeoutSec" type="range" min="3" max="15" step="1" value="10" class="w-full">
-          <span id="timeoutLabel" class="min-w-[2ch] text-right">10</span>
-        </label>
-        <label class="flex items-center gap-2"> Start size
-          <select id="startSize" class="border rounded p-1">
-            <option>224</option><option>192</option><option selected>160</option><option>128</option>
-          </select>
-        </label>
+      <div class="grid md:grid-cols-2 gap-3 text-xs">
+        <div>
+          <label class="block mb-1">Weights base override</label>
+          <input id="weightsOverride" class="border p-1 rounded w-full" placeholder="https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights">
+          <button id="applyOverride" class="mt-1 px-2 py-1 border rounded">Use override</button>
+        </div>
+        <div class="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+          <span>Timeout</span>
+          <input id="timeoutSec" type="range" min="5" max="15" step="1" value="10" class="w-full">
+          <span id="timeoutLabel">10</span>
+        </div>
       </div>
       <div class="w-full bg-gray-200 h-2 rounded overflow-hidden"><div id="progressBar" class="bg-blue-600 h-2 w-0"></div></div>
       <div id="progressText" class="text-xs text-gray-600"></div>
@@ -53,25 +53,25 @@
   </div>
 
 <script>
-const CDNS = [
+const CDN_BASES = [
   "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights",
+  "https://unpkg.com/face-api.js@0.22.2/weights",
   "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights"
 ];
-let WEIGHTS=null, modelsLoaded=false, imageBlobUrl=null, backend=null;
+let WEIGHTS = null, modelsLoaded = false, imageBlobUrl = null;
 
-const $=id=>document.getElementById(id);
-const fileInput=$("fileInput"), analyzeBtn=$("analyzeBtn");
-const progressBar=$("progressBar"), progressText=$("progressText");
-const thumb=$("thumb"), overlay=$("overlay");
-const diag=$("diag"), errorBox=$("errorBox");
-const timeoutSec=$("timeoutSec"), timeoutLabel=$("timeoutLabel"), startSize=$("startSize"), altEngine=$("altEngine");
-
-timeoutSec.addEventListener("input", ()=> timeoutLabel.textContent = timeoutSec.value);
+const $ = id=>document.getElementById(id);
+const fileInput=$("fileInput"), analyzeBtn=$("analyzeBtn"), overlay=$("overlay"), thumb=$("thumb");
+const progressBar=$("progressBar"), progressText=$("progressText"), diag=$("diag"), errorBox=$("errorBox");
+const weightsOverride=$("weightsOverride"), applyOverride=$("applyOverride");
+const timeoutSec=$("timeoutSec"), timeoutLabel=$("timeoutLabel"); timeoutSec.addEventListener("input", ()=> timeoutLabel.textContent=timeoutSec.value);
 
 function setProgress(p,t){ progressBar.style.width=(p||0)+'%'; progressText.textContent=t||''; }
 function logDiag(obj){ const now=new Date().toISOString(); const txt=typeof obj==='string'?obj:JSON.stringify(obj,null,2); diag.textContent=`[${now}]\n${txt}\n\n`+diag.textContent; }
 function setError(msg){ errorBox.textContent=msg; errorBox.classList.remove("hidden"); logDiag({error:msg}); }
 function clearError(){ errorBox.textContent=""; errorBox.classList.add("hidden"); }
+
+applyOverride.addEventListener("click", ()=>{ const v=weightsOverride.value.trim(); if(v){ WEIGHTS=v.replace(/\/$/,''); logDiag({ manualOverride: WEIGHTS }); }});
 
 fileInput.addEventListener("change", ()=>{
   if(!fileInput.files.length){ analyzeBtn.disabled=true; return; }
@@ -82,50 +82,38 @@ fileInput.addEventListener("change", ()=>{
 });
 
 async function pickWeightsCdn(){
-  for(const b of CDNS){
-    try{ const res=await fetch(b+"/face_landmark_68_model-weights_manifest.json",{method:"HEAD"});
-      if(res.ok){ WEIGHTS=b; logDiag({ usingWeightsFrom:b }); return; }
-      logDiag({ cdnAttempt:b, status:res.status });
-    }catch(e){ logDiag({ cdnAttempt:b, error:e && e.message }); }
+  const test = "face_landmark_68_model-weights_manifest.json";
+  for(const base of CDN_BASES){
+    try{
+      const url = base + "/" + test;
+      const res = await fetch(url, { method: "GET", cache: "no-store" });
+      if(res.ok){ WEIGHTS = base; logDiag({ usingWeightsFrom: base, verified: test }); return; }
+      logDiag({ cdnAttempt: base, status: res.status });
+    }catch(e){ logDiag({ cdnAttempt: base, error: e && e.message }); }
   }
-  throw new Error("No working CDN for weights");
+  throw new Error("No working CDN for model weights");
 }
 
 async function ensureModels(){
   if(modelsLoaded) return;
-  setProgress(6,"Selecting CDN…"); if(!WEIGHTS) await pickWeightsCdn();
-  try{
-    await tf.setBackend('webgl'); await tf.ready(); backend = tf.getBackend();
-  }catch(_){
-    await tf.setBackend('cpu'); await tf.ready(); backend = tf.getBackend();
-  }
-  setProgress(22, (altEngine.checked ? "Loading SSD…" : "Loading TinyFaceDetector…"));
-  if(altEngine.checked){ await faceapi.nets.ssdMobilenetv1.loadFromUri(WEIGHTS); }
-  else { await faceapi.nets.tinyFaceDetector.loadFromUri(WEIGHTS); }
+  setProgress(6, "Selecting CDN…"); if(!WEIGHTS) await pickWeightsCdn();
+  await tf.ready();
+  setProgress(22, "Loading TinyFaceDetector…"); await faceapi.nets.tinyFaceDetector.loadFromUri(WEIGHTS);
   setProgress(40, "Loading Landmarks…"); await faceapi.nets.faceLandmark68Net.loadFromUri(WEIGHTS);
-  modelsLoaded=true; setProgress(50,"Models ready."); logDiag({ backend, detector: altEngine.checked ? "SSD" : "TinyFaceDetector" });
+  modelsLoaded = true; setProgress(50, "Models ready.");
 }
 
-function centerCropSquare(img){
+function centerCrop(img, target=768){
   const side = Math.min(img.width, img.height);
-  const sx = Math.floor((img.width-side)/2);
-  const sy = Math.floor((img.height-side)/2);
-  const canvas=document.createElement('canvas');
-  const target = 768; // smaller target to reduce work
-  canvas.width = target; canvas.height = target;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, sx, sy, side, side, 0, 0, target, target);
-  const out = new Image();
-  out.src = canvas.toDataURL('image/jpeg', 0.92);
-  out.width = target; out.height = target;
+  const sx = (img.width - side)/2, sy = (img.height - side)/2;
+  const c = document.createElement('canvas'); c.width=target; c.height=target;
+  const ctx=c.getContext('2d'); ctx.drawImage(img, sx, sy, side, side, 0,0,target,target);
+  const out = new Image(); out.src = c.toDataURL('image/jpeg', 0.92); out.width=target; out.height=target;
   return new Promise(res=> out.onload=()=> res(out));
 }
 
 function detectWithTimeout(promise, ms){
-  return Promise.race([
-    promise,
-    new Promise((_,rej)=> setTimeout(()=> rej(new Error("Detection timeout")), ms))
-  ]);
+  return Promise.race([ promise, new Promise((_,rej)=> setTimeout(()=> rej(new Error("Detection timeout")), ms)) ]);
 }
 
 async function analyze(){
@@ -135,42 +123,27 @@ async function analyze(){
     setProgress(58,"Preparing image…");
     const raw = new Image();
     raw.onload = async ()=>{
-      const cropped = await centerCropSquare(raw);
-      overlay.width = cropped.width; overlay.height = cropped.height;
-      const sizes = [Number(startSize.value), 192, 160, 128].filter((v,i,a)=> a.indexOf(v)===i);
+      const img = await centerCrop(raw, 768);
+      overlay.width = img.width; overlay.height = img.height;
+      const sizes = [224, 192, 160, 128];
       const timeoutMs = Number(timeoutSec.value) * 1000;
-      let det=null, usedSize=null, start=performance.now();
+      let det=null, used=null;
       for(const s of sizes){
         try{
           setProgress(70, `Detecting (size ${s}, ${timeoutSec.value}s)…`);
-          const t0=performance.now();
-          if(altEngine.checked){
-            det = await detectWithTimeout(faceapi.detectSingleFace(cropped).withFaceLandmarks(), timeoutMs);
-          }else{
-            const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: s, scoreThreshold: 0.3 });
-            det = await detectWithTimeout(faceapi.detectSingleFace(cropped, opts).withFaceLandmarks(), timeoutMs);
-          }
-          const elapsed = Math.round(performance.now()-t0);
-          logDiag({ attempt: { size:s }, elapsed_ms: elapsed });
-          usedSize = s;
+          const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: s, scoreThreshold: 0.3 });
+          det = await detectWithTimeout(faceapi.detectSingleFace(img, opts).withFaceLandmarks(), timeoutMs);
+          used = s;
           if(det) break;
-        }catch(e){
-          logDiag({ attemptFail:{ size:s, msg: e && e.message } });
-          await tf.nextFrame();
-        }
+        }catch(e){ logDiag({ attemptFail:{ size:s, msg: e && e.message }}); await tf.nextFrame(); }
       }
-      if(!det){ setProgress(0,""); setError("Timeout. Try increasing the timeout slider or enabling Alt Engine (SSD) on desktop."); return; }
-
-      // Draw overlay
-      const ctx = overlay.getContext('2d');
-      ctx.clearRect(0,0,overlay.width,overlay.height);
-      ctx.drawImage(cropped,0,0,cropped.width,cropped.height);
-      const r = faceapi.resizeResults(det, { width: cropped.width, height: cropped.height });
-      new faceapi.draw.DrawBox(r.detection.box, { label: `score ${r.detection.score.toFixed(2)} • ${usedSize}` }).draw(overlay);
+      if(!det){ setProgress(0,""); setError("Timeout or no face. Try a clearer, front-facing photo, or increase timeout."); return; }
+      const ctx = overlay.getContext('2d'); ctx.clearRect(0,0,overlay.width,overlay.height); ctx.drawImage(img,0,0,img.width,img.height);
+      const r = faceapi.resizeResults(det, { width: img.width, height: img.height });
+      new faceapi.draw.DrawBox(r.detection.box, { label: `score ${r.detection.score.toFixed(2)} • ${used}` }).draw(overlay);
       faceapi.draw.drawFaceLandmarks(overlay, r);
       overlay.classList.remove("hidden");
-      setProgress(100, "Done.");
-      logDiag({ success:true, total_ms: Math.round(performance.now()-start) });
+      setProgress(100,"Done.");
       setTimeout(()=> setProgress(0,""), 1500);
     };
     raw.src = imageBlobUrl;

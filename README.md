@@ -1,13 +1,12 @@
-YorN Alpha — Mobile Timeout Hardening Build
--------------------------------------------
-Fixes recurring "Detection timeout" by:
-  - Longer default timeout (10s) with user control (3–15s)
-  - Smaller detector input sizes with retries: 224 → 192 → 160 → 128
-  - Auto center-crop square + downscale to 768px (reduces work)
-  - Optional "Alt Engine (SSD)" toggle for capable devices
-  - Diagnostics panel shows each attempt & elapsed ms
-  - Progress bar + Analyze button
+YorN Alpha — Mobile Multi‑CDN Build
+-----------------------------------
+What’s new:
+- Multi‑CDN weights loader (jsDelivr npm → unpkg → jsDelivr GitHub), uses GET (not HEAD)
+- Manual override field to paste a weights base URL
+- Analyze button + progress + diagnostics
+- Mobile‑friendly: TinyFaceDetector with size retries and 10s timeout
+- Center‑crop to 768px to reduce work
 
 Deploy (GitHub → Vercel):
-  1) Upload all files in this folder to a GitHub repo (keep index.html at repo root).
-  2) Vercel: Import → Framework: Other → Build: (empty) → Output: `.`
+  1) Upload all files to a GitHub repo (keep index.html at repo root).
+  2) Vercel → Import → Framework: Other → Build: (empty) → Output: `.`
