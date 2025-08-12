@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YorN — Alpha (Mobile Retry + Analyze)</title>
+  <title>YorN — Alpha (Preprocess + Retry)</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
@@ -14,7 +14,7 @@
   <div class="max-w-4xl mx-auto p-4 space-y-4">
     <header>
       <h1 class="text-2xl font-bold">YorN — Alpha</h1>
-      <p class="text-sm text-gray-600">Select a photo → Preview → <b>Analyze</b>. Mobile-optimized with retries & scaling.</p>
+      <p class="text-sm text-gray-600">Select photo → Preview → <b>Analyze</b>. Added preprocessing to improve detection.</p>
     </header>
 
     <section class="grid md:grid-cols-[1fr_auto] gap-3 items-end bg-white p-4 rounded-xl shadow">
@@ -48,45 +48,36 @@
   </div>
 
 <script>
-// --- Config ---
 const CDNS = [
   "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights",
   "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights"
 ];
-const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+let WEIGHTS=null, modelsLoaded=false, imageBlobUrl=null;
 
-// --- State ---
-let WEIGHTS = null;
-let modelsLoaded = false;
-let imageBlobUrl = null;
-
-// --- DOM helpers ---
-const $ = id => document.getElementById(id);
-const fileInput = $("fileInput"), analyzeBtn = $("analyzeBtn");
-const progressBar = $("progressBar"), progressText = $("progressText");
-const thumb = $("thumb"), overlay = $("overlay"), chart = $("scoreChart");
-const diag = $("diag"), errorBox = $("errorBox");
+const $ = id=>document.getElementById(id);
+const fileInput=$("fileInput"), analyzeBtn=$("analyzeBtn"), thumb=$("thumb"), overlay=$("overlay");
+const progressBar=$("progressBar"), progressText=$("progressText"), diag=$("diag"), errorBox=$("errorBox"), chart=$("scoreChart");
 
 function setProgress(p,t){ progressBar.style.width=(p||0)+'%'; progressText.textContent=t||''; }
 function logDiag(obj){ const now=new Date().toISOString(); const txt=typeof obj==='string'?obj:JSON.stringify(obj,null,2); diag.textContent=`[${now}]\n${txt}\n\n`+diag.textContent; }
-function setError(msg){ errorBox.textContent=msg; errorBox.classList.remove("hidden"); logDiag({ error: msg }); }
+function setError(msg){ errorBox.textContent=msg; errorBox.classList.remove("hidden"); logDiag({error:msg}); }
 function clearError(){ errorBox.textContent=""; errorBox.classList.add("hidden"); }
 
 fileInput.addEventListener("change", ()=>{
   if(!fileInput.files.length){ analyzeBtn.disabled=true; return; }
-  const f=fileInput.files[0]; imageBlobUrl=URL.createObjectURL(f);
-  thumb.src=imageBlobUrl; thumb.classList.remove("hidden"); analyzeBtn.disabled=false;
-  overlay.classList.add("hidden"); chart.classList.add("hidden"); clearError(); setProgress(0,"");
-  logDiag({ fileName:f.name, type:f.type, size_bytes:f.size });
+  const f=fileInput.files[0];
+  imageBlobUrl=URL.createObjectURL(f);
+  thumb.src=imageBlobUrl; thumb.classList.remove("hidden");
+  analyzeBtn.disabled=false; overlay.classList.add("hidden"); chart.classList.add("hidden");
+  clearError(); setProgress(0,""); logDiag({fileName:f.name, type:f.type, size_bytes:f.size});
 });
 
 async function pickWeightsCdn(){
   for(const b of CDNS){
-    try{
-      const res=await fetch(b+"/face_landmark_68_model-weights_manifest.json",{method:"HEAD"});
-      if(res.ok){ WEIGHTS=b; logDiag({ usingWeightsFrom:b }); return; }
-      logDiag({ cdnAttempt:b, status:res.status });
-    }catch(e){ logDiag({ cdnAttempt:b, error:e && e.message }); }
+    try{ const res=await fetch(b+"/face_landmark_68_model-weights_manifest.json",{method:"HEAD"});
+      if(res.ok){ WEIGHTS=b; logDiag({usingWeightsFrom:b}); return; }
+      logDiag({cdnAttempt:b, status:res.status});
+    }catch(e){ logDiag({cdnAttempt:b, error:e&&e.message}); }
   }
   throw new Error("No working CDN for weights");
 }
@@ -96,35 +87,26 @@ async function ensureModels(){
   setProgress(6,"Selecting CDN…"); if(!WEIGHTS) await pickWeightsCdn();
   setProgress(12,"Loading TFJS…"); await tf.ready();
   setProgress(22,"Loading TinyFaceDetector…"); await faceapi.nets.tinyFaceDetector.loadFromUri(WEIGHTS);
-  setProgress(40,"Loading landmarks…"); await faceapi.nets.faceLandmark68Net.loadFromUri(WEIGHTS);
-  modelsLoaded=true; setProgress(50,"Models ready.");
-  logDiag({ detector: "TinyFaceDetector", modelsLoaded });
+  setProgress(40,"Loading Landmarks…"); await faceapi.nets.faceLandmark68Net.loadFromUri(WEIGHTS);
+  modelsLoaded=true; setProgress(50,"Models ready."); logDiag({detector:"TinyFaceDetector", modelsLoaded});
 }
 
-function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
-function computeScores(pts){
-  const left=pts[2], right=pts[14], brow=pts[27], lip=pts[51];
-  const fWHR = dist(left,right)/Math.max(1, dist(brow,lip));
-  let dev=0,n=0; for(let i=0;i<=8;i++){ const L=pts[i],R=pts[16-i]; dev += Math.abs(L.y-R.y) + Math.abs((L.x+R.x)-pts[8].x*2); n++; }
-  const symmetry = Math.max(0, 10 - (dev/Math.max(1,n))/10);
-  const eyeAvgY=(pts[37].y+pts[44].y)/2, mouthAvgY=(pts[62].y+pts[66].y)/2, chin=pts[8].y, top=pts[27].y;
-  const seg1=Math.abs(mouthAvgY-eyeAvgY), seg2=Math.abs(chin-top);
-  const golden = Math.max(0, 10 - Math.abs(1.618 - (seg2/Math.max(1,seg1))/1.618)*10);
-  const aggregate = Number(((symmetry + golden + (Math.min(fWHR,2.2)/2.0)*10)/3).toFixed(2));
-  return { fWHR:Number(fWHR.toFixed(2)), symmetry:Number(symmetry.toFixed(2)), golden:Number(golden.toFixed(2)), aggregate };
-}
-
-function downscaleImageToMax(img, maxDim=1024){
-  const scale = Math.min(1, maxDim/Math.max(img.width, img.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(img.width*scale);
-  canvas.height = Math.round(img.height*scale);
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(img, 0,0, canvas.width, canvas.height);
-  const scaled = new Image();
-  scaled.width = canvas.width; scaled.height = canvas.height;
-  scaled.src = canvas.toDataURL("image/jpeg", 0.92);
-  return new Promise(res=>{ scaled.onload = ()=> res(scaled); });
+function downscaleAndAdjust(img, maxDim=1024, rotate=0, bright=1.0, contrast=1.0){
+  const maxSide = Math.max(img.width, img.height);
+  const scale = Math.min(1, maxDim / maxSide);
+  const w = Math.round((rotate%180===0? img.width: img.height) * scale);
+  const h = Math.round((rotate%180===0? img.height: img.width) * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(w/2, h/2);
+  ctx.rotate(rotate*Math.PI/180);
+  ctx.filter = `brightness(${bright}) contrast(${contrast})`;
+  ctx.drawImage(img, -img.width*scale/2, -img.height*scale/2, img.width*scale, img.height*scale);
+  const out = new Image();
+  out.src = canvas.toDataURL('image/jpeg', 0.92);
+  out.width = w; out.height = h;
+  return new Promise(res=> out.onload=()=> res(out));
 }
 
 function detectWithTimeout(img, opts, ms=3500){
@@ -138,52 +120,58 @@ async function analyze(){
   try{
     clearError(); setProgress(5,"Starting…"); await ensureModels();
     if(!imageBlobUrl){ setProgress(0,"Choose a photo first."); return; }
-    setProgress(60,"Preparing image…");
+    setProgress(58,"Loading image…");
     const raw = new Image();
     raw.onload = async ()=>{
-      const img = await downscaleImageToMax(raw, 1024);
-      overlay.width = img.width; overlay.height = img.height;
-      const displaySize = { width: img.width, height: img.height };
-
-      const sizes = [416, 320, 256];
-      let det=null, usedSize=null, lastErr=null;
-      for(const s of sizes){
-        try{
-          setProgress(70, "Detecting face (Tiny, "+s+")…");
-          const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: s, scoreThreshold: 0.5 });
-          det = await detectWithTimeout(img, opts, 3500);
-          usedSize = s;
-          if(det) break;
-        }catch(e){
-          lastErr = e;
-          logDiag({ retryAfter:s, error:e && e.message });
-          await tf.nextFrame();
-          continue;
+      overlay.classList.add("hidden");
+      const variants = [
+        { rotate:0, bright:1.0, contrast:1.0 },
+        { rotate:90, bright:1.0, contrast:1.0 },
+        { rotate:270, bright:1.0, contrast:1.0 },
+        { rotate:0, bright:1.15, contrast:1.0 },
+        { rotate:0, bright:1.0, contrast:1.2 },
+      ];
+      const sizes = [480, 416, 320, 256];
+      let det=null, used={};
+      for(const v of variants){
+        const pre = await downscaleAndAdjust(raw, 1024, v.rotate, v.bright, v.contrast);
+        overlay.width = pre.width; overlay.height = pre.height;
+        const displaySize = { width: pre.width, height: pre.height };
+        for(const s of sizes){
+          try{
+            setProgress(70, `Detecting (rot ${v.rotate}°, input ${s})…`);
+            const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: s, scoreThreshold: 0.3 });
+            det = await detectWithTimeout(pre, opts, 4000);
+            used = { rotate: v.rotate, inputSize: s, bright: v.bright, contrast: v.contrast };
+            if(det) break;
+          }catch(e){
+            logDiag({ attempt:{rotate:v.rotate, inputSize:s, bright:v.bright, contrast:v.contrast}, error:e&&e.message });
+            await tf.nextFrame();
+          }
+        }
+        if(det) { 
+          // Basic min-size guard: require face box to be at least 10% of min dimension
+          const box = det.detection.box; 
+          const minDim = Math.min(pre.width, pre.height);
+          if (Math.max(box.width, box.height) < 0.1 * minDim) {
+            logDiag({ warning: "Face too small after scaling", box });
+          } else {
+            break;
+          }
         }
       }
-      if(!det){ setProgress(0,""); setError("Could not detect a face. Try a clearer, front-facing photo."); return; }
+      if(!det){ setProgress(0,""); setError("Still couldn’t detect a face. Try a front-facing photo with your face larger in frame."); return; }
 
-      setProgress(86,"Computing metrics…");
-      const scores = computeScores(det.landmarks.positions);
-
-      // Draw overlay
+      setProgress(86,"Drawing landmarks…");
       const ctx = overlay.getContext('2d');
       ctx.clearRect(0,0,overlay.width,overlay.height);
-      ctx.drawImage(img,0,0,img.width,img.height);
-      const resized = faceapi.resizeResults(det, displaySize);
+      ctx.drawImage(raw, 0,0, overlay.width, overlay.height);
+      const resized = faceapi.resizeResults(det, { width: overlay.width, height: overlay.height });
       faceapi.draw.drawFaceLandmarks(overlay, resized);
       overlay.classList.remove("hidden");
+      logDiag({ success:true, used });
 
-      // Chart (simple)
-      chart.classList.remove("hidden");
-      new Chart(chart, {
-        type:'bar',
-        data:{ labels:['20-29','30-39','40-49','50-59','60+'],
-               datasets:[{ label:'Attractiveness Score', data:[scores.aggregate, scores.aggregate-0.3, scores.aggregate-0.6, scores.aggregate-0.9, scores.aggregate-1.2] }]},
-        options:{ responsive:true, scales:{ y:{ beginAtZero:true, max:10 } } }
-      });
-
-      setProgress(100,"Done. (Tiny "+usedSize+")");
+      setProgress(100,"Done.");
       setTimeout(()=> setProgress(0,""), 1500);
     };
     raw.src = imageBlobUrl;
@@ -193,7 +181,6 @@ async function analyze(){
   }
 }
 
-// Wire up button
 document.getElementById("analyzeBtn").addEventListener("click", analyze);
 </script>
 </body>
