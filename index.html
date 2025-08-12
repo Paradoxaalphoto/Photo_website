@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN Alpha (WASM + Timeout)</title>
+<title>YorN Alpha (Canvas Input Fix)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <!-- TFJS core + WASM backend -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
@@ -104,7 +104,7 @@ async function verifyManifestAndShards(base, name){
   for(const u of shards){ const r = await fetch(u, { cache:"no-store" }); if(!r.ok) throw new Error("shard 404: "+u); }
 }
 async function pickWeights(){
-  if(WEIGHTS){ // manual override present
+  if(WEIGHTS){
     await verifyManifestAndShards(WEIGHTS, "tiny_face_detector_model-weights_manifest.json");
     await verifyManifestAndShards(WEIGHTS, "face_landmark_68_model-weights_manifest.json");
     logDiag({ usingWeightsFrom: WEIGHTS, verified:true, source:"override" });
@@ -131,7 +131,6 @@ async function pickWeights(){
 
 /* ---------- Backend selection ---------- */
 async function setBackend(){
-  // WASM bundle path
   if (tf?.wasm?.setWasmPaths) {
     tf.wasm.setWasmPaths("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/");
   }
@@ -167,12 +166,33 @@ async function decodeAndPrepare(file, targetMax=1024){
   const scale = Math.min(1, targetMax / maxSide);
   const w = Math.max(1, Math.round(bmp.width * scale));
   const h = Math.max(1, Math.round(bmp.height * scale));
-  let canvas;
-  try{ canvas = new OffscreenCanvas(w,h); }catch{ canvas = Object.assign(document.createElement("canvas"), {width:w, height:h}); }
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(bmp, 0, 0, w, h);
-  return { canvas, width:w, height:h };
+
+  // Prefer OffscreenCanvas for speed, but we’ll copy to an HTMLCanvasElement before detection
+  let off = null, htmlCanvas = null;
+  try{
+    off = new OffscreenCanvas(w,h);
+    const ctx = off.getContext("2d");
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bmp, 0, 0, w, h);
+  }catch{
+    htmlCanvas = Object.assign(document.createElement("canvas"), { width:w, height:h });
+    const ctx = htmlCanvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bmp, 0, 0, w, h);
+  }
+  return { offscreen: off, canvas: htmlCanvas, width: w, height: h };
+}
+
+/* Convert OffscreenCanvas -> HTMLCanvasElement (for face-api.js) */
+async function ensureHtmlCanvas(prep){
+  if (prep.canvas) return prep.canvas; // already HTMLCanvasElement
+  // OffscreenCanvas path: copy pixels into an on-page canvas
+  const blob = await prep.offscreen.convertToBlob({ type:"image/jpeg", quality:0.92 });
+  const bmp = await createImageBitmap(blob);
+  const c = Object.assign(document.createElement("canvas"), { width: prep.width, height: prep.height });
+  const ctx = c.getContext("2d");
+  ctx.drawImage(bmp, 0, 0, prep.width, prep.height);
+  return c;
 }
 
 /* ---------- File + sample handlers ---------- */
@@ -192,8 +212,7 @@ fileInput.addEventListener("change", async ()=>{
 
 sampleBtn.addEventListener("click", async ()=>{
   clearDiag(); setProgress(0,"");
-  // CC0 portrait (static fallback)
-  const sampleURL = "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1200&auto=format&fit=crop";
+  const sampleURL = "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
   logDiag({ sampleImage: sampleURL });
   analyzeBtn.disabled = true; setProgress(8,"Fetching sample…");
   try{
@@ -213,7 +232,7 @@ weightsOverride.addEventListener("change", ()=>{
   modelsReady = false;
 });
 
-/* ---------- Detection with timeout & retries ---------- */
+/* ---------- Detection with timeout & retries (CANVAS INPUT) ---------- */
 function detectWithTimeout(promise, ms){
   let to; const t = new Promise((_,rej)=> to=setTimeout(()=>rej(new Error("Detection timeout")), ms));
   return Promise.race([promise, t]).finally(()=> clearTimeout(to));
@@ -237,34 +256,28 @@ analyzeBtn.addEventListener("click", async ()=>{
 
     await ensureModels();
 
-    // Convert prepared canvas to ImageBitmap
-    let imgBitmap;
-    if(prepared.canvas instanceof OffscreenCanvas){
-      const blob = await prepared.canvas.convertToBlob({ type:"image/jpeg", quality:0.92 });
-      imgBitmap = await createImageBitmap(blob);
-    }else{
-      imgBitmap = await createImageBitmap(prepared.canvas);
-    }
+    // Ensure HTMLCanvasElement input for face-api
+    const inputCanvas = await ensureHtmlCanvas(prepared);
 
     overlay.width = prepared.width; overlay.height = prepared.height;
-    const sizes = [192, 160, 128];            // mobile-friendly sizes
+    const sizes = [256, 192, 160, 128];      // start a bit larger, then down
     const timeoutMs = Number(timeoutSec.value) * 1000;
 
     let det=null, used=null;
     for(const s of sizes){
       try{
         setProgress(70, `Detecting (size ${s}, ${timeoutSec.value}s)…`);
-        const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: s, scoreThreshold: 0.3 });
-        det = await detectWithTimeout(faceapi.detectSingleFace(imgBitmap, opts).withFaceLandmarks(), timeoutMs);
+        const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: s, scoreThreshold: 0.2 });
+        det = await detectWithTimeout(faceapi.detectSingleFace(inputCanvas, opts).withFaceLandmarks(), timeoutMs);
         used = s; if(det) break;
       }catch(e){ logDiag({ attemptFail:{ size:s, msg:e && e.message } }); await tf.nextFrame(); }
     }
 
-    if(!det){ setError("Timeout or no face. Try backend=wasm or cpu, increase timeout, and use a closer, front-facing photo."); return; }
+    if(!det){ setError("Timeout or no face. Try backend=wasm or cpu, increase timeout, and use a closer, front‑facing photo."); return; }
 
     const ctx = overlay.getContext("2d");
     ctx.clearRect(0,0,overlay.width,overlay.height);
-    ctx.drawImage(imgBitmap, 0, 0, prepared.width, prepared.height);
+    ctx.drawImage(inputCanvas, 0, 0, prepared.width, prepared.height);
     const r = faceapi.resizeResults(det, { width: prepared.width, height: prepared.height });
     new faceapi.draw.DrawBox(r.detection.box, { label:`score ${r.detection.score.toFixed(2)} • ${used}` }).draw(overlay);
     faceapi.draw.drawFaceLandmarks(overlay, r);
