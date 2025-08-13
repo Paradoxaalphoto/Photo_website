@@ -2,17 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN Alpha — Auto‑Analyze + Auto‑Zoom (Fix tf order)</title>
+<title>YorN Alpha — Visual Rough Box + Final Detect</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;margin:0;padding:16px;background:#0b1220;color:#E6EAF2}
-  .row{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:end}
+  .row{display:grid;grid-template-columns:1fr auto auto auto auto;gap:8px;align-items:end}
   .card{background:#0f172a;border:1px solid #233046;border-radius:12px;padding:12px;margin-top:12px}
   #progressContainer{height:8px;background:#1e293b;border-radius:6px;overflow:hidden;margin-top:8px}
   #progressBar{height:100%;width:0;background:#38bdf8;transition:width .25s}
   #overlay{display:block;max-width:100%;margin-top:10px;background:#0b1220;border:1px solid #233046;border-radius:8px}
   #thumb{max-width:100%;margin-top:10px;background:#0b1220;border:1px solid #233046;border-radius:8px}
-  #diagnostics{white-space:pre-wrap;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:#0b1220;border:1px solid #233046;border-radius:8px;padding:8px;max-height:280px;overflow:auto}
+  #diagnostics{white-space:pre-wrap;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:#0b1220;border:1px solid #233046;border-radius:8px;padding:8px;max-height:300px;overflow:auto}
   button{cursor:pointer}
   .btn{padding:10px 14px;border-radius:8px;border:1px solid #233046;background:#1f2937;color:#E6EAF2}
   .btn[disabled]{opacity:.5;cursor:not-allowed}
@@ -23,13 +23,11 @@
   input[type="number"], input[type="range"]{padding:6px;border:1px solid #233046;border-radius:8px;background:#0b1220;color:#E6EAF2}
 </style>
 
-<!-- ✅ Load TFJS FIRST -->
+<!-- Load TFJS first -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
-
-<!-- ✅ Then BlazeFace (UMD depends on global tf) -->
+<!-- BlazeFace (UMD) -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
-
-<!-- face-api.js (fallback if BlazeFace fails) -->
+<!-- face-api.js (fallback if needed later) -->
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 </head>
 <body>
@@ -42,6 +40,7 @@
     <button id="sampleBtn" class="btn btn-secondary">Load Sample Image</button>
     <button id="enhanceBtn" class="btn btn-secondary" disabled>Auto‑Enhance & Retry</button>
     <button id="analyzeBtn" class="btn" disabled>Analyze</button>
+    <button id="savePngBtn" class="btn btn-secondary" disabled>Save Debug Snapshot</button>
   </div>
 
   <div class="controls" style="margin-top:8px">
@@ -82,20 +81,32 @@
 </div>
 
 <script>
+/* ---------- Helpers ---------- */
 const $ = id => document.getElementById(id);
-const fileInput = $("fileInput"), sampleBtn = $("sampleBtn"), analyzeBtn = $("analyzeBtn"), enhanceBtn = $("enhanceBtn");
+const fileInput = $("fileInput"), sampleBtn = $("sampleBtn"), analyzeBtn = $("analyzeBtn"), enhanceBtn = $("enhanceBtn"), savePngBtn = $("savePngBtn");
 const overlay = $("overlay"), thumb = $("thumb");
 const progressBar = $("progressBar"), progressText = $("progressText");
 const diagnostics = $("diagnostics");
-const rotDeg = $("rotDeg"), zoom = $("zoom"), zoomLabel = $("zoomLabel");
-const bri = $("bri"), briLabel = $("briLabel"); const con = $("con"), conLabel = $("conLabel");
+const rotDeg = $("rotDeg"), zoom = $("zoom"), zoomLabel = $("zoomLabel"), bri = $("bri"), briLabel = $("briLabel"), con = $("con"), conLabel = $("conLabel");
 
-let imageBlob = null, baseBitmap = null, workCanvas = null, blazeModel = null, faceApiReady = false;
+let baseBitmap = null, workCanvas = null, blazeModel = null, faceApiReady = false;
 
 function setProgress(p,t){ progressBar.style.width=(p||0)+'%'; progressText.textContent=t||''; }
 function logDiag(obj){ const now=new Date().toISOString(); const txt=typeof obj==='string'?obj:JSON.stringify(obj); diagnostics.textContent=`[${now}] ${txt}\n`+diagnostics.textContent; }
 function setError(msg){ setProgress(0,""); logDiag({ error: msg }); }
+function ensureWorkCanvas(){ if(!workCanvas){ workCanvas = document.createElement("canvas"); } return workCanvas; }
+function drawLabelBox(canvas, box, color, label){
+  const ctx = overlay.getContext("2d");
+  overlay.width = canvas.width; overlay.height = canvas.height;
+  ctx.clearRect(0,0,overlay.width,overlay.height);
+  ctx.drawImage(canvas, 0, 0, overlay.width, overlay.height);
+  ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.strokeRect(box.x, box.y, box.width, box.height);
+  ctx.fillStyle = color; ctx.font = "12px ui-monospace,monospace";
+  ctx.fillText(label, box.x, Math.max(12, box.y-4));
+  overlay.classList.remove("hidden");
+}
 
+/* ---------- Decode ---------- */
 async function decodeOriginal(fileOrBlob){
   const bmp = await createImageBitmap(fileOrBlob).catch(async ()=>{
     const url = URL.createObjectURL(fileOrBlob);
@@ -105,53 +116,49 @@ async function decodeOriginal(fileOrBlob){
   });
   return bmp;
 }
-function ensureWorkCanvas(){ if(!workCanvas){ workCanvas = document.createElement("canvas"); } return workCanvas; }
 
+/* ---------- Render with controls ---------- */
 function renderWorkingCanvas(targetMax=1024, centerBox=null){
   if(!baseBitmap) return null;
-  const angle = (parseInt(rotDeg.value,10)||0) % 360;
-  let z = parseFloat(zoom.value)||1.0;
-  const br = parseFloat(bri.value)||1.0;
-  const cr = parseFloat(con.value)||1.0;
+  const angle=(parseInt(rotDeg.value,10)||0)%360;
+  let z=parseFloat(zoom.value)||1.0;
+  const br=parseFloat(bri.value)||1.0, cr=parseFloat(con.value)||1.0;
 
-  const maxSide = Math.max(baseBitmap.width, baseBitmap.height);
-  const scale0 = Math.min(1, targetMax / maxSide);
-  const w0 = Math.max(1, Math.round(baseBitmap.width * scale0));
-  const h0 = Math.max(1, Math.round(baseBitmap.height * scale0));
+  const maxSide=Math.max(baseBitmap.width, baseBitmap.height);
+  const scale0=Math.min(1, targetMax/maxSide);
+  const w0=Math.max(1, Math.round(baseBitmap.width*scale0));
+  const h0=Math.max(1, Math.round(baseBitmap.height*scale0));
 
-  let cx = baseBitmap.width/2, cy = baseBitmap.height/2;
+  let cx=baseBitmap.width/2, cy=baseBitmap.height/2;
   if(centerBox){
-    cx = centerBox.x + centerBox.width/2;
-    cy = centerBox.y + centerBox.height/2;
-    const zx = (w0 / (centerBox.width*scale0)) * 0.9;
-    const zy = (h0 / (centerBox.height*scale0)) * 0.9;
-    z = Math.max(z, Math.min(zx, zy, 1.8));
+    cx=centerBox.x+centerBox.width/2; cy=centerBox.y+centerBox.height/2;
+    const zx=(w0/(centerBox.width*scale0))*0.9, zy=(h0/(centerBox.height*scale0))*0.9;
+    z=Math.max(z, Math.min(zx, zy, 1.8));
     logDiag({ autoZoomApplied: z.toFixed(2) });
   }
 
-  const dstW = w0, dstH = h0;
-  const srcW = Math.round(dstW / (scale0*z));
-  const srcH = Math.round(dstH / (scale0*z));
-  const sx = Math.max(0, Math.round(cx - srcW/2));
-  const sy = Math.max(0, Math.round(cy - srcH/2));
+  const dstW=w0, dstH=h0;
+  const srcW=Math.round(dstW/(scale0*z));
+  const srcH=Math.round(dstH/(scale0*z));
+  const sx=Math.max(0, Math.round(cx-srcW/2));
+  const sy=Math.max(0, Math.round(cy-srcH/2));
 
-  const c = ensureWorkCanvas();
-  if ((angle % 180) === 0) { c.width = dstW; c.height = dstH; }
-  else { c.width = dstH; c.height = dstW; }
+  const c=ensureWorkCanvas();
+  if((angle%180)===0){ c.width=dstW; c.height=dstH; } else { c.width=dstH; c.height=dstW; }
 
-  const ctx = c.getContext("2d");
+  const ctx=c.getContext("2d");
   ctx.save();
   ctx.clearRect(0,0,c.width,c.height);
   ctx.translate(c.width/2, c.height/2);
-  ctx.rotate(angle * Math.PI/180);
-  ctx.filter = `brightness(${br}) contrast(${cr})`;
+  ctx.rotate(angle*Math.PI/180);
+  ctx.filter=`brightness(${br}) contrast(${cr})`;
   ctx.drawImage(baseBitmap, sx, sy, srcW, srcH, -dstW/2, -dstH/2, dstW, dstH);
   ctx.restore();
 
   return c;
 }
 
-/* BlazeFace primary */
+/* ---------- BlazeFace primary ---------- */
 async function ensureBlaze(){
   if(blazeModel) return;
   if(!window.blazeface) throw new Error("BlazeFace script not loaded");
@@ -159,155 +166,157 @@ async function ensureBlaze(){
   logDiag({ blazefaceReady:true });
 }
 async function roughLocate(canvas){
-  const tinyW = 160, tinyH = Math.round(tinyW * (canvas.height/canvas.width));
-  const tmp = Object.assign(document.createElement("canvas"), { width: tinyW, height: tinyH });
-  tmp.getContext("2d").drawImage(canvas, 0, 0, tinyW, tinyH);
-  const t0 = performance.now();
-  const faces = await blazeModel.estimateFaces(tmp, false);
-  const ms = Math.round(performance.now()-t0);
+  const tinyW=160, tinyH=Math.round(tinyW*(canvas.height/canvas.width));
+  const tmp=Object.assign(document.createElement("canvas"),{width:tinyW,height:tinyH});
+  tmp.getContext("2d").drawImage(canvas,0,0,tinyW,tinyH);
+  const t0=performance.now();
+  const faces=await blazeModel.estimateFaces(tmp,false);
+  const ms=Math.round(performance.now()-t0);
   if(faces && faces.length){
-    const f = faces[0];
-    const tl = Array.isArray(f.topLeft) ? f.topLeft : await f.topLeft.array();
-    const br = Array.isArray(f.bottomRight) ? f.bottomRight : await f.bottomRight.array();
-    const sx = canvas.width / tinyW, sy = canvas.height / tinyH;
-    const box = { x: tl[0]*sx, y: tl[1]*sy, width: (br[0]-tl[0])*sx, height: (br[1]-tl[1])*sy };
-    logDiag({ roughLocate_ms: ms, box });
+    const f=faces[0];
+    const tl=Array.isArray(f.topLeft)?f.topLeft:await f.topLeft.array();
+    const br=Array.isArray(f.bottomRight)?f.bottomRight:await f.bottomRight.array();
+    const sx=canvas.width/tinyW, sy=canvas.height/tinyH;
+    const box={x:tl[0]*sx, y:tl[1]*sy, width:(br[0]-tl[0])*sx, height:(br[1]-tl[1])*sy};
+    logDiag({ roughLocate_ms:ms, box });
     return box;
   }
-  logDiag({ roughLocate_ms: ms, box: null });
+  logDiag({ roughLocate_ms:ms, box:null });
   return null;
 }
 async function detectBlaze(canvas){
-  const t0 = performance.now();
-  const faces = await blazeModel.estimateFaces(canvas, false);
-  const ms = Math.round(performance.now()-t0);
+  const t0=performance.now();
+  const faces=await blazeModel.estimateFaces(canvas,false);
+  const ms=Math.round(performance.now()-t0);
   if(faces && faces.length){
-    const f = faces[0];
-    const tl = Array.isArray(f.topLeft) ? f.topLeft : await f.topLeft.array();
-    const br = Array.isArray(f.bottomRight) ? f.bottomRight : await f.bottomRight.array();
-    const box = { x: tl[0], y: tl[1], width: (br[0]-tl[0]), height: (br[1]-tl[1]) };
-    return { elapsed_ms: ms, box };
+    const f=faces[0];
+    const tl=Array.isArray(f.topLeft)?f.topLeft:await f.topLeft.array();
+    const br=Array.isArray(f.bottomRight)?f.bottomRight:await f.bottomRight.array();
+    const box={x:tl[0], y:tl[1], width:(br[0]-tl[0]), height:(br[1]-tl[1])};
+    logDiag({ finalDetect_ms:ms, box });
+    return { elapsed_ms:ms, box };
   }
+  logDiag({ finalDetect:"no face" });
   return null;
 }
 
-/* face-api fallback (only if BlazeFace fails) */
+/* ---------- face-api fallback (kept, but probably not needed now) ---------- */
 let FA_WEIGHTS=null;
 async function pickWeights(){
   if(FA_WEIGHTS) return FA_WEIGHTS;
-  const bases = [
+  const bases=[
     "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights",
     "https://unpkg.com/face-api.js@0.22.2/weights",
     "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights",
     "https://rawcdn.githack.com/justadudewhohacks/face-api.js/0.22.2/weights",
     "https://cdn.jsdelivr.net/gh/vladmandic/face-api/model"
   ];
-  for(const b of bases){
-    try{ FA_WEIGHTS = b.replace(/\/$/,""); logDiag({ usingWeightsFrom: FA_WEIGHTS }); return FA_WEIGHTS; }
-    catch(_){}
-  }
+  for(const b of bases){ try{ FA_WEIGHTS=b.replace(/\/$/,""); logDiag({ usingWeightsFrom:FA_WEIGHTS }); return FA_WEIGHTS; }catch(_){ } }
   throw new Error("No weights base found");
 }
 async function ensureFaceApi(){
   if(faceApiReady) return;
-  const base = await pickWeights();
+  const base=await pickWeights();
   await faceapi.nets.tinyFaceDetector.loadFromUri(base);
   await faceapi.nets.faceLandmark68Net.loadFromUri(base);
-  faceApiReady = true; logDiag({ faceapiReady:true });
+  faceApiReady=true; logDiag({ faceapiReady:true });
 }
 
-function drawBox(canvas, box, label){
-  const ctx = overlay.getContext("2d");
-  overlay.width = canvas.width; overlay.height = canvas.height;
-  ctx.clearRect(0,0,overlay.width,overlay.height);
-  ctx.drawImage(canvas, 0, 0, overlay.width, overlay.height);
-  ctx.strokeStyle = "#22c55e"; ctx.lineWidth = 3; ctx.strokeRect(box.x, box.y, box.width, box.height);
-  ctx.fillStyle = "#22c55e"; ctx.font = "12px ui-monospace,monospace";
-  ctx.fillText(label, box.x, Math.max(12, box.y-4));
-  overlay.classList.remove("hidden");
-}
-
-/* Flow */
+/* ---------- Flow ---------- */
 async function analyzeFlow(auto=false){
   try{
     if(!baseBitmap){ setError("No image decoded."); return; }
     setProgress(10, auto ? "Auto-analyzing…" : "Analyzing…");
     await ensureBlaze();
 
+    // Render with current settings
     let canvas = renderWorkingCanvas(1024);
-    const rough = await roughLocate(canvas);
-    if(rough){ canvas = renderWorkingCanvas(1024, rough); }
 
+    // 1) Rough box → draw immediately (cyan)
+    const rough = await roughLocate(canvas);
+    if(rough){
+      drawLabelBox(canvas, rough, "#06b6d4", "rough"); // cyan rough box
+      // Re-render with auto-zoom centered on rough box
+      canvas = renderWorkingCanvas(1024, rough);
+    }
+
+    // 2) Final BlazeFace detect → draw green
     const det = await detectBlaze(canvas);
     if(det){
-      drawBox(canvas, det.box, `BlazeFace • ${det.elapsed_ms}ms`);
+      drawLabelBox(canvas, det.box, "#22c55e", `BlazeFace • ${det.elapsed_ms}ms`);
       setProgress(100, "Done (BlazeFace).");
       return;
     }
-    logDiag({ blazeface: "no face" });
 
+    // 3) Optional fallback (face-api tiny)
     await ensureFaceApi();
-    const sizes = [256,192,160,128];
+    const sizes=[256,192,160,128];
     for(const s of sizes){
-      const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: s, scoreThreshold: 0.2 });
       try{
-        setProgress(70, `face-api: size ${s}…`);
-        const r = await faceapi.detectSingleFace(canvas, opts).withFaceLandmarks();
+        const opts=new faceapi.TinyFaceDetectorOptions({ inputSize:s, scoreThreshold:0.2 });
+        const r=await faceapi.detectSingleFace(canvas, opts).withFaceLandmarks();
         if(r){
-          const rr = faceapi.resizeResults(r, { width: canvas.width, height: canvas.height });
-          drawBox(canvas, rr.detection.box, `face-api • ${s}`);
+          const rr=faceapi.resizeResults(r,{width:canvas.width,height:canvas.height});
+          drawLabelBox(canvas, rr.detection.box, "#f59e0b", `face-api • ${s}`);
           setProgress(100, "Done (face-api).");
           return;
         }
       }catch(e){ logDiag({ faceapi_attemptFail:{ size:s, msg:e && e.message } }); }
     }
-    setError("No face detected. Try Auto‑Enhance & Retry (or rotate/zoom higher).");
+
+    setError("No face detected. Try rotate or increase Zoom, then Analyze.");
   }catch(e){ setError(e.message || String(e)); }
 }
 
-/* Events */
-zoom.addEventListener("input", ()=>{ zoomLabel.textContent = (+zoom.value).toFixed(2); if(baseBitmap){ renderWorkingCanvas(); }});
-bri.addEventListener("input", ()=>{ briLabel.textContent = (+bri.value).toFixed(2); if(baseBitmap){ renderWorkingCanvas(); }});
-con.addEventListener("input", ()=>{ conLabel.textContent = (+con.value).toFixed(2); if(baseBitmap){ renderWorkingCanvas(); }});
+/* ---------- Events ---------- */
+zoom.addEventListener("input", ()=>{ zoomLabel.textContent=(+zoom.value).toFixed(2); if(baseBitmap){ renderWorkingCanvas(); }});
+bri.addEventListener("input", ()=>{ briLabel.textContent=(+bri.value).toFixed(2); if(baseBitmap){ renderWorkingCanvas(); }});
+con.addEventListener("input", ()=>{ conLabel.textContent=(+con.value).toFixed(2); if(baseBitmap){ renderWorkingCanvas(); }});
 rotDeg.addEventListener("change", ()=>{ if(baseBitmap){ renderWorkingCanvas(); }});
 
 fileInput.addEventListener("change", async ()=>{
   overlay.classList.add("hidden"); progressText.textContent="";
-  if(!fileInput.files.length){ analyzeBtn.disabled=true; enhanceBtn.disabled=true; return; }
+  if(!fileInput.files.length){ analyzeBtn.disabled=true; enhanceBtn.disabled=true; savePngBtn.disabled=true; return; }
   const f = fileInput.files[0];
-  imageBlob = f;
   thumb.src = URL.createObjectURL(f); thumb.classList.remove("hidden");
   setProgress(8,"Decoding…");
   baseBitmap = await decodeOriginal(f);
-  setProgress(12,"Ready. Adjust controls if needed, then Analyze.");
+  setProgress(12,"Ready. Adjust if needed, then Analyze.");
   renderWorkingCanvas(1024);
-  analyzeBtn.disabled = false; enhanceBtn.disabled = false;
+  analyzeBtn.disabled = false; enhanceBtn.disabled = false; savePngBtn.disabled = false;
   logDiag({ fileName:f.name, type:f.type, size_bytes:f.size, w:baseBitmap.width, h:baseBitmap.height });
 });
 
 sampleBtn.addEventListener("click", async ()=>{
   overlay.classList.add("hidden"); progressText.textContent="";
-  const sampleURL = "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
+  const sampleURL="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
   logDiag({ sampleImage: sampleURL });
-  const res = await fetch(sampleURL, { cache:"no-store" }); const blob = await res.blob();
-  imageBlob = blob;
-  thumb.src = URL.createObjectURL(blob); thumb.classList.remove("hidden");
+  const res=await fetch(sampleURL,{cache:"no-store"}); const blob=await res.blob();
+  thumb.src=URL.createObjectURL(blob); thumb.classList.remove("hidden");
   setProgress(8,"Decoding sample…");
-  baseBitmap = await decodeOriginal(blob);
+  baseBitmap=await decodeOriginal(blob);
   setProgress(12,"Sample ready. Running analyze…");
   renderWorkingCanvas(1024);
-  analyzeBtn.disabled = false; enhanceBtn.disabled = false;
-  analyzeFlow(true); // auto-run
+  analyzeBtn.disabled=false; enhanceBtn.disabled=false; savePngBtn.disabled=false;
+  analyzeFlow(true);
 });
 
 enhanceBtn.addEventListener("click", ()=>{
-  zoom.value = Math.max(+zoom.value, 1.5); zoomLabel.textContent = (+zoom.value).toFixed(2);
-  bri.value = Math.max(+bri.value, 1.18); briLabel.textContent = (+bri.value).toFixed(2);
-  con.value = Math.max(+con.value, 1.25); conLabel.textContent = (+con.value).toFixed(2);
+  zoom.value=Math.max(+zoom.value,1.5); zoomLabel.textContent=(+zoom.value).toFixed(2);
+  bri.value=Math.max(+bri.value,1.18); briLabel.textContent=(+bri.value).toFixed(2);
+  con.value=Math.max(+con.value,1.25); conLabel.textContent=(+con.value).toFixed(2);
   analyzeFlow(true);
 });
 
 analyzeBtn.addEventListener("click", ()=> analyzeFlow(false));
+
+savePngBtn.addEventListener("click", ()=>{
+  try{
+    const url = overlay.toDataURL("image/png");
+    const a = Object.assign(document.createElement("a"), { href:url, download:"yorn-debug.png" });
+    document.body.appendChild(a); a.click(); a.remove();
+  }catch(e){ logDiag({ savePngError: e && e.message }); }
+});
 </script>
 </body>
 </html>
