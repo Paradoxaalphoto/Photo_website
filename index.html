@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN — 1.12.2-alpha</title>
+<title>YorN — 1.12.3-alpha</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https: data: blob:; img-src * data: blob:; connect-src * data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; upgrade-insecure-requests">
+<!-- CSP now permits 'unsafe-eval' so TFJS can run; also keeps https/data/blob -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:; img-src * data: blob:; connect-src * data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; upgrade-insecure-requests">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -60,6 +61,7 @@
 
 <!-- libs -->
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.min.js" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js" crossorigin="anonymous"></script>
 </head>
@@ -150,7 +152,7 @@
 </div>
 
 <script>
-const REVISION="1.12.2-alpha"; document.getElementById("revText").textContent=REVISION;
+const REVISION="1.12.3-alpha"; document.getElementById("revText").textContent=REVISION;
 const $=id=>document.getElementById(id);
 const diagnostics=$("diagnostics"), copyDiagBtn=$("copyDiagBtn");
 function appendTop(s){ diagnostics.textContent = s + diagnostics.textContent; copyDiagBtn.disabled = diagnostics.textContent.trim().length===0 || diagnostics.textContent.includes("No diagnostics yet.") }
@@ -159,7 +161,7 @@ function logEvt(type,payload){ appendTop(`[${new Date().toISOString()}] ${JSON.s
 window.addEventListener('error', e=>logEvt('error',{global:e.message,at:(e.filename||'')+':'+(e.lineno||'')}));
 window.addEventListener('unhandledrejection', e=>{ const r=e&&e.reason; logEvt('error',{unhandled:(r&&(r.message||r))||String(r)}) });
 
-/* UI element refs (declare ONCE) */
+/* UI refs */
 const progressBar=$("progressBar"), progressText=$("progressText");
 const imgBase=$("base"), cvRough=$("overlayRough"), cvOverlay=$("overlay");
 const fileInput=$("fileInput"), sampleBtn=$("sampleBtn"), detectBtn=$("detectBtn"), startAnalysisBtn=$("startAnalysisBtn");
@@ -169,6 +171,21 @@ const fixModeSel=$("fixMode"), showOverlaysChk=$("showOverlays"), showHUDChk=$("
 
 /* helpers */
 function setProgress(p,t){progressBar.style.width=(p||0)+'%';progressText.textContent=t||''}
+
+/* TFJS backend: prefer WASM to avoid eval-heavy WebGL paths */
+;(async function initTf(){
+  try{
+    if (tf && tf.wasm) {
+      // Point TFJS to official CDN for .wasm binaries
+      tf.wasm.setWasmPaths("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/");
+    }
+    await tf.setBackend('wasm');          // prefer wasm
+    await tf.ready();
+    logEvt('config',{tf:'ready',backend:tf.getBackend()});
+  }catch(e){
+    logEvt('error',{tf_init:e.message||String(e)});
+  }
+})();
 
 /* decode */
 async function blobToCanvasViaImg(blob){ const url=URL.createObjectURL(blob); try{ const img=new Image(); img.decoding="sync"; img.loading="eager"; await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url}); const c=document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext("2d").drawImage(img,0,0); return c } finally{ URL.revokeObjectURL(url) } }
@@ -216,7 +233,7 @@ let blazeModel=null, faceApiReady=false, FA_WEIGHTS=null;
 async function ensureBlaze(){ if(blazeModel) return; blazeModel=await window.blazeface.load(); logEvt("detect",{blazefaceReady:true}) }
 function downsample(canvas,w,mirror=false){const h=Math.round(w*(canvas.height/canvas.width));const tmp=Object.assign(document.createElement("canvas"),{width:w,height:h});const ctx=tmp.getContext("2d");if(mirror){ctx.translate(w,0);ctx.scale(-1,1)}ctx.drawImage(canvas,0,0,w,h);return tmp}
 
-/* face-api (optional) */
+/* face-api (optional refine) */
 async function fetchJson(url){const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error("status "+r.status);return r.json()}
 async function verifyManifestAndShards(base,name){const mani=await fetchJson(`${base}/${name}`);const shards=(mani.weights||[]).flatMap(w=>w.paths||[]).map(p=>`${base}/${p}`);for(const u of shards){const r=await fetch(u,{cache:"no-store"});if(!r.ok)throw new Error("shard 404")}}
 async function pickWeights(){
@@ -333,12 +350,12 @@ clearLogsBtn.addEventListener('click',()=>{ diagnostics.textContent='No diagnost
 resetBtn.addEventListener('click',()=>{ baseSource=null; imgBase.classList.add('hidden'); logEvt('config',{reset:true}) });
 
 function onTweak(){ if(baseSource){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c) } }
-zoom.addEventListener("input",()=>{zoomLabel.textContent=(+zoom.value).toFixed(2);onTweak()});
-bri.addEventListener("input",()=>{briLabel.textContent=(+bri.value).toFixed(2);onTweak()});
-con.addEventListener("input",()=>{conLabel.textContent=(+con.value).toFixed(2);onTweak()});
+zoom.addEventListener("input",()=>{document.getElementById("zoomLabel").textContent=(+zoom.value).toFixed(2);onTweak()});
+bri.addEventListener("input",()=>{document.getElementById("briLabel").textContent=(+bri.value).toFixed(2);onTweak()});
+con.addEventListener("input",()=>{document.getElementById("conLabel").textContent=(+con.value).toFixed(2);onTweak()});
 rotDeg.addEventListener("change",onTweak);
 
-enhanceBtn.addEventListener("click",()=>{ zoom.value=Math.max(+zoom.value,1.5); zoomLabel.textContent=(+zoom.value).toFixed(2); bri.value=Math.max(+bri.value,1.18); briLabel.textContent=(+bri.value).toFixed(2); con.value=Math.max(+con.value,1.25); conLabel.textContent=(+con.value).toFixed(2); detectFlow() });
+enhanceBtn.addEventListener("click",()=>{ zoom.value=Math.max(+zoom.value,1.5); document.getElementById("zoomLabel").textContent=(+zoom.value).toFixed(2); bri.value=Math.max(+bri.value,1.18); document.getElementById("briLabel").textContent=(+bri.value).toFixed(2); con.value=Math.max(+con.value,1.25); document.getElementById("conLabel").textContent=(+con.value).toFixed(2); detectFlow() });
 detectBtn.addEventListener("click",()=>detectFlow());
 startAnalysisBtn.addEventListener("click",()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis() });
 
