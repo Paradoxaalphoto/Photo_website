@@ -1,496 +1,124 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>YorN Alpha — 1.11.0 Detection Restored</title>
+<meta charset="utf-8" />
+<title>YorN — 1.11.1 boot-probe</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<!-- ===== BOOT LOGGER SHIM (runs before anything else) ===== -->
-<script>
-  (function(){
-    window.__yornLogs = [];
-    function push(type, payload){
-      try{ window.__yornLogs.unshift(`[${new Date().toISOString()}] ${JSON.stringify({type, ...(payload||{})})}\n`) }catch(_){}
-    }
-    window.__yornBootLog = function(type,payload){ push(type,payload) };
-    window.addEventListener('error', e=>{ push('error',{global:e.message,at:(e.filename||'')+':'+(e.lineno||'')}) });
-    window.addEventListener('unhandledrejection', e=>{ const r=e&&e.reason; push('error',{unhandled:(r&&(r.message||r))||String(r)}) });
-    push('config',{boot:'starting', ua:navigator.userAgent, ts:Date.now()});
-  })();
-</script>
+<!-- Try to neutralize common blockers -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https: data: blob:; img-src * data: blob:; connect-src * data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; upgrade-insecure-requests">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 
 <style>
   :root{color-scheme:light dark}
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;margin:0;background:#0b1220;color:#E6EAF2;overflow-x:hidden}
-  .hidden{display:none}
-  .container{max-width:980px;margin:0 auto;padding:16px}
-  h2{margin:8px 0 0 0}
-  .card{background:#0f172a;border:1px solid #233046;border-radius:12px;padding:12px;margin-top:12px}
-  .row{display:grid;grid-template-columns:1fr auto auto auto auto auto auto auto auto auto;gap:8px;align-items:end}
-  .controls{display:grid;grid-template-columns:repeat(9,1fr);gap:8px;margin-top:8px}
-  @media (max-width:720px){
-    .row{grid-template-columns:1fr;gap:10px}
-    .controls{grid-template-columns:1fr 1fr;gap:10px}
-    .two-col{grid-template-columns:1fr;gap:12px}
-  }
-  label{font-size:12px;color:#A9B4C8}
-  input[type="range"],input[type="number"],select{width:100%}
-  input[type="number"],input[type="range"],select{padding:6px;border:1px solid #233046;border-radius:8px;background:#0b1220;color:#E6EAF2}
-  .chk{display:flex;gap:8px;align-items:center;padding:6px;border:1px solid #233046;border-radius:8px;background:#0b1220}
-  button{cursor:pointer}
-  .btn{padding:10px 14px;border-radius:8px;border:1px solid #233046;background:#1f2937;color:#E6EAF2}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,sans-serif;background:#0b1220;color:#e6eaf2}
+  .wrap{max-width:920px;margin:0 auto;padding:16px}
+  .banner{background:#16a34a15;border:1px solid #16a34a55;padding:10px 12px;border-radius:12px;margin:12px 0;font:14px ui-monospace,monospace}
+  .row{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+  .btn{background:#1f2937;color:#e6eaf2;border:1px solid #233046;border-radius:8px;padding:10px 14px;cursor:pointer}
   .btn[disabled]{opacity:.5;cursor:not-allowed}
-  .btn-secondary{background:#0b1220}
-  .btn-primary{background:#2563eb}
-  .pulse{animation:pulse 1.2s ease-in-out 2}
-  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(37,99,235,.5)}70%{box-shadow:0 0 0 12px rgba(37,99,235,0)}100%{box-shadow:0 0 0 0 rgba(37,99,235,0)}}
-  #progressContainer{height:8px;background:#1e293b;border-radius:6px;overflow:hidden;margin-top:8px}
-  #progressBar{height:100%;width:0;background:#38bdf8;transition:width .25s}
-
-  .previewWrap{position:relative}
-  #base,#overlayRough,#overlay{display:block;width:100%;height:auto;margin-top:10px;background:#0b1220;border:1px solid #233046;border-radius:8px}
-  #overlayRough,#overlay{position:absolute;left:0;top:0}
-  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .two-col>div{min-width:0}
-  #diagnostics{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:#0b1220;border:1px solid #233046;border-radius:8px;padding:8px;height:220px;max-height:40vh;overflow:auto}
-  .diag-tools{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
-  .filter-chip{display:inline-flex;gap:6px;align-items:center;padding:4px 8px;border:1px solid #233046;border-radius:999px;background:#0b1220;font-size:12px}
-  .analysis-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .kv{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:6px 8px;background:#0b1220;border:1px solid #233046;border-radius:8px}
-  .kv b{color:#c7d2fe}
-  .badge{font:12px ui-monospace,monospace;padding:1px 6px;border-radius:999px;border:1px solid #233046;margin-left:6px}
-  .ok{background:rgba(16,185,129,.15);color:#a7f3d0;border-color:rgba(16,185,129,.55)}
-  .warn{background:rgba(245,158,11,.15);color:#fde68a;border-color:rgba(245,158,11,.55)}
-  .hints{font-size:12px;color:#A9B4C8;margin-top:6px}
-
-  #revBadge{position:fixed;top:8px;right:10px;z-index:9999;background:rgba(0,0,0,.6);color:#fff;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid rgba(255,255,255,.18);border-radius:999px}
-  #readyBadge{position:fixed;top:36px;right:10px;z-index:9999;display:none;background:rgba(16,185,129,.15);color:#a7f3d0;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid rgba(16,185,129,.55);border-radius:999px}
-  #readyDot{display:inline-block;width:8px;height:8px;border-radius:999px;background:#10b981;margin-right:6px}
-  #hud{position:absolute;left:10px;top:16px;z-index:5;display:none;font:12px ui-monospace,monospace;background:rgba(0,0,0,.55);padding:6px 8px;border:1px solid rgba(255,255,255,.18);border-radius:8px}
+  input[type="file"]{padding:8px;border:1px solid #233046;border-radius:8px;background:#0b1220;color:#e6eaf2}
+  #diag{white-space:pre-wrap;font:12px ui-monospace,menlo,consolas,monospace;background:#0b1220;border:1px solid #233046;border-radius:12px;padding:10px;height:240px;overflow:auto}
+  #preview{display:block;width:100%;height:auto;margin-top:10px;background:#0b1220;border:1px solid #233046;border-radius:12px}
+  #rev{position:fixed;right:10px;top:10px;font:12px ui-monospace,monospace;background:#0008;color:#fff;border:1px solid #fff3;padding:3px 8px;border-radius:999px}
 </style>
 
-<!-- libs -->
-<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js" crossorigin="anonymous"></script>
+<script>
+/* ultra-early boot logger */
+(function(){
+  window.__yornLogs = window.__yornLogs || [];
+  function bootLog(type, payload){ try{
+    const line = `[${new Date().toISOString()}] ` + JSON.stringify({type, ...(payload||{})}) + "\n";
+    window.__yornLogs.unshift(line);
+  }catch(_){ }
+  }
+  window.__yornBootLog = bootLog;
+  window.addEventListener('error', e=>bootLog('error',{global:e.message,at:(e.filename||'')+':'+(e.lineno||'')}));
+  window.addEventListener('unhandledrejection', e=>{const r=e&&e.reason; bootLog('error',{unhandled:(r&&(r.message||r))||String(r)})});
+  bootLog('config',{boot:'starting', ua:navigator.userAgent });
+})();
+</script>
 </head>
 <body>
-<div id="revBadge">YorN Rev <span id="revText"></span></div>
-<div id="readyBadge"><span id="readyDot"></span><span id="readyText">Ready for Analysis</span></div>
+<div id="rev">YorN Rev 1.11.1-boot-probe</div>
+<div class="wrap">
+  <h2>YorN — Boot Probe</h2>
+  <div id="banner" class="banner">If you can see this, HTML loaded. Waiting for JS…</div>
 
-<div class="container">
-  <h2>YorN Alpha — Face Detection & Lightweight Analysis</h2>
-
-  <div class="card">
-    <div class="row">
-      <input id="fileInput" type="file" accept="image/*" />
-      <button id="sampleBtn" class="btn btn-secondary">Load Sample</button>
-      <button id="enhanceBtn" class="btn btn-secondary" disabled>Enhance & Retry</button>
-      <button id="detectBtn" class="btn" disabled>Detect</button>
-      <button id="startAnalysisBtn" class="btn btn-primary" disabled>Start Analysis</button>
-      <button id="resetBtn" class="btn btn-secondary">Reset</button>
-      <button id="clearLogsBtn" class="btn btn-secondary">Clear Logs</button>
-      <button id="copyDiagBtn" class="btn btn-secondary" disabled>Copy Diagnostics</button>
-    </div>
-    <div class="controls">
-      <div><label>Rotate (°)</label><input id="rotDeg" type="number" step="90" value="0" /></div>
-      <div><label>Zoom (0.8–2.0): <span id="zoomLabel">1.2</span></label><input id="zoom" type="range" min="0.8" max="2.0" step="0.05" value="1.2" /></div>
-      <div><label>Brightness: <span id="briLabel">1.10</span></label><input id="bri" type="range" min="0.8" max="1.4" step="0.02" value="1.10" /></div>
-      <div><label>Contrast: <span id="conLabel">1.15</span></label><input id="con" type="range" min="0.8" max="1.6" step="0.02" value="1.15" /></div>
-      <div>
-        <label>Fix mode</label>
-        <select id="fixMode">
-          <option value="cdn">face‑api refine</option>
-          <option value="blazeonly" selected>BlazeFace only</option>
-          <option value="native">Native → Blaze fallback</option>
-        </select>
-      </div>
-      <label class="chk"><input id="showOverlays" type="checkbox" /> Show overlays</label>
-      <label class="chk"><input id="showHUD" type="checkbox" /> Show HUD</label>
-      <label class="chk"><input id="autoAnalyze" type="checkbox" /> Auto‑analyze</label>
-      <label class="chk"><input id="consent" type="checkbox" /> Include in research</label>
-    </div>
-
-    <div id="progressContainer"><div id="progressBar"></div></div>
-    <p id="progressText" style="font-size:12px;color:#A9B4C8;margin:6px 2px 0"></p>
+  <div class="row">
+    <button id="ping" class="btn">Ping Log</button>
+    <button id="loadSample" class="btn">Load Sample Image</button>
+    <input id="file" type="file" accept="image/*">
+    <button id="copyDiag" class="btn" disabled>Copy Diagnostics</button>
+    <button id="hardReload" class="btn">Hard Reload (add ?v=ts)</button>
   </div>
 
-  <div class="card">
-    <div class="two-col">
-      <div class="previewWrap">
-        <strong style="font-size:13px">Preview</strong>
-        <div id="hud"></div>
-        <img id="base" class="hidden" alt="Preview base" />
-        <canvas id="overlayRough" class="hidden"></canvas>
-        <canvas id="overlay" class="hidden"></canvas>
-      </div>
-      <div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-          <strong style="font-size:13px">Diagnostics</strong>
-          <div class="diag-tools">
-            <input id="diagSearch" placeholder="filter…" style="padding:6px;border:1px solid #233046;border-radius:8px;background:#0b1220;color:#E6EAF2" />
-            <label class="filter-chip"><input type="checkbox" class="diagType" value="detect" checked> detect</label>
-            <label class="filter-chip"><input type="checkbox" class="diagType" value="overlay" checked> overlay</label>
-            <label class="filter-chip"><input type="checkbox" class="diagType" value="analysis" checked> analysis</label>
-            <label class="filter-chip"><input type="checkbox" class="diagType" value="config" checked> config</label>
-            <label class="filter-chip"><input type="checkbox" class="diagType" value="error" checked> error</label>
-          </div>
-        </div>
-        <div id="diagnostics">No diagnostics yet.</div>
-      </div>
-    </div>
-  </div>
+  <img id="preview" alt="preview will appear here" />
 
-  <div class="card" id="analysisCard" style="display:none">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-      <strong>Analysis <span id="tsBadge" class="badge" title="timestamp"></span></strong>
-      <div class="actions">
-        <button id="copyJsonBtn" class="btn btn-secondary" disabled>Copy JSON</button>
-        <button id="exportJsonBtn" class="btn btn-secondary" disabled>Download JSON</button>
-      </div>
-    </div>
-    <div class="analysis-grid" style="margin-top:8px">
-      <div class="kv"><span>Face area</span><span><b id="kv_area">—</b><span id="bdg_area" class="badge"></span></span></div>
-      <div class="kv"><span>Aspect ratio</span><span><b id="kv_ar">—</b><span id="bdg_ar" class="badge"></span></span></div>
-      <div class="kv"><span>Orientation</span><span><b id="kv_orient">—</b></span></div>
-      <div class="kv"><span>Brightness (mean)</span><span><b id="kv_bri">—</b><span id="bdg_bri" class="badge"></span></span></div>
-      <div class="kv"><span>Contrast (stdev)</span><span><b id="kv_contrast">—</b><span id="bdg_con" class="badge"></span></span></div>
-      <div class="kv"><span>Sharpness (Laplacian var)</span><span><b id="kv_sharp">—</b><span id="bdg_sharp" class="badge"></span></span></div>
-      <div class="kv"><span>Center offset X</span><span><b id="kv_offx">—</b><span id="bdg_offx" class="badge"></span></span></div>
-      <div class="kv"><span>Center offset Y</span><span><b id="kv_offy">—</b><span id="bdg_offy" class="badge"></span></span></div>
-    </div>
-    <div class="hints" id="analysisHints"></div>
-  </div>
+  <h3 style="margin:12px 0 6px">Diagnostics</h3>
+  <div id="diag">No diagnostics yet.</div>
 </div>
 
 <script>
-/* ===== constants / elements ===== */
-const REVISION="1.11.0-alpha";
-document.getElementById("revText").textContent=REVISION;
-const session_id = crypto.randomUUID();
-const $ = id => document.getElementById(id);
-const diagnostics=$("diagnostics"), copyDiagBtn=$("copyDiagBtn");
-const progressBar=$("progressBar"), progressText=$("progressText");
-const imgBase=$("base"), cvRough=$("overlayRough"), cvOverlay=$("overlay");
-const fileInput=$("fileInput"), sampleBtn=$("sampleBtn"), detectBtn=$("detectBtn"), startAnalysisBtn=$("startAnalysisBtn");
-const enhanceBtn=$("enhanceBtn"), clearLogsBtn=$("clearLogsBtn"), resetBtn=$("resetBtn");
-const rotDeg=$("rotDeg"), zoom=$("zoom"), zoomLabel=$("zoomLabel"), bri=$("bri"), briLabel=$("briLabel"), con=$("con"), conLabel=$("conLabel");
-const analysisCard=$("analysisCard"), tsBadge=$("tsBadge");
-const fixModeSel=$("fixMode"), showOverlaysChk=$("showOverlays"), showHUDChk=$("showHUD"), autoAnalyzeChk=$("autoAnalyze"), consentChk=$("consent");
+const REV="1.11.1-boot-probe";
+const $=id=>document.getElementById(id);
+const diag=$("diag"), banner=$("banner"), preview=$("preview");
+const copyDiag=$("copyDiag");
 
-/* ===== adopt boot logger & flush early logs ===== */
-function updateDiagCopyBtn(){ copyDiagBtn.disabled = diagnostics.textContent.trim().length===0 || diagnostics.textContent.includes("No diagnostics yet.") }
-function appendDiagTop(text){ diagnostics.textContent = text + diagnostics.textContent; updateDiagCopyBtn() }
-function logEvt(type,payload){ appendDiagTop(`[${new Date().toISOString()}] ${JSON.stringify({type,...(payload||{})})}\n`) }
-;(function flushBoot(){ try{
-  if(Array.isArray(window.__yornLogs)&&window.__yornLogs.length){ appendDiagTop(window.__yornLogs.join("")); window.__yornLogs.length=0 }
-  logEvt('config',{boot:'ui-ready',rev:REVISION})
-} catch(_){}})();
-window.__yornBootLog('config',{boot:'flushed'});
+function appendTop(s){ diag.textContent = s + diag.textContent; copyDiag.disabled = diag.textContent.trim().length===0 || diag.textContent.includes("No diagnostics yet.") }
+function log(type,payload){ appendTop(`[${new Date().toISOString()}] ${JSON.stringify({type,...(payload||{})})}\n`) }
 
-/* ===== global error handlers ===== */
-window.addEventListener('error', e=>{ logEvt('error',{global:e.message,at:(e.filename||'')+':'+(e.lineno||'')}) });
-window.addEventListener('unhandledrejection', e=>{ const r=e&&e.reason; logEvt('error',{unhandled:(r&&(r.message||r))||String(r)}) });
-
-/* ===== helpers ===== */
-function setProgress(p,t){progressBar.style.width=(p||0)+'%';progressText.textContent=t||''}
-
-/* ===== self test ===== */
-setTimeout(async()=>{
-  if(!window.tf){ logEvt('error',{tf:'missing'}) }
-  else{ try{ await tf.ready(); logEvt('config',{tf:'ready',backend:tf.getBackend&&tf.getBackend()}) }catch(e){ logEvt('error',{tf_ready:e.message||String(e)}) } }
-  logEvt('config',{blazeface_present:!!window.blazeface,faceapi_present:!!window.faceapi});
-},300);
-
-/* ===== robust image decode ===== */
-async function blobToCanvasViaImg(blob){
-  const url=URL.createObjectURL(blob);
+/* flush any early logs */
+(function(){
   try{
-    const img=new Image(); img.decoding="sync"; img.loading="eager";
-    await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url});
-    const c=document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight;
-    c.getContext("2d").drawImage(img,0,0);
-    return c;
-  } finally { URL.revokeObjectURL(url) }
-}
-async function decodeOriginal(fileOrBlob){
-  try{
-    if('createImageBitmap' in window){
-      const bmp=await createImageBitmap(fileOrBlob);
-      logEvt('detect',{decode:'createImageBitmap',w:bmp.width,h:bmp.height});
-      return {bitmap:bmp,width:bmp.width,height:bmp.height};
+    if (Array.isArray(window.__yornLogs) && window.__yornLogs.length){
+      appendTop(window.__yornLogs.join(""));
+      window.__yornLogs.length = 0;
     }
-  }catch(e){ logEvt('error',{decode_createImageBitmap:e.message||String(e)}) }
-  const can=await blobToCanvasViaImg(fileOrBlob);
-  logEvt('detect',{decode:'img→canvas',w:can.width,h:can.height});
-  return {canvas:can,width:can.width,height:can.height};
-}
-
-/* ===== preview render ===== */
-let baseSource=null, workCanvas=null, lastCanvas=null, lastBox=null, lastAnalysis=null;
-function ensureWork(){ if(!workCanvas) workCanvas=document.createElement('canvas'); return workCanvas }
-function paintBaseCanvas(canvas){
-  imgBase.src=canvas.toDataURL('image/png');
-  imgBase.classList.remove('hidden');
-  [cvRough,cvOverlay].forEach(c=>{c.width=canvas.width;c.height=canvas.height;c.classList.remove('hidden')});
-  logEvt('overlay',{painted:{w:canvas.width,h:canvas.height}});
-}
-function renderWorkingCanvas(maxSide=1024,centerBox=null){
-  if(!baseSource){ logEvt('error',{render:'no baseSource'}); return null; }
-  const srcW=baseSource.width, srcH=baseSource.height;
-  const angle=(parseInt(rotDeg.value,10)||0)%360; let z=parseFloat(zoom.value)||1.0;
-  const br=parseFloat(bri.value)||1.0, cr=parseFloat(con.value)||1.0;
-
-  const scale0=Math.min(1, maxSide/Math.max(srcW,srcH));
-  const w0=Math.max(1,Math.round(srcW*scale0)), h0=Math.max(1,Math.round(srcH*scale0));
-
-  let cx=srcW/2, cy=srcH/2;
-  if(centerBox){
-    cx=centerBox.x+centerBox.width/2; cy=centerBox.y+centerBox.height/2;
-    const zx=(w0/(centerBox.width*scale0))*0.9, zy=(h0/(centerBox.height*scale0))*0.9; z=Math.max(z,Math.min(zx,zy,1.8));
-    logEvt("overlay",{autoZoomApplied:+z.toFixed(2)});
-  }
-
-  const dstW=w0, dstH=h0, srcW=Math.round(dstW/(scale0*z)), srcH=Math.round(dstH/(scale0*z));
-  const sx=Math.max(0,Math.round(cx-srcW/2)), sy=Math.max(0,Math.round(cy-srcH/2));
-
-  const c=ensureWork(); if((angle%180)===0){c.width=dstW;c.height=dstH}else{c.width=dstH;c.height=dstW}
-  const ctx=c.getContext('2d');
-  ctx.save(); ctx.clearRect(0,0,c.width,c.height);
-  ctx.translate(c.width/2,c.height/2); ctx.rotate(angle*Math.PI/180);
-  ctx.filter=`brightness(${br}) contrast(${cr})`;
-  const src = baseSource.bitmap || baseSource.canvas;
-  ctx.drawImage(src, sx,sy, Math.max(1,srcW),Math.max(1,srcH), -dstW/2,-dstH/2, dstW,dstH);
-  ctx.restore();
-  return c;
-}
-
-/* ===== models ===== */
-let blazeModel=null, faceApiReady=false, FA_WEIGHTS=null;
-async function ensureBlaze(){ if(blazeModel) return; blazeModel=await window.blazeface.load(); logEvt("detect",{blazefaceReady:true}) }
-function downsample(canvas,w,mirror=false){const h=Math.round(w*(canvas.height/canvas.width));const tmp=Object.assign(document.createElement("canvas"),{width:w,height:h});const ctx=tmp.getContext("2d");if(mirror){ctx.translate(w,0);ctx.scale(-1,1)}ctx.drawImage(canvas,0,0,w,h);return tmp}
-async function detectBlazeMulti(canvas){
-  const configs=[{w:256,mirror:false},{w:384,mirror:false},{w:512,mirror:false},{w:384,mirror:true},{w:512,mirror:true}];
-  for(const cfg of configs){
-    const tmp=downsample(canvas,cfg.w,cfg.mirror);
-    const t0=performance.now();
-    const faces=await blazeModel.estimateFaces(tmp,false);
-    const ms=Math.round(performance.now()-t0);
-    if(faces&&faces.length){
-      const f=faces[0];
-      const tl=Array.isArray(f.topLeft)?f.topLeft:await f.topLeft.array();
-      const br=Array.isArray(f.bottomRight)?f.bottomRight:await f.bottomRight.array();
-      const sx=canvas.width/tmp.width, sy=canvas.height/tmp.height;
-      let x=tl[0]*sx, y=tl[1]*sy, w=(br[0]-tl[0])*sx, h=(br[1]-tl[1])*sy;
-      if(cfg.mirror){ x=canvas.width-(x+w) }
-      const box={x,y,width:w,height:h};
-      logEvt("detect",{finalDetect_ms:ms,scale:cfg.w,mirror:cfg.mirror,box});
-      return {elapsed_ms:ms,box}
-    }
-  }
-  logEvt("detect",{finalDetect:"no face"});
-  return null
-}
-
-/* face-api fallback (multi-CDN weights) */
-async function fetchJson(url){const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error("status "+r.status);return r.json()}
-async function verifyManifestAndShards(base,name){const mani=await fetchJson(`${base}/${name}`);const shards=(mani.weights||[]).flatMap(w=>w.paths||[]).map(p=>`${base}/${p}`);for(const u of shards){const r=await fetch(u,{cache:"no-store"});if(!r.ok)throw new Error("shard 404")}}
-async function pickWeights(){
-  if(FA_WEIGHTS) return FA_WEIGHTS;
-  const bases=[
-    "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights",
-    "https://rawcdn.githack.com/justadudewhohacks/face-api.js/0.22.2/weights",
-    "https://cdn.jsdelivr.net/gh/vladmandic/face-api/model",
-    "https://unpkg.com/face-api.js@0.22.2/weights",
-    "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights"
-  ];
-  for(const b of bases){
-    try{
-      await verifyManifestAndShards(b,"tiny_face_detector_model-weights_manifest.json");
-      await verifyManifestAndShards(b,"face_landmark_68_model-weights_manifest.json");
-      FA_WEIGHTS=b.replace(/\/$/,""); logEvt("detect",{usingWeightsFrom:FA_WEIGHTS}); return FA_WEIGHTS
-    }catch(e){ logEvt("detect",{weightsAttempt:b,fail:e.message}) }
-  }
-  throw new Error("All weights CDNs failed")
-}
-async function ensureFaceApi(){ if(faceApiReady) return; const base=await pickWeights(); await faceapi.nets.tinyFaceDetector.loadFromUri(base); await faceapi.nets.faceLandmark68Net.loadFromUri(base); faceApiReady=true; logEvt("detect",{faceapiReady:true}) }
-
-/* ===== overlays & HUD ===== */
-function drawBox(ctx,box,color,label){ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(box.x,box.y,box.width,box.height);ctx.fillStyle=color;ctx.font="12px ui-monospace,monospace";ctx.fillText(label,box.x,Math.max(12,box.y-4))}
-function drawCross(ctx,cx,cy,offX,offY){ctx.strokeStyle="#60a5fa";ctx.beginPath();ctx.moveTo(cx-8,cy);ctx.lineTo(cx+8,cy);ctx.moveTo(cx,cy-8);ctx.lineTo(cx,cy+8);ctx.stroke();ctx.fillStyle="#60a5fa";ctx.font="12px ui-monospace,monospace";const text=`(${Math.round(cx)},${Math.round(cy)}) | offX ${offX.toFixed(1)}% • offY ${offY.toFixed(1)}%`;const tx=Math.min(cx+10,cvOverlay.width-260),ty=Math.min(cy+14,cvOverlay.height-4);ctx.fillText(text,tx,ty)}
-function placeCenterCross(ctx){if(!lastCanvas||!lastBox)return;const imgW=lastCanvas.width,imgH=lastCanvas.height;const cx=lastBox.x+lastBox.width/2,cy=lastBox.y+lastBox.height/2;const offX=((cx-imgW/2)/(imgW/2))*100,offY=((cy-imgH/2)/(imgH/2))*100;drawCross(ctx,cx,cy,offX,offY);logEvt("overlay",{center:{cx:+cx.toFixed(2),cy:+cy.toFixed(2)},center_offset_pct:{x:+offX.toFixed(2),y:+offY.toFixed(2)}})}
-
-/* ===== analysis (lightweight) ===== */
-const kv={area:$("kv_area"),ar:$("kv_ar"),orient:$("kv_orient"),bri:$("kv_bri"),contrast:$("kv_contrast"),sharp:$("kv_sharp"),offx:$("kv_offx"),offy:$("kv_offy")};
-const bdg={area:$("bdg_area"),ar:$("bdg_ar"),bri:$("bdg_bri"),con:$("bdg_con"),sharp:$("bdg_sharp"),offx:$("bdg_offx"),offy:$("bdg_offy")};
-function setBadge(el,isOk,textOk,textWarn){el.textContent=isOk?textOk:textWarn;el.className="badge "+(isOk?"ok":"warn")}
-function toGrayLuma(r,g,b){return 0.299*r+0.587*g+0.114*b}
-function cropFace(canvas,box,size=128){const c=document.createElement("canvas");c.width=size;c.height=size;const ctx=c.getContext("2d");ctx.drawImage(canvas,Math.max(0,Math.round(box.x)),Math.max(0,Math.round(box.y)),Math.max(1,Math.round(box.width)),Math.max(1,Math.round(box.height)),0,0,size,size);return c}
-function meanStdevGray(id){const d=id.data;const n=d.length/4;let sum=0,sum2=0;for(let i=0;i<d.length;i+=4){const y=toGrayLuma(d[i],d[i+1],d[i+2]);sum+=y;sum2+=y*y}const mean=sum/n;const variance=Math.max(0,(sum2/n)-mean*mean);return {mean,stdev:Math.sqrt(variance)}}
-function laplacianVariance(gray,w,h){let sum=0,sum2=0,count=0;for(let y=1;y<h-1;y++){for(let x=1;x<w-1;x++){const i=(y*w+x);let v=0;v+=gray[i-w];v+=gray[i-1];v+=gray[i]*(-4);v+=gray[i+1];v+=gray[i+w];sum+=v;sum2+=v*v;count++}}const mean=sum/Math.max(1,count);return Math.max(0,(sum2/Math.max(1,count))-mean*mean)}
-
-function runLightAnalysis(){
-  if(!lastCanvas||!lastBox){logEvt("error",{analysis:"no detection"});return}
-  const imgW=lastCanvas.width,imgH=lastCanvas.height,b=lastBox;
-  const areaPct=(b.width*b.height)/(imgW*imgH)*100, ar=b.width/b.height;
-  let orient="near-square"; if(ar>=1.15) orient="landscape"; else if(ar<=0.87) orient="portrait";
-  const cx=b.x+b.width/2, cy=b.y+b.height/2; const offX=((cx-imgW/2)/(imgW/2))*100, offY=((cy-imgH/2)/(imgH/2))*100;
-  const crop=cropFace(lastCanvas,b,128), id=crop.getContext("2d").getImageData(0,0,128,128);
-  const {mean,stdev}=meanStdevGray(id); const gray=new Float32Array(128*128); for(let i=0,p=0;i<id.data.length;i+=4,p++){gray[p]=toGrayLuma(id.data[i],id.data[i+1],id.data[i+2])}
-  const sharpVar=laplacianVariance(gray,128,128);
-
-  const okArea=areaPct>=7&&areaPct<=15, okBri=mean>=110&&mean<=160, okCon=stdev>=30&&stdev<=65, okSharp=sharpVar>=120, okOffX=Math.abs(offX)<=12, okOffY=Math.abs(offY)<=12;
-  setBadge(bdg.area,okArea,"ok","adjust"); setBadge(bdg.bri,okBri,"ok","±light"); setBadge(bdg.con,okCon,"ok","±contrast"); setBadge(bdg.sharp,okSharp,"crisp","blurry"); setBadge(bdg.offx,okOffX,"centered","offset"); setBadge(bdg.offy,okOffY,"centered","offset"); setBadge(bdg.ar,(orient!=="near-square"),orient,"squareish");
-
-  const hints=[]; if(!okArea)hints.push("Adjust crop to ~7–15% face area"); if(!okBri)hints.push(mean<110?"Increase lighting":"Reduce brightness"); if(!okCon)hints.push(stdev<30?"Boost contrast a bit":"Softer contrast may help"); if(!okSharp)hints.push("Reduce motion/clean lens"); if(!(okOffX&&okOffY))hints.push("Center the face"); if(hints.length===0)hints.push("Looks good!");
-
-  $("analysisCard").style.display="";
-  $("kv_area").textContent=areaPct.toFixed(2)+" %";
-  $("kv_ar").textContent=ar.toFixed(3);
-  $("kv_orient").textContent=orient;
-  $("kv_bri").textContent=mean.toFixed(1);
-  $("kv_contrast").textContent=stdev.toFixed(1);
-  $("kv_sharp").textContent=sharpVar.toFixed(1);
-  $("kv_offx").textContent=(offX>=0?"+":"")+offX.toFixed(1)+" %";
-  $("kv_offy").textContent=(offY>=0?"+":"")+offY.toFixed(1)+" %";
-  $("analysisHints").textContent="Hints: "+hints.join(" • ");
-  tsBadge.textContent=new Date().toLocaleString();
-
-  lastAnalysis={revision:REVISION,session_id,consented:!!consentChk.checked,timestamp:new Date().toISOString(),image:{width:imgW,height:imgH},box:{x:+b.x.toFixed(2),y:+b.y.toFixed(2),width:+b.width.toFixed(2),height:+b.height.toFixed(2),area_pct:+areaPct.toFixed(4),aspect:+ar.toFixed(4),center:{x:+cx.toFixed(2),y:+cy.toFixed(2)},center_offset_pct:{x:+offX.toFixed(2),y:+offY.toFixed(2)}},lighting:{brightness_mean:+mean.toFixed(3),contrast_stdev:+stdev.toFixed(3)},sharpness:{laplacian_variance:+sharpVar.toFixed(3)},orientation:orient,hints};
-  logEvt("analysis",{analysis:lastAnalysis});
-}
-
-/* ===== progress & ready HUD ===== */
-const readyBadge=document.getElementById("readyBadge");
-let readyTimer=null;
-function showReady(){readyBadge.style.display="inline-flex";startAnalysisBtn.disabled=false;startAnalysisBtn.classList.add("pulse");if(readyTimer)clearTimeout(readyTimer);readyTimer=setTimeout(()=>{readyBadge.style.display="none";startAnalysisBtn.classList.remove("pulse")},4000)}
-function hideReady(){if(readyTimer)clearTimeout(readyTimer);readyBadge.style.display="none";startAnalysisBtn.disabled=true;startAnalysisBtn.classList.remove("pulse")}
-
-/* ===== detection flow ===== */
-async function detectFlow(){
-  try{
-    hideReady(); lastBox=null; lastCanvas=null; $("analysisCard").style.display="none"; lastAnalysis=null;
-    setProgress(10,"Analyzing…");
-    await ensureBlaze();
-
-    // First render
-    let canvas=renderWorkingCanvas(1024);
-    if(!canvas){ logEvt("error",{render:"failed"}); return }
-    lastCanvas=canvas; paintBaseCanvas(canvas);
-
-    // Rough locate (for auto-zoom)
-    const rctx=cvRough.getContext("2d"); rctx.clearRect(0,0,cvRough.width,cvRough.height);
-    const rough=await (async ()=>{
-      const tinyW=160,tinyH=Math.round(tinyW*(canvas.height/canvas.width));
-      const tmp=Object.assign(document.createElement("canvas"),{width:tinyW,height:tinyH});
-      tmp.getContext("2d").drawImage(canvas,0,0,tinyW,tinyH);
-      const t0=performance.now();const faces=await blazeModel.estimateFaces(tmp,false);const ms=Math.round(performance.now()-t0);
-      if(faces&&faces.length){
-        const f=faces[0];const tl=Array.isArray(f.topLeft)?f.topLeft:await f.topLeft.array();const br=Array.isArray(f.bottomRight)?f.bottomRight:await f.bottomRight.array();
-        const sx=canvas.width/tinyW,sy=canvas.height/tinyH;const box={x:tl[0]*sx,y:tl[1]*sy,width:(br[0]-tl[0])*sx,height:(br[1]-tl[1])*sy};logEvt("detect",{roughLocate_ms:ms,box}); return box
-      }
-      logEvt("detect",{roughLocate_ms:ms,box:null}); return null
-    })();
-    if(rough){
-      rctx.strokeStyle="#06b6d4"; rctx.lineWidth=3; rctx.strokeRect(rough.x,rough.y,rough.width,rough.height);
-      canvas=renderWorkingCanvas(1024,rough); lastCanvas=canvas; paintBaseCanvas(canvas);
-    }
-
-    // Final detect (multi-scale, mirror)
-    const det=await detectBlazeMulti(canvas);
-    const octx=cvOverlay.getContext("2d"); octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
-    if(!det){ logEvt("error",{msg:"BlazeFace found no face"}); setProgress(0,""); return }
-    lastBox=det.box; drawBox(octx,lastBox,"#22c55e",`BlazeFace • ${det.elapsed_ms}ms`);
-    const imgW=canvas.width,imgH=canvas.height; const cx=lastBox.x+lastBox.width/2, cy=lastBox.y+lastBox.height/2;
-    const offX=((cx-imgW/2)/(imgW/2))*100, offY=((cy-imgH/2)/(imgH/2))*100; drawCross(octx,cx,cy,offX,offY);
-    setProgress(90,"BlazeFace OK");
-
-    // Optional face-api refine
-    if(fixModeSel.value!=="blazeonly"){
-      try{
-        await ensureFaceApi();
-        const sizes=[256,192,160,128];
-        for(const s of sizes){
-          const opts=new faceapi.TinyFaceDetectorOptions({inputSize:s,scoreThreshold:0.2});
-          const r=await faceapi.detectSingleFace(canvas,opts).withFaceLandmarks();
-          if(r){
-            const rr=faceapi.resizeResults(r,{width:canvas.width,height:canvas.height});
-            lastBox=rr.detection.box; octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
-            drawBox(octx,lastBox,"#f59e0b",`face-api • ${s}`); const cx2=lastBox.x+lastBox.width/2, cy2=lastBox.y+lastBox.height/2;
-            const offX2=((cx2-imgW/2)/(imgW/2))*100, offY2=((cy2-imgH/2)/(imgH/2))*100; drawCross(octx,cx2,cy2,offX2,offY2);
-            logEvt("detect",{faceapi_success:{inputSize:s,box:lastBox}}); break;
-          }
-        }
-      }catch(e){ logEvt("detect",{faceapiFallbackFail:e&&e.message}) }
-    }
-
-    setProgress(100,"Done.");
-    startAnalysisBtn.disabled=false; showReady();
-    if(autoAnalyzeChk.checked){ startAnalysisBtn.click(); }
-  }catch(e){
-    logEvt("error",{detectFlow:e.message||String(e)})
-  }
-}
-
-/* ===== UI wiring ===== */
-function onTweak(){ if(baseSource){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c); } }
-zoom.addEventListener("input",()=>{zoomLabel.textContent=(+zoom.value).toFixed(2);onTweak()});
-bri.addEventListener("input",()=>{briLabel.textContent=(+bri.value).toFixed(2);onTweak()});
-con.addEventListener("input",()=>{conLabel.textContent=(+con.value).toFixed(2);onTweak()});
-rotDeg.addEventListener("change",onTweak);
-
-copyDiagBtn.addEventListener("click",async()=>{ try{ await navigator.clipboard.writeText(diagnostics.textContent); logEvt('config',{copiedDiagnostics:true}) }catch(e){ logEvt('error',{copyDiagnosticsError:e.message||String(e)}) }});
-clearLogsBtn.addEventListener("click",()=>{ diagnostics.textContent='No diagnostics yet.'; updateDiagCopyBtn() });
-resetBtn.addEventListener("click",()=>{ baseSource=null; imgBase.classList.add('hidden'); logEvt('config',{reset:true}) });
-
-enhanceBtn.addEventListener("click",()=>{ zoom.value=Math.max(+zoom.value,1.5); zoomLabel.textContent=(+zoom.value).toFixed(2); bri.value=Math.max(+bri.value,1.18); briLabel.textContent=(+bri.value).toFixed(2); con.value=Math.max(+con.value,1.25); conLabel.textContent=(+con.value).toFixed(2); detectFlow() });
-detectBtn.addEventListener("click",()=>detectFlow());
-startAnalysisBtn.addEventListener("click",()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis() });
-
-fileInput.addEventListener('change', async ()=>{
-  if(!fileInput.files.length){ return }
-  const f=fileInput.files[0];
-  setProgress(8,'Decoding photo…');
-  try{
-    baseSource = await decodeOriginal(f);
-    const canvas = renderWorkingCanvas(1024);
-    if(canvas){ paintBaseCanvas(canvas); setProgress(12,'Photo ready'); detectBtn.disabled=false; enhanceBtn.disabled=false; }
-  }catch(e){ logEvt('error',{decode_failed:e.message||String(e)}) }
-});
-sampleBtn.addEventListener('click', async ()=>{
-  try{
-    setProgress(5,'Fetching sample…');
-    const u="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
-    const res=await fetch(u,{cache:"no-store"}); if(!res.ok) throw new Error('HTTP '+res.status);
-    const blob=await res.blob();
-    baseSource = await decodeOriginal(blob);
-    const canvas=renderWorkingCanvas(1024);
-    if(canvas){ paintBaseCanvas(canvas); setProgress(12,'Sample ready'); detectBtn.disabled=false; enhanceBtn.disabled=false; }
-    logEvt('detect',{sampleImage:u});
-  }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) }
-});
-
-/* ===== init ===== */
-(function init(){
-  // restore fix mode
-  const saved = localStorage.getItem("yorn_fixMode");
-  if(saved && [...$("fixMode").options].some(o=>o.value===saved)){ $("fixMode").value=saved }
-  $("fixMode").addEventListener("change",()=>{ localStorage.setItem("yorn_fixMode",$("fixMode").value); logEvt("config",{fixMode:$("fixMode").value}) });
-
-  // toggles
-  const showOverlaysChk=$("showOverlays"), showHUDChk=$("showHUD"), autoAnalyzeChk=$("autoAnalyze");
-  const so=(localStorage.getItem("yorn_showOverlays")??"1")==="1"; showOverlaysChk.checked=so;
-  const sh=(localStorage.getItem("yorn_showHUD")??"0")==="1"; showHUDChk.checked=sh;
-  const aa=(localStorage.getItem("yorn_autoAnalyze")??"0")==="1"; autoAnalyzeChk.checked=aa;
-  showOverlaysChk.addEventListener("change",()=>{localStorage.setItem("yorn_showOverlays",showOverlaysChk.checked?"1":"0")});
-  showHUDChk.addEventListener("change",()=>{localStorage.setItem("yorn_showHUD",showHUDChk.checked?"1":"0")});
-  autoAnalyzeChk.addEventListener("change",()=>{localStorage.setItem("yorn_autoAnalyze",autoAnalyzeChk.checked?"1":"0")});
-
-  // finish boot
-  logEvt('config',{boot:'complete'});
+  }catch(_){}
+  banner.textContent = "JS running ✅ — logger online ("+REV+")";
+  log('config',{boot:'ui-ready', rev:REV});
 })();
+
+/* global traps post-boot too */
+window.addEventListener('error', e=>log('error',{global:e.message, at:(e.filename||'')+':'+(e.lineno||'')}));
+window.addEventListener('unhandledrejection', e=>{ const r=e&&e.reason; log('error',{unhandled:(r&&(r.message||r))||String(r)})});
+
+/* buttons */
+$("ping").onclick = ()=> log('config',{ping:'pong', ts:Date.now()});
+
+$("loadSample").onclick = async ()=>{
+  const u="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
+  log('detect',{sampleFetch:u});
+  try{
+    const res=await fetch(u,{cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const blob=await res.blob();
+    const url=URL.createObjectURL(blob);
+    preview.onload=()=>{ URL.revokeObjectURL(url); log('overlay',{painted:{w:preview.naturalWidth,h:preview.naturalHeight}}) };
+    preview.onerror=()=>{ URL.revokeObjectURL(url); log('error',{img:'onerror'}) };
+    preview.src=url;
+    log('detect',{decode:'blob->img', size_bytes:blob.size});
+  }catch(e){
+    log('error',{sample_failed:e.message||String(e)});
+  }
+};
+
+$("file").onchange = async ()=>{
+  if(!$("file").files.length) return;
+  const f=$("file").files[0];
+  log('detect',{file:f.name,size_bytes:f.size});
+  try{
+    const url=URL.createObjectURL(f);
+    preview.onload=()=>{ URL.revokeObjectURL(url); log('overlay',{painted:{w:preview.naturalWidth,h:preview.naturalHeight}}) };
+    preview.onerror=()=>{ URL.revokeObjectURL(url); log('error',{img:'onerror-file'}) };
+    preview.src=url;
+  }catch(e){ log('error',{decode_failed:e.message||String(e)}) }
+};
+
+copyDiag.onclick = async ()=>{ try{ await navigator.clipboard.writeText(diag.textContent); log('config',{copied:true}) }catch(e){ log('error',{copy:e.message||String(e)}) } };
+$("hardReload").onclick = ()=>{ const sep = location.search ? '&' : '?'; location.href = location.pathname + location.search + sep + 'v=' + Date.now() };
 </script>
 </body>
 </html>
