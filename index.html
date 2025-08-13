@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN Alpha — 1.10.3 Copy Diagnostics</title>
+<title>YorN Alpha — 1.10.4 Image Load Fix</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root{color-scheme:light dark}
@@ -34,7 +34,6 @@
   #progressContainer{height:8px;background:#1e293b;border-radius:6px;overflow:hidden;margin-top:8px}
   #progressBar{height:100%;width:0;background:#38bdf8;transition:width .25s}
 
-  /* Preview stack */
   .previewWrap{position:relative}
   #base,#overlayRough,#overlay{display:block;width:100%;height:auto;margin-top:10px;background:#0b1220;border:1px solid #233046;border-radius:8px}
   #overlayRough,#overlay{position:absolute;left:0;top:0}
@@ -51,15 +50,15 @@
   .warn{background:rgba(245,158,11,.15);color:#fde68a;border-color:rgba(245,158,11,.55)}
   .hints{font-size:12px;color:#A9B4C8;margin-top:6px}
   .actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
-  /* badges */
+
   #revBadge{position:fixed;top:8px;right:10px;z-index:9999;background:rgba(0,0,0,.6);color:#fff;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid rgba(255,255,255,.18);border-radius:999px;backdrop-filter:saturate(120%) blur(4px)}
   #readyBadge{position:fixed;top:36px;right:10px;z-index:9999;display:none;background:rgba(16,185,129,.15);color:#a7f3d0;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid rgba(16,185,129,.55);border-radius:999px;backdrop-filter:saturate(120%) blur(4px)}
   #readyDot{display:inline-block;width:8px;height:8px;border-radius:999px;background:#10b981;margin-right:6px}
-  /* HUD */
+
   #hud{position:absolute;left:10px;top:16px;z-index:5;display:none;font:12px ui-monospace,monospace;background:rgba(0,0,0,.55);padding:6px 8px;border:1px solid rgba(255,255,255,.18);border-radius:8px}
   #hud b{color:#93c5fd}
   .fade{transition:opacity .8s ease}
-  /* History */
+
   #history{margin-top:8px}
   #history table{width:100%;border-collapse:collapse;font-size:12px}
   #history th,#history td{border:1px solid #233046;padding:6px}
@@ -192,9 +191,17 @@
 
 <script>
 /* ====== Revision / IDs ====== */
-const REVISION = "1.10.3-alpha";
+const REVISION = "1.10.4-alpha";
 document.getElementById("revText").textContent = REVISION;
 const session_id = crypto.randomUUID();
+
+/* ====== Global error capture → Diagnostics ====== */
+window.addEventListener('error', e => {
+  try{logEvt('error',{global:e.message,at:(e.filename||'')+':'+(e.lineno||'')})}catch(_){}
+});
+window.addEventListener('unhandledrejection', e => {
+  try{logEvt('error',{unhandled:(e.reason&&e.reason.message)||String(e.reason)})}catch(_){}
+});
 
 /* ====== Elements ====== */
 const $ = id => document.getElementById(id);
@@ -229,7 +236,7 @@ function setError(msg){setProgress(0,"");logEvt("error",{error:msg})}
 function setProgress(p,t){progressBar.style.width=(p||0)+'%';progressText.textContent=t||''}
 function updateDiagCopyBtn(){copyDiagBtn.disabled = diagnostics.textContent.trim().length===0 || diagnostics.textContent.includes("No diagnostics yet.")}
 Array.from(document.getElementsByClassName("diagType")).forEach(cb=>cb.addEventListener("change",()=>{if(cb.checked)typeFilters.add(cb.value);else typeFilters.delete(cb.value)}));
-diagSearch.addEventListener("input",()=>{ /* filter applies to new lines only */ });
+diagSearch.addEventListener("input",()=>{});
 
 /* ====== Toggles & persistence ====== */
 function loadToggles(){
@@ -259,26 +266,54 @@ function paintBaseCanvas(canvas){imgBase.src=canvas.toDataURL("image/png");imgBa
 function drawBox(ctx,box,color,label){if(!showOverlays)return;ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(box.x,box.y,box.width,box.height);ctx.fillStyle=color;ctx.font="12px ui-monospace,monospace";ctx.fillText(label,box.x,Math.max(12,box.y-4))}
 function drawCross(ctx,cx,cy,offX,offY){if(!showOverlays)return;ctx.strokeStyle="#60a5fa";ctx.beginPath();ctx.moveTo(cx-8,cy);ctx.lineTo(cx+8,cy);ctx.moveTo(cx,cy-8);ctx.lineTo(cx,cy+8);ctx.stroke();ctx.fillStyle="#60a5fa";ctx.font="12px ui-monospace,monospace";const text=`(${Math.round(cx)},${Math.round(cy)}) | offX ${offX.toFixed(1)}% • offY ${offY.toFixed(1)}%`;const tx=Math.min(cx+10,cvOverlay.width-260),ty=Math.min(cy+14,cvOverlay.height-4);ctx.fillText(text,tx,ty)}
 
-/* ====== Decode & Render ====== */
+/* ====== Decode & Render (robust) ====== */
+async function blobToCanvasViaImg(blob){
+  const url=URL.createObjectURL(blob);
+  try{
+    const img=new Image(); img.decoding="sync"; img.loading="eager";
+    await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url});
+    const c=document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight;
+    c.getContext("2d").drawImage(img,0,0);
+    return c;
+  } finally { URL.revokeObjectURL(url) }
+}
 async function decodeOriginal(fileOrBlob){
-  const bmp=await createImageBitmap(fileOrBlob).catch(async()=>{
-    const url=URL.createObjectURL(fileOrBlob);
-    const img=new Image();await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url});
-    const c=document.createElement("canvas");c.width=img.naturalWidth;c.height=img.naturalHeight;c.getContext("2d").drawImage(img,0,0);
-    URL.revokeObjectURL(url);return createImageBitmap(c)
-  });return bmp
+  // Prefer createImageBitmap if available; otherwise return a Canvas we can draw from.
+  try{
+    if ('createImageBitmap' in window) {
+      const bmp = await createImageBitmap(fileOrBlob);
+      return bmp;
+    }
+  }catch(e){
+    // fall through to canvas route
+  }
+  // Fallback: draw to canvas (works universally, including older Android)
+  return await blobToCanvasViaImg(fileOrBlob);
 }
 function renderWorkingCanvas(targetMax=1024,centerBox=null){
-  if(!baseBitmap)return null;const angle=(parseInt(rotDeg.value,10)||0)%360;let z=parseFloat(zoom.value)||1.0;
-  const br=parseFloat(bri.value)||1.0,cr=parseFloat(con.value)||1.0;
-  const maxSide=Math.max(baseBitmap.width,baseBitmap.height),scale0=Math.min(1,targetMax/maxSide);
-  const w0=Math.max(1,Math.round(baseBitmap.width*scale0)),h0=Math.max(1,Math.round(baseBitmap.height*scale0));
-  let cx=baseBitmap.width/2,cy=baseBitmap.height/2;
-  if(centerBox){cx=centerBox.x+centerBox.width/2;cy=centerBox.y+centerBox.height/2;const zx=(w0/(centerBox.width*scale0))*0.9,zy=(h0/(centerBox.height*scale0))*0.9;z=Math.max(z,Math.min(zx,zy,1.8));logEvt("overlay",{autoZoomApplied:+z.toFixed(2)})}
-  const dstW=w0,dstH=h0,srcW=Math.round(dstW/(scale0*z)),srcH=Math.round(dstH/(scale0*z)),sx=Math.max(0,Math.round(cx-srcW/2)),sy=Math.max(0,Math.round(cy-srcH/2));
+  if(!baseBitmap){setError("No image decoded.");return null;}
+  const angle=(parseInt(rotDeg.value,10)||0)%360; let z=parseFloat(zoom.value)||1.0;
+  const br=parseFloat(bri.value)||1.0, cr=parseFloat(con.value)||1.0;
+  // Determine natural size from bitmap or canvas
+  const srcW0 = baseBitmap.width || baseBitmap.naturalWidth;
+  const srcH0 = baseBitmap.height || baseBitmap.naturalHeight;
+  const maxSide=Math.max(srcW0,srcH0), scale0=Math.min(1,targetMax/maxSide);
+  const w0=Math.max(1,Math.round(srcW0*scale0)), h0=Math.max(1,Math.round(srcH0*scale0));
+  let cx=srcW0/2, cy=srcH0/2;
+  if(centerBox){
+    cx=centerBox.x+centerBox.width/2; cy=centerBox.y+centerBox.height/2;
+    const zx=(w0/(centerBox.width*scale0))*0.9, zy=(h0/(centerBox.height*scale0))*0.9; z=Math.max(z,Math.min(zx,zy,1.8));
+    logEvt("overlay",{autoZoomApplied:+z.toFixed(2)})
+  }
+  const dstW=w0, dstH=h0, srcW=Math.round(dstW/(scale0*z)), srcH=Math.round(dstH/(scale0*z));
+  const sx=Math.max(0,Math.round(cx-srcW/2)), sy=Math.max(0,Math.round(cy-srcH/2));
   const c=ensureWorkCanvas(); if((angle%180)===0){c.width=dstW;c.height=dstH}else{c.width=dstH;c.height=dstW}
-  const ctx=c.getContext("2d");ctx.save();ctx.clearRect(0,0,c.width,c.height);ctx.translate(c.width/2,c.height/2);ctx.rotate(angle*Math.PI/180);ctx.filter=`brightness(${br}) contrast(${cr})`;ctx.drawImage(baseBitmap,sx,sy,srcW,srcH,-dstW/2,-dstH/2,dstW,dstH);ctx.restore();
-  return c
+  const ctx=c.getContext("2d"); ctx.save(); ctx.clearRect(0,0,c.width,c.height);
+  ctx.translate(c.width/2,c.height/2); ctx.rotate(angle*Math.PI/180);
+  ctx.filter=`brightness(${br}) contrast(${cr})`;
+  ctx.drawImage(baseBitmap, sx,sy, Math.max(1,srcW),Math.max(1,srcH), -dstW/2,-dstH/2, dstW,dstH);
+  ctx.restore();
+  return c;
 }
 
 /* ====== Models ====== */
@@ -287,14 +322,24 @@ function downsample(canvas,w,mirror=false){const h=Math.round(w*(canvas.height/c
 async function detectBlazeMulti(canvas){
   const configs=[{w:256,mirror:false},{w:384,mirror:false},{w:512,mirror:false},{w:384,mirror:true},{w:512,mirror:true}];
   for(const cfg of configs){
-    const tmp=downsample(canvas,cfg.w,cfg.mirror);const t0=performance.now();const faces=await blazeModel.estimateFaces(tmp,false);const ms=Math.round(performance.now()-t0);
+    const tmp=downsample(canvas,cfg.w,cfg.mirror);
+    const t0=performance.now();
+    const faces=await blazeModel.estimateFaces(tmp,false);
+    const ms=Math.round(performance.now()-t0);
     if(faces&&faces.length){
-      const f=faces[0];const tl=Array.isArray(f.topLeft)?f.topLeft:await f.topLeft.array();const br=Array.isArray(f.bottomRight)?f.bottomRight:await f.bottomRight.array();
-      const sx=canvas.width/tmp.width,sy=canvas.height/tmp.height;let x=tl[0]*sx,y=tl[1]*sy;width=(br[0]-tl[0])*sx;height=(br[1]-tl[1])*sy;if(cfg.mirror){x=canvas.width-(x+width)}
-      const box={x,y,width,height}; logEvt("detect",{finalDetect_ms:ms,scale:cfg.w,mirror:cfg.mirror,box}); return {elapsed_ms:ms,box}
+      const f=faces[0];
+      const tl=Array.isArray(f.topLeft)?f.topLeft:await f.topLeft.array();
+      const br=Array.isArray(f.bottomRight)?f.bottomRight:await f.bottomRight.array();
+      const sx=canvas.width/tmp.width, sy=canvas.height/tmp.height;
+      let x=tl[0]*sx, y=tl[1]*sy, w=(br[0]-tl[0])*sx, h=(br[1]-tl[1])*sy;
+      if(cfg.mirror){ x=canvas.width-(x+w) }
+      const box={x,y,width:w,height:h};
+      logEvt("detect",{finalDetect_ms:ms,scale:cfg.w,mirror:cfg.mirror,box});
+      return {elapsed_ms:ms,box}
     }
   }
-  logEvt("detect",{finalDetect:"no face"}); return null
+  logEvt("detect",{finalDetect:"no face"});
+  return null
 }
 
 /* ====== face-api optional ====== */
@@ -321,7 +366,8 @@ async function detectFlow(){
   try{
     hideReady(); lastBox=null; lastCanvas=null; analysisCard.style.display="none"; lastAnalysis=null; disableExport(); hud.style.display="none"; setProgress(10,"Analyzing…");
     await ensureBlaze();
-    let canvas=renderWorkingCanvas(1024); lastCanvas=canvas; paintBaseCanvas(canvas);
+    let canvas=renderWorkingCanvas(1024); if(!canvas){setError("Render failed.");return}
+    lastCanvas=canvas; paintBaseCanvas(canvas);
 
     // rough layer
     const rctx=cvRough.getContext("2d"); rctx.clearRect(0,0,cvRough.width,cvRough.height);
@@ -337,13 +383,14 @@ async function detectFlow(){
       logEvt("detect",{roughLocate_ms:ms,box:null}); return null
     })();
     if(rough){
-      drawBox(rctx,rough,"#06b6d4","rough"); cvRough.style.opacity="1"; if(roughFadeTimer) clearTimeout(roughFadeTimer); roughFadeTimer=setTimeout(()=>{cvRough.style.opacity="0"},1200);
+      drawBox(rctx,rough,"#06b6d4","rough"); cvRough.classList.remove("hidden"); cvRough.style.opacity="1";
+      if(roughFadeTimer) clearTimeout(roughFadeTimer); roughFadeTimer=setTimeout(()=>{cvRough.style.opacity="0"},1200);
       canvas=renderWorkingCanvas(1024,rough); lastCanvas=canvas; paintBaseCanvas(canvas); drawBox(rctx,rough,"#06b6d4","rough");
     }
 
     // final detection
     const det=await detectBlazeMulti(canvas);
-    const octx=cvOverlay.getContext("2d"); octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
+    const octx=cvOverlay.getContext("2d"); cvOverlay.classList.remove("hidden"); octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
     if(!det){ setError("Blaze-only mode: no face."); return; }
     lastBox=det.box; drawBox(octx,lastBox,"#22c55e",`BlazeFace • ${det.elapsed_ms}ms`); placeCenterCross(octx); setProgress(90,"BlazeFace OK.");
 
@@ -419,7 +466,7 @@ function historyToTable(rows){
   if(persistHistory){localStorage.setItem("yorn_history",JSON.stringify(rows));}
 }
 function addToHistory(entry){history.unshift(entry);historyToTable(history);updateHistoryButtons();}
-exportAllJSON.addEventListener("click",()=>{const blob=new Blob([JSON.stringify(history,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=Object.assign(document.createElement("a"),{href=url,download:`yorn-history-${REVISION}.json`});document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);});
+exportAllJSON.addEventListener("click",()=>{const blob=new Blob([JSON.stringify(history,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=Object.assign(document.createElement("a"),{href:url,download:`yorn-history-${REVISION}.json`});document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);});
 exportAllCSV.addEventListener("click",()=>{if(!history.length)return;const cols=["timestamp","consented","area_pct","bri","con","sharp","offX","offY","rev"];const rows=history.map(h=>[h.timestamp,h.consented,h.box.area_pct,h.lighting.brightness_mean,h.lighting.contrast_stdev,h.sharpness.laplacian_variance,h.box.center_offset_pct.x,h.box.center_offset_pct.y,h.revision]);const csv=[cols.join(","),...rows.map(r=>r.join(","))].join("\n");const blob=new Blob([csv],{type:"text/csv"});const url=URL.createObjectURL(blob);const a=Object.assign(document.createElement("a"),{href=url,download:`yorn-history-${REVISION}.csv`});document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);});
 clearHistory.addEventListener("click",()=>{history=[];historyToTable(history);updateHistoryButtons();logEvt("config",{historyCleared:true})});
 
@@ -443,22 +490,26 @@ zoom.addEventListener("input",()=>{zoomLabel.textContent=(+zoom.value).toFixed(2
 bri.addEventListener("input",()=>{briLabel.textContent=(+bri.value).toFixed(2);onTweak()});
 con.addEventListener("input",()=>{conLabel.textContent=(+con.value).toFixed(2);onTweak()});
 rotDeg.addEventListener("change",onTweak);
-document.getElementById("rerunBtn").addEventListener("click",()=>{const vals=["blazeonly","cdn","native"];const idx=vals.indexOf(fixModeSel.value);const next=vals[(idx+1)%vals.length];fixModeSel.value=next;localStorage.setItem("yorn_fixMode",next);logEvt("config",{rerunWith:next});detectFlow()});
-document.getElementById("resetBtn").addEventListener("click",()=>{rotDeg.value=0;zoom.value=1.2;bri.value=1.10;con.value=1.15;zoomLabel.textContent="1.2";briLabel.textContent="1.10";conLabel.textContent="1.15";if(baseBitmap){const c=renderWorkingCanvas(1024);lastCanvas=c;paintBaseCanvas(c)}});
+rerunBtn.addEventListener("click",()=>{const vals=["blazeonly","cdn","native"];const idx=vals.indexOf(fixModeSel.value);const next=vals[(idx+1)%vals.length];fixModeSel.value=next;localStorage.setItem("yorn_fixMode",next);logEvt("config",{rerunWith:next});detectFlow()});
+resetBtn.addEventListener("click",()=>{rotDeg.value=0;zoom.value=1.2;bri.value=1.10;con.value=1.15;zoomLabel.textContent="1.2";briLabel.textContent="1.10";conLabel.textContent="1.15";if(baseBitmap){const c=renderWorkingCanvas(1024);lastCanvas=c;paintBaseCanvas(c)}});
 
 /* ====== File & sample ====== */
 async function handleBlob(blob,label){
-  hideReady(); lastBox=null; lastCanvas=null; analysisCard.style.display="none"; lastAnalysis=null; disableExport(); hud.style.display="none";
-  imgBase.classList.add("hidden"); cvOverlay.classList.add("hidden"); cvRough.classList.add("hidden");
-  setProgress(8,`Decoding ${label}…`);
-  baseBitmap = await decodeOriginal(blob);
-  logEvt("detect",{fileName:(blob.name||label),size_bytes:blob.size||0});
-  setProgress(12,`${label} ready.`);
-  const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c);
-  detectBtn.disabled=false; enhanceBtn.disabled=false; if(savePngBtn) savePngBtn.disabled=false; rerunBtn.disabled=false;
+  try{
+    hideReady(); lastBox=null; lastCanvas=null; analysisCard.style.display="none"; lastAnalysis=null; disableExport(); hud.style.display="none";
+    imgBase.classList.add("hidden"); cvOverlay.classList.add("hidden"); cvRough.classList.add("hidden");
+    setProgress(8,`Decoding ${label}…`);
+    baseBitmap = await decodeOriginal(blob);
+    logEvt("detect",{fileName:(blob.name||label),size_bytes:blob.size||0});
+    setProgress(12,`${label} ready.`);
+    const c=renderWorkingCanvas(1024); if(!c){setError("Render failed after decode.");return}
+    lastCanvas=c; paintBaseCanvas(c);
+    detectBtn.disabled=false; enhanceBtn.disabled=false; if(savePngBtn) savePngBtn.disabled=false; rerunBtn.disabled=false;
+  }catch(e){ setError("Decode failed: "+(e.message||String(e))) }
 }
 fileInput.addEventListener("change",async()=>{if(!fileInput.files.length){detectBtn.disabled=true;enhanceBtn.disabled=true;if(savePngBtn)savePngBtn.disabled=true;startAnalysisBtn.disabled=true;analysisCard.style.display="none";lastAnalysis=null;disableExport();return}const f=fileInput.files[0];await handleBlob(f,"photo")});
-sampleBtn.addEventListener("click",async()=>{const u="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";const res=await fetch(u,{cache:"no-store"});const blob=await res.blob();await handleBlob(blob,"sample");logEvt("detect",{sampleImage:u});detectFlow()});
+sampleBtn.addEventListener("click",async()=>{try{const u="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";const res=await fetch(u,{cache:"no-store"});const blob=await res.blob();await handleBlob(blob,"sample");logEvt("detect",{sampleImage:u});detectFlow()}catch(e){setError("Sample load failed: "+(e.message||String(e)))}});
+
 enhanceBtn.addEventListener("click",()=>{zoom.value=Math.max(+zoom.value,1.5);zoomLabel.textContent=(+zoom.value).toFixed(2);bri.value=Math.max(+bri.value,1.18);briLabel.textContent=(+bri.value).toFixed(2);con.value=Math.max(+con.value,1.25);conLabel.textContent=(+con.value).toFixed(2);detectFlow()});
 detectBtn.addEventListener("click",()=>detectFlow());
 startAnalysisBtn.addEventListener("click",()=>{if(startAnalysisBtn.disabled)return;logEvt("analysis",{analysisRequested:true,mode:"light"});runLightAnalysis()});
