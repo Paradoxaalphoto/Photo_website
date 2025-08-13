@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN Alpha — Ready Indicator + Mobile Stable</title>
+<title>YorN Alpha — Detection + Lightweight Analysis</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root{color-scheme:light dark}
@@ -15,7 +15,7 @@
   .container{max-width:980px; margin:0 auto; padding:16px}
   h2{margin:8px 0 0 0}
   .card{background:#0f172a; border:1px solid #233046; border-radius:12px; padding:12px; margin-top:12px}
-  .row{display:grid; grid-template-columns:1fr auto auto auto auto auto; gap:8px; align-items:end}
+  .row{display:grid; grid-template-columns:1fr auto auto auto auto auto auto; gap:8px; align-items:end}
   .controls{display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:8px}
   @media (max-width: 720px){
     .row{grid-template-columns:1fr; gap:10px}
@@ -31,6 +31,9 @@
   .btn{padding:10px 14px; border-radius:8px; border:1px solid #233046; background:#1f2937; color:#E6EAF2}
   .btn[disabled]{opacity:.5; cursor:not-allowed}
   .btn-secondary{background:#0b1220}
+  .btn-primary{background:#2563eb}
+  .pulse{animation:pulse 1.2s ease-in-out 2}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(37,99,235,.5)}70%{box-shadow:0 0 0 12px rgba(37,99,235,0)}100%{box-shadow:0 0 0 0 rgba(37,99,235,0)}}
   #progressContainer{height:8px; background:#1e293b; border-radius:6px; overflow:hidden; margin-top:8px}
   #progressBar{height:100%; width:0; background:#38bdf8; transition:width .25s}
   #thumb, #overlay{display:block; width:100%; height:auto; margin-top:10px; background:#0b1220; border:1px solid #233046; border-radius:8px}
@@ -42,7 +45,12 @@
     background:#0b1220; border:1px solid #233046; border-radius:8px; padding:8px;
     height:220px; max-height:40vh; overflow:auto;
   }
-  /* Badges (fixed, do not affect layout) */
+  .analysis-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .kv{display:flex; justify-content:space-between; gap:8px; font-size:13px; padding:6px 8px; background:#0b1220; border:1px solid #233046; border-radius:8px}
+  .kv b{color:#c7d2fe}
+  .hints{font-size:12px; color:#A9B4C8; margin-top:6px}
+  .actions{display:flex; gap:8px; margin-top:8px}
+  /* Badges (fixed) */
   #revBadge{
     position:fixed; top:8px; right:10px; z-index:9999;
     background:rgba(0,0,0,.6); color:#fff; font:12px ui-monospace,monospace;
@@ -55,12 +63,10 @@
     padding:3px 8px; border:1px solid rgba(16,185,129,.55); border-radius:999px;
     backdrop-filter:saturate(120%) blur(4px)
   }
-  #readyDot{
-    display:inline-block; width:8px; height:8px; border-radius:999px; background:#10b981; margin-right:6px
-  }
+  #readyDot{display:inline-block; width:8px; height:8px; border-radius:999px; background:#10b981; margin-right:6px}
 </style>
 
-<!-- Scripts: TFJS → BlazeFace → face-api (only for Fix 1) -->
+<!-- Scripts: TFJS → BlazeFace → face-api (only for Fix 1 refinement) -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
@@ -70,35 +76,24 @@
 <div id="readyBadge"><span id="readyDot"></span><span id="readyText">Ready for Analysis</span></div>
 
 <div class="container">
-  <h2>YorN Alpha — Face Analysis</h2>
+  <h2>YorN Alpha — Face Detection & Lightweight Analysis</h2>
 
   <div class="card">
     <div class="row">
       <input id="fileInput" type="file" accept="image/*" />
       <button id="sampleBtn" class="btn btn-secondary">Load Sample Image</button>
       <button id="enhanceBtn" class="btn btn-secondary" disabled>Auto‑Enhance & Retry</button>
-      <button id="analyzeBtn" class="btn" disabled>Analyze</button>
+      <button id="analyzeBtn" class="btn" disabled>Detect</button>
+      <button id="startAnalysisBtn" class="btn btn-primary" disabled>Start Analysis</button>
       <button id="savePngBtn" class="btn btn-secondary" disabled>Save Debug Snapshot</button>
       <button id="clearLogsBtn" class="btn btn-secondary">Clear Logs</button>
     </div>
 
     <div class="controls">
-      <div>
-        <label>Rotate (°)</label>
-        <input id="rotDeg" type="number" step="90" value="0" />
-      </div>
-      <div>
-        <label>Zoom (0.8–2.0): <span id="zoomLabel">1.2</span></label>
-        <input id="zoom" type="range" min="0.8" max="2.0" step="0.05" value="1.2" />
-      </div>
-      <div>
-        <label>Brightness: <span id="briLabel">1.10</span></label>
-        <input id="bri" type="range" min="0.8" max="1.4" step="0.02" value="1.10" />
-      </div>
-      <div>
-        <label>Contrast: <span id="conLabel">1.15</span></label>
-        <input id="con" type="range" min="0.8" max="1.6" step="0.02" value="1.15" />
-      </div>
+      <div><label>Rotate (°)</label><input id="rotDeg" type="number" step="90" value="0" /></div>
+      <div><label>Zoom (0.8–2.0): <span id="zoomLabel">1.2</span></label><input id="zoom" type="range" min="0.8" max="2.0" step="0.05" value="1.2" /></div>
+      <div><label>Brightness: <span id="briLabel">1.10</span></label><input id="bri" type="range" min="0.8" max="1.4" step="0.02" value="1.10" /></div>
+      <div><label>Contrast: <span id="conLabel">1.15</span></label><input id="con" type="range" min="0.8" max="1.6" step="0.02" value="1.15" /></div>
       <div>
         <label>Fix mode</label>
         <select id="fixMode">
@@ -126,25 +121,57 @@
       </div>
     </div>
   </div>
+
+  <div class="card" id="analysisCard" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <strong>Analysis</strong>
+      <div class="actions">
+        <button id="copyJsonBtn" class="btn btn-secondary" disabled>Copy JSON</button>
+        <button id="exportJsonBtn" class="btn btn-secondary" disabled>Download JSON</button>
+      </div>
+    </div>
+    <div class="analysis-grid" style="margin-top:8px">
+      <div class="kv"><span>Face area</span><b id="kv_area">—</b></div>
+      <div class="kv"><span>Aspect ratio</span><b id="kv_ar">—</b></div>
+      <div class="kv"><span>Orientation</span><b id="kv_orient">—</b></div>
+      <div class="kv"><span>Brightness (mean)</span><b id="kv_bri">—</b></div>
+      <div class="kv"><span>Contrast (stdev)</span><b id="kv_contrast">—</b></div>
+      <div class="kv"><span>Sharpness (Laplacian var)</span><b id="kv_sharp">—</b></div>
+      <div class="kv"><span>Center offset X</span><b id="kv_offx">—</b></div>
+      <div class="kv"><span>Center offset Y</span><b id="kv_offy">—</b></div>
+    </div>
+    <div class="hints" id="analysisHints"></div>
+  </div>
 </div>
 
 <script>
-/* ==== Revision: change this per build ==== */
-const REVISION = "1.6.0-alpha";
+/* ==== Revision ==== */
+const REVISION = "1.8.0-alpha";
 document.getElementById("revText").textContent = REVISION;
 
 /* ---------- Helpers ---------- */
 const $ = id => document.getElementById(id);
-const fileInput = $("fileInput"), sampleBtn = $("sampleBtn"), analyzeBtn = $("analyzeBtn"), enhanceBtn = $("enhanceBtn"), savePngBtn = $("savePngBtn"), clearLogsBtn = $("clearLogsBtn");
+const fileInput = $("fileInput"), sampleBtn = $("sampleBtn"), analyzeBtn = $("analyzeBtn"), enhanceBtn = $("enhanceBtn");
+const startAnalysisBtn = $("startAnalysisBtn"), savePngBtn = $("savePngBtn"), clearLogsBtn = $("clearLogsBtn");
+const copyJsonBtn = $("copyJsonBtn"), exportJsonBtn = $("exportJsonBtn");
 const fixModeSel = $("fixMode");
 const overlay = $("overlay"), thumb = $("thumb");
 const progressBar = $("progressBar"), progressText = $("progressText");
 const diagnostics = $("diagnostics");
 const rotDeg = $("rotDeg"), zoom = $("zoom"), zoomLabel = $("zoomLabel"), bri = $("bri"), briLabel = $("briLabel"), con = $("con"), conLabel = $("conLabel");
 const readyBadge = $("readyBadge");
+const analysisCard = $("analysisCard");
+const kv = {
+  area:$("kv_area"), ar:$("kv_ar"), orient:$("kv_orient"),
+  bri:$("kv_bri"), contrast:$("kv_contrast"), sharp:$("kv_sharp"),
+  offx:$("kv_offx"), offy:$("kv_offy")
+};
 
 let baseBitmap = null, workCanvas = null, blazeModel = null, faceApiReady = false;
 let readyTimeout = null;
+let lastCanvas = null;         // canvas used for detection render
+let lastBox = null;            // latest final face box {x,y,width,height}
+let lastAnalysis = null;       // last analysis JSON blob
 
 /* Diagnostics trimming (~20KB) */
 function trimDiag(){ const MAX=20000, CUT=15000; if(diagnostics.textContent.length>MAX){ diagnostics.textContent = diagnostics.textContent.slice(0,CUT); } }
@@ -153,14 +180,24 @@ function logDiag(obj){ const now=new Date().toISOString(); const txt=typeof obj=
 function setError(msg){ setProgress(0,""); logDiag({ error: msg }); hideReady(); }
 function ensureWorkCanvas(){ if(!workCanvas){ workCanvas = document.createElement("canvas"); } return workCanvas; }
 
-/* Ready-for-analysis indicator */
+/* Ready-for-analysis indicator + button enable */
 function showReady(){
   readyBadge.style.display = "inline-flex";
-  logDiag({ readyForAnalysis: true, revision: REVISION });
+  startAnalysisBtn.disabled = false;
+  startAnalysisBtn.classList.add("pulse");
+  logDiag({ readyForAnalysis: true, revision: REVISION, box: lastBox });
   if(readyTimeout) clearTimeout(readyTimeout);
-  readyTimeout = setTimeout(()=>{ readyBadge.style.display="none"; }, 4000);
+  readyTimeout = setTimeout(()=>{
+    readyBadge.style.display="none";
+    startAnalysisBtn.classList.remove("pulse");
+  }, 4000);
 }
-function hideReady(){ if(readyTimeout) clearTimeout(readyTimeout); readyBadge.style.display="none"; }
+function hideReady(){
+  if(readyTimeout) clearTimeout(readyTimeout);
+  readyBadge.style.display="none";
+  startAnalysisBtn.disabled = true;
+  startAnalysisBtn.classList.remove("pulse");
+}
 
 /* Drawing */
 function paintBase(canvas){
@@ -284,7 +321,7 @@ async function roughLocate(canvas){
     const tl=Array.isArray(f.topLeft)?f.topLeft:await f.topLeft.array();
     const br=Array.isArray(f.bottomRight)?f.bottomRight:await f.bottomRight.array();
     const sx=canvas.width/tinyW, sy=canvas.height/tinyH;
-    const box={x:tl[0]*sx, y:tl[1]*sy, width:(br[0]-tl[0])*sx, height:(br[1]-tl[1])/*sy*/ * sy};
+    const box={x:tl[0]*sx, y:tl[1]*sy, width:(br[0]-tl[0])*sx, height:(br[1]-tl[1])*sy};
     logDiag({ roughLocate_ms:ms, box });
     return box;
   }
@@ -292,7 +329,7 @@ async function roughLocate(canvas){
   return null;
 }
 
-/* face-api (Fix 1) */
+/* face-api (Fix 1 refinement) */
 let FA_WEIGHTS=null;
 async function fetchJson(url){ const r=await fetch(url,{cache:"no-store"}); if(!r.ok) throw new Error("status "+r.status); return r.json(); }
 async function verifyManifestAndShards(base, name){
@@ -342,7 +379,7 @@ async function detectWithFaceDetector(canvas){
 /* Flow */
 async function analyzeFlow(auto=false){
   try{
-    hideReady();
+    hideReady(); lastBox=null; lastCanvas=null; analysisCard.style.display="none"; lastAnalysis=null; disableExport();
     if(!baseBitmap){ setError("No image decoded."); return; }
     const mode = fixModeSel.value; // 'cdn' | 'blazeonly' | 'native'
     setProgress(10, `Analyzing… (${mode})`);
@@ -365,7 +402,11 @@ async function analyzeFlow(auto=false){
         if(rFD){ drawBox(rFD.box, "#93c5fd", `FaceDetector • ${rFD.elapsed_ms}ms`); setProgress(70,"FaceDetector ok; confirming…"); }
       }catch(e){ logDiag({ nativeFaceDetector: e.message }); }
       const detN = await detectBlazeMulti(canvas);
-      if(detN){ drawBox(detN.box, "#22c55e", `BlazeFace • ${detN.elapsed_ms}ms`); setProgress(100,"Done (native mode)."); showReady(); return; }
+      if(detN){
+        drawBox(detN.box, "#22c55e", `BlazeFace • ${detN.elapsed_ms}ms`);
+        setProgress(100,"Done (native mode).");
+        lastBox = detN.box; lastCanvas = canvas; showReady(); return;
+      }
       setError("Native mode: no face. Try more zoom/brightness."); return;
     }
 
@@ -373,6 +414,7 @@ async function analyzeFlow(auto=false){
     if(det){
       drawBox(det.box, "#22c55e", `BlazeFace • ${det.elapsed_ms}ms`);
       setProgress(90, "BlazeFace OK.");
+      lastBox = det.box; lastCanvas = canvas;
       if(mode === "blazeonly"){ setProgress(100,"Done (Blaze only)."); showReady(); return; }
     } else if(mode === "blazeonly"){
       setError("Blaze-only mode: no face. Adjust zoom/lighting."); return;
@@ -389,28 +431,192 @@ async function analyzeFlow(auto=false){
           drawBox(rr.detection.box, "#f59e0b", `face-api • ${s}`);
           logDiag({ faceapi_success: { inputSize:s, box: rr.detection.box } });
           setProgress(100, "Done (face-api).");
-          showReady();
+          lastBox = rr.detection.box; lastCanvas = canvas; showReady();
           return;
         }
       }
       logDiag({ faceapi: "no detection" });
-      if(det){ setProgress(100,"Done (BlazeFace only; face‑api none)."); showReady(); }
+      if(lastBox){ setProgress(100,"Done (BlazeFace only; face‑api none)."); showReady(); }
       else { setError("No face after face‑api."); }
     }catch(e){
       logDiag({ faceapiFallbackFail: e && e.message });
-      if(det){ setProgress(100,"Done (BlazeFace only; face‑api unavailable)."); showReady(); }
+      if(lastBox){ setProgress(100,"Done (BlazeFace only; face‑api unavailable)."); showReady(); }
       else { setError("face‑api unavailable and BlazeFace failed."); }
     }
 
   }catch(e){ setError(e.message || String(e)); }
 }
 
+/* --------- Lightweight Analysis (no extra models) --------- */
+function toGrayLuma(r,g,b){ return 0.299*r + 0.587*g + 0.114*b; }
+
+/* Crop the face box into a 128x128 canvas for fast stats */
+function cropFace(canvas, box, size=128){
+  const c = document.createElement("canvas");
+  c.width = size; c.height = size;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(
+    canvas,
+    Math.max(0, Math.round(box.x)), Math.max(0, Math.round(box.y)),
+    Math.max(1, Math.round(box.width)), Math.max(1, Math.round(box.height)),
+    0, 0, size, size
+  );
+  return c;
+}
+
+/* Compute brightness mean and stdev on grayscale */
+function meanStdevGray(imgData){
+  const d = imgData.data; const n = d.length/4;
+  let sum=0, sum2=0;
+  for(let i=0;i<d.length;i+=4){
+    const y = toGrayLuma(d[i], d[i+1], d[i+2]);
+    sum += y; sum2 += y*y;
+  }
+  const mean = sum/n;
+  const variance = Math.max(0, (sum2/n) - (mean*mean));
+  const stdev = Math.sqrt(variance);
+  return { mean, stdev };
+}
+
+/* Laplacian variance sharpness (simple 3x3 kernel) */
+function laplacianVariance(gray, w, h){
+  const k = [0,1,0,1,-4,1,0,1,0];
+  let sum=0, sum2=0, count=0;
+  for(let y=1; y<h-1; y++){
+    for(let x=1; x<w-1; x++){
+      const i=(y*w+x);
+      // conv
+      let v=0;
+      v += gray[i-w]     * k[1];
+      v += gray[i-1]     * k[3];
+      v += gray[i]       * k[4];
+      v += gray[i+1]     * k[5];
+      v += gray[i+w]     * k[7];
+      // corners/zeros ignored for speed (kernel sparse)
+      sum += v; sum2 += v*v; count++;
+    }
+  }
+  const mean = sum/Math.max(1,count);
+  const variance = Math.max(0,(sum2/Math.max(1,count)) - mean*mean);
+  return variance;
+}
+
+/* Run analysis using lastCanvas & lastBox */
+function runLightAnalysis(){
+  if(!lastCanvas || !lastBox){ setError("Analysis requested but no detection box."); return; }
+  const imgW = lastCanvas.width, imgH = lastCanvas.height;
+  const b = lastBox;
+
+  // Area %
+  const areaPct = (b.width*b.height)/(imgW*imgH)*100;
+
+  // Aspect + orientation
+  const ar = b.width / b.height;
+  let orient = "near-square";
+  if(ar >= 1.15) orient = "landscape";
+  else if(ar <= 0.87) orient = "portrait";
+
+  // Center offsets (% of half-dimensions, signed)
+  const cx = b.x + b.width/2, cy = b.y + b.height/2;
+  const offX = ((cx - imgW/2)/(imgW/2))*100;
+  const offY = ((cy - imgH/2)/(imgH/2))*100;
+
+  // Crop & stats
+  const crop = cropFace(lastCanvas, b, 128);
+  const id = crop.getContext("2d").getImageData(0,0,128,128);
+  const { mean, stdev } = meanStdevGray(id);
+
+  // Build grayscale buffer for sharpness
+  const gray = new Float32Array(128*128);
+  for(let i=0, p=0; i<id.data.length; i+=4, p++){
+    gray[p] = toGrayLuma(id.data[i], id.data[i+1], id.data[i+2]);
+  }
+  const sharpVar = laplacianVariance(gray, 128, 128);
+
+  // Hints / thresholds (tunable)
+  const hints = [];
+  if(mean < 90) hints.push("Lighting: a bit dark");
+  else if(mean > 165) hints.push("Lighting: a bit bright");
+  else hints.push("Lighting: good");
+
+  if(stdev < 30) hints.push("Contrast: low (soft)");
+  else if(stdev > 60) hints.push("Contrast: high");
+  else hints.push("Contrast: good");
+
+  if(sharpVar < 35) hints.push("Sharpness: likely blurry");
+  else if(sharpVar < 120) hints.push("Sharpness: moderate");
+  else hints.push("Sharpness: crisp");
+
+  const offMag = Math.hypot(offX, offY);
+  if(offMag > 25) hints.push("Framing: notably off‑center");
+  else if(offMag > 12) hints.push("Framing: slightly off‑center");
+  else hints.push("Framing: centered");
+
+  // Fill UI
+  analysisCard.style.display = "";
+  kv.area.textContent = areaPct.toFixed(2) + " %";
+  kv.ar.textContent = ar.toFixed(3);
+  kv.orient.textContent = orient;
+  kv.bri.textContent = mean.toFixed(1);
+  kv.contrast.textContent = stdev.toFixed(1);
+  kv.sharp.textContent = sharpVar.toFixed(1);
+  kv.offx.textContent = (offX>=0?"+":"") + offX.toFixed(1) + " %";
+  kv.offy.textContent = (offY>=0?"+":"") + offY.toFixed(1) + " %";
+  $("analysisHints").textContent = "Hints: " + hints.join(" • ");
+
+  // Build full JSON blob (detailed)
+  const analysis = {
+    revision: REVISION,
+    image: { width: imgW, height: imgH },
+    box: {
+      x: +b.x.toFixed(2), y: +b.y.toFixed(2),
+      width: +b.width.toFixed(2), height: +b.height.toFixed(2),
+      area_pct: +areaPct.toFixed(4), aspect: +ar.toFixed(4),
+      center: { x: +cx.toFixed(2), y: +cy.toFixed(2) },
+      center_offset_pct: { x: +offX.toFixed(2), y: +offY.toFixed(2) }
+    },
+    lighting: { brightness_mean: +mean.toFixed(3), contrast_stdev: +stdev.toFixed(3) },
+    sharpness: { laplacian_variance: +sharpVar.toFixed(3) },
+    orientation: orient,
+    hints
+  };
+  lastAnalysis = analysis;
+  enableExport();
+  logDiag({ analysis });
+
+  // (Optional) draw a small crosshair at face center
+  const ctx = overlay.getContext("2d");
+  ctx.strokeStyle = "#60a5fa";
+  ctx.beginPath();
+  ctx.moveTo(cx-8, cy); ctx.lineTo(cx+8, cy);
+  ctx.moveTo(cx, cy-8); ctx.lineTo(cx, cy+8);
+  ctx.stroke();
+}
+
+/* Export helpers */
+function enableExport(){ copyJsonBtn.disabled = false; exportJsonBtn.disabled = false; }
+function disableExport(){ copyJsonBtn.disabled = true; exportJsonBtn.disabled = true; }
+copyJsonBtn.addEventListener("click", async ()=>{
+  if(!lastAnalysis) return;
+  const text = JSON.stringify(lastAnalysis, null, 2);
+  try{ await navigator.clipboard.writeText(text); logDiag("analysis JSON copied to clipboard"); }
+  catch(e){ logDiag({ copyError:e && e.message }); }
+});
+exportJsonBtn.addEventListener("click", ()=>{
+  if(!lastAnalysis) return;
+  const blob = new Blob([JSON.stringify(lastAnalysis,null,2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement("a"), { href:url, download:`yorn-analysis-${REVISION}.json` });
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  logDiag("analysis JSON downloaded");
+});
+
 /* Events & UX */
 const onTweak = ()=>{ if(baseBitmap){ const c = renderWorkingCanvas(1024); paintBase(c); } };
-zoom.addEventListener("input", ()=>{ zoomLabel.textContent=(+zoom.value).toFixed(2); onTweak(); });
-bri.addEventListener("input", ()=>{ briLabel.textContent=(+bri.value).toFixed(2); onTweak(); });
-con.addEventListener("input", ()=>{ conLabel.textContent=(+con.value).toFixed(2); onTweak(); });
-rotDeg.addEventListener("change", onTweak);
+$("zoom").addEventListener("input", ()=>{ $("zoomLabel").textContent=(+$("zoom").value).toFixed(2); onTweak(); });
+$("bri").addEventListener("input", ()=>{ $("briLabel").textContent=(+$("bri").value).toFixed(2); onTweak(); });
+$("con").addEventListener("input", ()=>{ $("conLabel").textContent=(+$("con").value).toFixed(2); onTweak(); });
+$("rotDeg").addEventListener("change", onTweak);
 
 function setModeFromStorage(){
   const saved = localStorage.getItem("yorn_fixMode");
@@ -420,18 +626,24 @@ fixModeSel.addEventListener("change", ()=>{ localStorage.setItem("yorn_fixMode",
 
 async function handleBlob(blob, label){
   overlay.classList.add("hidden"); progressText.textContent="";
-  hideReady();
+  hideReady(); lastBox=null; lastCanvas=null; analysisCard.style.display="none"; lastAnalysis=null; disableExport();
   thumb.src = URL.createObjectURL(blob); thumb.classList.remove("hidden");
   setProgress(8,`Decoding ${label}…`);
   baseBitmap = await decodeOriginal(blob);
   setProgress(12,`${label} ready.`);
   const c = renderWorkingCanvas(1024);
   paintBase(c);
-  analyzeBtn.disabled=false; enhanceBtn.disabled=false; savePngBtn.disabled=false;
+  analyzeBtn.disabled=true; // require user to tap Detect or use Auto-Enhance
+  enhanceBtn.disabled=false; savePngBtn.disabled=false;
+  analyzeBtn.disabled=false; // enable Detect
 }
 
 fileInput.addEventListener("change", async ()=>{
-  if(!fileInput.files.length){ analyzeBtn.disabled=true; enhanceBtn.disabled=true; savePngBtn.disabled=true; return; }
+  if(!fileInput.files.length){
+    analyzeBtn.disabled=true; enhanceBtn.disabled=true; savePngBtn.disabled=true; startAnalysisBtn.disabled=true;
+    analysisCard.style.display="none"; lastAnalysis=null; disableExport();
+    return;
+  }
   const f = fileInput.files[0];
   logDiag({ fileName:f.name, type:f.type, size_bytes:f.size });
   await handleBlob(f, "photo");
@@ -446,13 +658,19 @@ sampleBtn.addEventListener("click", async ()=>{
 });
 
 enhanceBtn.addEventListener("click", ()=>{
-  zoom.value=Math.max(+zoom.value,1.5); zoomLabel.textContent=(+zoom.value).toFixed(2);
-  bri.value=Math.max(+bri.value,1.18); briLabel.textContent=(+bri.value).toFixed(2);
-  con.value=Math.max(+con.value,1.25); conLabel.textContent=(+con.value).toFixed(2);
+  $("zoom").value=Math.max(+$("zoom").value,1.5); $("zoomLabel").textContent=(+$("zoom").value).toFixed(2);
+  $("bri").value=Math.max(+$("bri").value,1.18); $("briLabel").textContent=(+$("bri").value).toFixed(2);
+  $("con").value=Math.max(+$("con").value,1.25); $("conLabel").textContent=(+$("con").value).toFixed(2);
   analyzeFlow(true);
 });
 
 analyzeBtn.addEventListener("click", ()=> analyzeFlow(false));
+
+startAnalysisBtn.addEventListener("click", ()=>{
+  if(startAnalysisBtn.disabled) return;
+  logDiag({ analysisRequested:true, note:"Running lightweight metrics only (no extra models)." });
+  runLightAnalysis();
+});
 
 savePngBtn.addEventListener("click", ()=>{
   try{
