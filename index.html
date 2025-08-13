@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN Alpha — Mobile Fix + Dual Boxes + Persisted Mode</title>
+<title>YorN Alpha — Ready Indicator + Mobile Stable</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root{color-scheme:light dark}
@@ -14,16 +14,9 @@
   }
   .container{max-width:980px; margin:0 auto; padding:16px}
   h2{margin:8px 0 0 0}
-  .card{
-    background:#0f172a; border:1px solid #233046; border-radius:12px;
-    padding:12px; margin-top:12px
-  }
-  .row{
-    display:grid; grid-template-columns:1fr auto auto auto auto; gap:8px; align-items:end
-  }
-  .controls{
-    display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:8px
-  }
+  .card{background:#0f172a; border:1px solid #233046; border-radius:12px; padding:12px; margin-top:12px}
+  .row{display:grid; grid-template-columns:1fr auto auto auto auto auto; gap:8px; align-items:end}
+  .controls{display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:8px}
   @media (max-width: 720px){
     .row{grid-template-columns:1fr; gap:10px}
     .controls{grid-template-columns:1fr 1fr; gap:10px}
@@ -41,17 +34,29 @@
   #progressContainer{height:8px; background:#1e293b; border-radius:6px; overflow:hidden; margin-top:8px}
   #progressBar{height:100%; width:0; background:#38bdf8; transition:width .25s}
   #thumb, #overlay{display:block; width:100%; height:auto; margin-top:10px; background:#0b1220; border:1px solid #233046; border-radius:8px}
-  #diagnostics{
-    white-space:pre-wrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px;
-    background:#0b1220; border:1px solid #233046; border-radius:8px; padding:8px; max-height:320px; overflow:auto
-  }
   .two-col{display:grid; grid-template-columns:1fr 1fr; gap:12px}
-  /* Revision badge */
+  .two-col > div{min-width:0}
+  #diagnostics{
+    white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word;
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px;
+    background:#0b1220; border:1px solid #233046; border-radius:8px; padding:8px;
+    height:220px; max-height:40vh; overflow:auto;
+  }
+  /* Badges (fixed, do not affect layout) */
   #revBadge{
     position:fixed; top:8px; right:10px; z-index:9999;
     background:rgba(0,0,0,.6); color:#fff; font:12px ui-monospace,monospace;
     padding:3px 8px; border:1px solid rgba(255,255,255,.18); border-radius:999px;
     backdrop-filter:saturate(120%) blur(4px)
+  }
+  #readyBadge{
+    position:fixed; top:36px; right:10px; z-index:9999; display:none;
+    background:rgba(16,185,129,.15); color:#a7f3d0; font:12px ui-monospace,monospace;
+    padding:3px 8px; border:1px solid rgba(16,185,129,.55); border-radius:999px;
+    backdrop-filter:saturate(120%) blur(4px)
+  }
+  #readyDot{
+    display:inline-block; width:8px; height:8px; border-radius:999px; background:#10b981; margin-right:6px
   }
 </style>
 
@@ -62,6 +67,7 @@
 </head>
 <body>
 <div id="revBadge">YorN Rev <span id="revText"></span></div>
+<div id="readyBadge"><span id="readyDot"></span><span id="readyText">Ready for Analysis</span></div>
 
 <div class="container">
   <h2>YorN Alpha — Face Analysis</h2>
@@ -73,6 +79,7 @@
       <button id="enhanceBtn" class="btn btn-secondary" disabled>Auto‑Enhance & Retry</button>
       <button id="analyzeBtn" class="btn" disabled>Analyze</button>
       <button id="savePngBtn" class="btn btn-secondary" disabled>Save Debug Snapshot</button>
+      <button id="clearLogsBtn" class="btn btn-secondary">Clear Logs</button>
     </div>
 
     <div class="controls">
@@ -123,26 +130,39 @@
 
 <script>
 /* ==== Revision: change this per build ==== */
-const REVISION = "1.5.0-alpha";
+const REVISION = "1.6.0-alpha";
 document.getElementById("revText").textContent = REVISION;
 
 /* ---------- Helpers ---------- */
 const $ = id => document.getElementById(id);
-const fileInput = $("fileInput"), sampleBtn = $("sampleBtn"), analyzeBtn = $("analyzeBtn"), enhanceBtn = $("enhanceBtn"), savePngBtn = $("savePngBtn");
+const fileInput = $("fileInput"), sampleBtn = $("sampleBtn"), analyzeBtn = $("analyzeBtn"), enhanceBtn = $("enhanceBtn"), savePngBtn = $("savePngBtn"), clearLogsBtn = $("clearLogsBtn");
 const fixModeSel = $("fixMode");
 const overlay = $("overlay"), thumb = $("thumb");
 const progressBar = $("progressBar"), progressText = $("progressText");
 const diagnostics = $("diagnostics");
 const rotDeg = $("rotDeg"), zoom = $("zoom"), zoomLabel = $("zoomLabel"), bri = $("bri"), briLabel = $("briLabel"), con = $("con"), conLabel = $("conLabel");
+const readyBadge = $("readyBadge");
 
 let baseBitmap = null, workCanvas = null, blazeModel = null, faceApiReady = false;
+let readyTimeout = null;
 
+/* Diagnostics trimming (~20KB) */
+function trimDiag(){ const MAX=20000, CUT=15000; if(diagnostics.textContent.length>MAX){ diagnostics.textContent = diagnostics.textContent.slice(0,CUT); } }
 function setProgress(p,t){ progressBar.style.width=(p||0)+'%'; progressText.textContent=t||''; }
-function logDiag(obj){ const now=new Date().toISOString(); const txt=typeof obj==='string'?obj:JSON.stringify(obj); diagnostics.textContent=`[${now}] ${txt}\n`+diagnostics.textContent; }
-function setError(msg){ setProgress(0,""); logDiag({ error: msg }); }
+function logDiag(obj){ const now=new Date().toISOString(); const txt=typeof obj==='string'?obj:JSON.stringify(obj); diagnostics.textContent = `[${now}] ${txt}\n` + diagnostics.textContent; trimDiag(); }
+function setError(msg){ setProgress(0,""); logDiag({ error: msg }); hideReady(); }
 function ensureWorkCanvas(){ if(!workCanvas){ workCanvas = document.createElement("canvas"); } return workCanvas; }
 
-/* Drawing: paint base once, then add boxes without clearing so multiple boxes show */
+/* Ready-for-analysis indicator */
+function showReady(){
+  readyBadge.style.display = "inline-flex";
+  logDiag({ readyForAnalysis: true, revision: REVISION });
+  if(readyTimeout) clearTimeout(readyTimeout);
+  readyTimeout = setTimeout(()=>{ readyBadge.style.display="none"; }, 4000);
+}
+function hideReady(){ if(readyTimeout) clearTimeout(readyTimeout); readyBadge.style.display="none"; }
+
+/* Drawing */
 function paintBase(canvas){
   const ctx = overlay.getContext("2d");
   overlay.width = canvas.width; overlay.height = canvas.height;
@@ -157,7 +177,7 @@ function drawBox(box, color, label){
   ctx.fillText(label, box.x, Math.max(12, box.y-4));
 }
 
-/* ---------- Decode ---------- */
+/* Decode */
 async function decodeOriginal(fileOrBlob){
   const bmp = await createImageBitmap(fileOrBlob).catch(async ()=>{
     const url = URL.createObjectURL(fileOrBlob);
@@ -168,7 +188,7 @@ async function decodeOriginal(fileOrBlob){
   return bmp;
 }
 
-/* ---------- Render with controls ---------- */
+/* Render with controls */
 function renderWorkingCanvas(targetMax=1024, centerBox=null){
   if(!baseBitmap) return null;
   const angle=(parseInt(rotDeg.value,10)||0)%360;
@@ -209,7 +229,7 @@ function renderWorkingCanvas(targetMax=1024, centerBox=null){
   return c;
 }
 
-/* ---------- BlazeFace primary (multi‑scale + mirrored) ---------- */
+/* BlazeFace */
 async function ensureBlaze(){
   if(blazeModel) return;
   if(!window.blazeface) throw new Error("BlazeFace script not loaded");
@@ -264,7 +284,7 @@ async function roughLocate(canvas){
     const tl=Array.isArray(f.topLeft)?f.topLeft:await f.topLeft.array();
     const br=Array.isArray(f.bottomRight)?f.bottomRight:await f.bottomRight.array();
     const sx=canvas.width/tinyW, sy=canvas.height/tinyH;
-    const box={x:tl[0]*sx, y:tl[1]*sy, width:(br[0]-tl[0])*sx, height:(br[1]-tl[1])*sy};
+    const box={x:tl[0]*sx, y:tl[1]*sy, width:(br[0]-tl[0])*sx, height:(br[1]-tl[1])/*sy*/ * sy};
     logDiag({ roughLocate_ms:ms, box });
     return box;
   }
@@ -272,7 +292,7 @@ async function roughLocate(canvas){
   return null;
 }
 
-/* ---------- face-api fallback with multi‑CDN (Fix 1) ---------- */
+/* face-api (Fix 1) */
 let FA_WEIGHTS=null;
 async function fetchJson(url){ const r=await fetch(url,{cache:"no-store"}); if(!r.ok) throw new Error("status "+r.status); return r.json(); }
 async function verifyManifestAndShards(base, name){
@@ -308,7 +328,7 @@ async function ensureFaceApi(){
   faceApiReady = true; logDiag({ faceapiReady:true });
 }
 
-/* ---------- Native FaceDetector helper (Fix 3) ---------- */
+/* Native FaceDetector (Fix 3) */
 async function detectWithFaceDetector(canvas){
   if(!("FaceDetector" in window)) throw new Error("FaceDetector API not available");
   const d = new FaceDetector({ fastMode:true, maxDetectedFaces:1 });
@@ -319,26 +339,23 @@ async function detectWithFaceDetector(canvas){
   return null;
 }
 
-/* ---------- Flow ---------- */
+/* Flow */
 async function analyzeFlow(auto=false){
   try{
+    hideReady();
     if(!baseBitmap){ setError("No image decoded."); return; }
     const mode = fixModeSel.value; // 'cdn' | 'blazeonly' | 'native'
     setProgress(10, `Analyzing… (${mode})`);
     await ensureBlaze();
 
     let canvas = renderWorkingCanvas(1024);
-
-    // Paint base
     paintBase(canvas);
 
-    // Rough pass → cyan
     const rough = await roughLocate(canvas);
     if(rough){
       drawBox(rough, "#06b6d4", "rough");
-      // recenter + auto-zoom
       canvas = renderWorkingCanvas(1024, rough);
-      paintBase(canvas); // repaint base after zoom so boxes align to final canvas
+      paintBase(canvas);
       drawBox(rough, "#06b6d4", "rough");
     }
 
@@ -348,21 +365,19 @@ async function analyzeFlow(auto=false){
         if(rFD){ drawBox(rFD.box, "#93c5fd", `FaceDetector • ${rFD.elapsed_ms}ms`); setProgress(70,"FaceDetector ok; confirming…"); }
       }catch(e){ logDiag({ nativeFaceDetector: e.message }); }
       const detN = await detectBlazeMulti(canvas);
-      if(detN){ drawBox(detN.box, "#22c55e", `BlazeFace • ${detN.elapsed_ms}ms`); setProgress(100,"Done (native mode)."); return; }
+      if(detN){ drawBox(detN.box, "#22c55e", `BlazeFace • ${detN.elapsed_ms}ms`); setProgress(100,"Done (native mode)."); showReady(); return; }
       setError("Native mode: no face. Try more zoom/brightness."); return;
     }
 
-    // BlazeFace final → green
     const det = await detectBlazeMulti(canvas);
     if(det){
       drawBox(det.box, "#22c55e", `BlazeFace • ${det.elapsed_ms}ms`);
       setProgress(90, "BlazeFace OK.");
-      if(mode === "blazeonly"){ setProgress(100,"Done (Blaze only)."); return; }
+      if(mode === "blazeonly"){ setProgress(100,"Done (Blaze only)."); showReady(); return; }
     } else if(mode === "blazeonly"){
       setError("Blaze-only mode: no face. Adjust zoom/lighting."); return;
     }
 
-    // Fix 1: face‑api refinement (orange) + success log
     try{
       await ensureFaceApi();
       const sizes=[256,192,160,128];
@@ -374,22 +389,23 @@ async function analyzeFlow(auto=false){
           drawBox(rr.detection.box, "#f59e0b", `face-api • ${s}`);
           logDiag({ faceapi_success: { inputSize:s, box: rr.detection.box } });
           setProgress(100, "Done (face-api).");
+          showReady();
           return;
         }
       }
       logDiag({ faceapi: "no detection" });
-      if(det){ setProgress(100,"Done (BlazeFace only; face‑api none)."); }
+      if(det){ setProgress(100,"Done (BlazeFace only; face‑api none)."); showReady(); }
       else { setError("No face after face‑api."); }
     }catch(e){
       logDiag({ faceapiFallbackFail: e && e.message });
-      if(det){ setProgress(100,"Done (BlazeFace only; face‑api unavailable)."); }
+      if(det){ setProgress(100,"Done (BlazeFace only; face‑api unavailable)."); showReady(); }
       else { setError("face‑api unavailable and BlazeFace failed."); }
     }
 
   }catch(e){ setError(e.message || String(e)); }
 }
 
-/* ---------- Events & UX ---------- */
+/* Events & UX */
 const onTweak = ()=>{ if(baseBitmap){ const c = renderWorkingCanvas(1024); paintBase(c); } };
 zoom.addEventListener("input", ()=>{ zoomLabel.textContent=(+zoom.value).toFixed(2); onTweak(); });
 bri.addEventListener("input", ()=>{ briLabel.textContent=(+bri.value).toFixed(2); onTweak(); });
@@ -400,12 +416,11 @@ function setModeFromStorage(){
   const saved = localStorage.getItem("yorn_fixMode");
   if(saved && [...fixModeSel.options].some(o=>o.value===saved)){ fixModeSel.value = saved; }
 }
-fixModeSel.addEventListener("change", ()=>{
-  localStorage.setItem("yorn_fixMode", fixModeSel.value);
-});
+fixModeSel.addEventListener("change", ()=>{ localStorage.setItem("yorn_fixMode", fixModeSel.value); });
 
 async function handleBlob(blob, label){
   overlay.classList.add("hidden"); progressText.textContent="";
+  hideReady();
   thumb.src = URL.createObjectURL(blob); thumb.classList.remove("hidden");
   setProgress(8,`Decoding ${label}…`);
   baseBitmap = await decodeOriginal(blob);
@@ -447,7 +462,9 @@ savePngBtn.addEventListener("click", ()=>{
   }catch(e){ logDiag({ savePngError: e && e.message }); }
 });
 
-/* Init: persist mode, disable Native if absent */
+clearLogsBtn.addEventListener("click", ()=>{ diagnostics.textContent = "No diagnostics yet."; });
+
+/* Init */
 (function init(){
   if(!("FaceDetector" in window)){
     const opt = [...fixModeSel.options].find(o=>o.value==="native");
