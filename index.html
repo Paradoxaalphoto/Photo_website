@@ -1,12 +1,11 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN Alpha — Robust Weights Fallback + Multi‑Scale BlazeFace</title>
+<title>YorN Alpha — Robust + Rev Badge</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
+  :root{color-scheme:light dark}
   body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;margin:0;padding:16px;background:#0b1220;color:#E6EAF2}
   .row{display:grid;grid-template-columns:1fr auto auto auto auto;gap:8px;align-items:end}
   .card{background:#0f172a;border:1px solid #233046;border-radius:12px;padding:12px;margin-top:12px}
@@ -23,16 +22,24 @@
   label{font-size:12px;color:#A9B4C8}
   input[type="range"], input[type="number"]{width:100%}
   input[type="number"], input[type="range"]{padding:6px;border:1px solid #233046;border-radius:8px;background:#0b1220;color:#E6EAF2}
+  /* Tiny revision badge (top-right corner) */
+  #revBadge{
+    position:fixed; top:8px; right:10px; z-index:9999;
+    background:rgba(0,0,0,.6); color:#fff; font:12px ui-monospace,monospace;
+    padding:3px 8px; border:1px solid rgba(255,255,255,.18); border-radius:999px;
+    backdrop-filter:saturate(120%) blur(4px)
+  }
 </style>
 
-<!-- Load TFJS first -->
+<!-- Scripts: TFJS first, then BlazeFace, then face-api (fallback) -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
-<!-- BlazeFace (UMD) -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
-<!-- face-api.js (fallback if needed) -->
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 </head>
 <body>
+
+<!-- Tiny corner revision badge -->
+<div id="revBadge">YorN Rev <span id="revText"></span></div>
 
 <h2>YorN Alpha — Face Analysis</h2>
 
@@ -83,6 +90,10 @@
 </div>
 
 <script>
+/* ==== Revision: change this per build ==== */
+const REVISION = "1.3.0-alpha";  // ← update this string each release
+document.getElementById("revText").textContent = REVISION;
+
 /* ---------- Helpers ---------- */
 const $ = id => document.getElementById(id);
 const fileInput = $("fileInput"), sampleBtn = $("sampleBtn"), analyzeBtn = $("analyzeBtn"), enhanceBtn = $("enhanceBtn"), savePngBtn = $("savePngBtn");
@@ -167,24 +178,20 @@ async function ensureBlaze(){
   blazeModel = await window.blazeface.load();
   logDiag({ blazefaceReady:true });
 }
-
 function downsample(canvas, w, mirror=false){
   const h = Math.round(w * (canvas.height/canvas.width));
   const tmp = Object.assign(document.createElement("canvas"), { width:w, height:h });
   const ctx = tmp.getContext("2d");
-  if(mirror){
-    ctx.translate(w, 0); ctx.scale(-1, 1);
-  }
-  ctx.drawImage(canvas, 0, 0, w, h);
+  if(mirror){ ctx.translate(w,0); ctx.scale(-1,1); }
+  ctx.drawImage(canvas,0,0,w,h);
   return tmp;
 }
-
 async function detectBlazeMulti(canvas){
   const configs = [
     {w:256, mirror:false},
     {w:384, mirror:false},
     {w:512, mirror:false},
-    {w:384, mirror:true},   // mirrored passes (some selfies)
+    {w:384, mirror:true},
     {w:512, mirror:true}
   ];
   for(const cfg of configs){
@@ -196,13 +203,9 @@ async function detectBlazeMulti(canvas){
       const f = faces[0];
       const tl = Array.isArray(f.topLeft) ? f.topLeft : await f.topLeft.array();
       const br = Array.isArray(f.bottomRight) ? f.bottomRight : await f.bottomRight.array();
-      // map back
       const sx = canvas.width / tmp.width, sy = canvas.height / tmp.height;
       let x = tl[0]*sx, y = tl[1]*sy, width=(br[0]-tl[0])*sx, height=(br[1]-tl[1])*sy;
-      if(cfg.mirror){
-        // if mirrored, x coord needs flipping relative to original width
-        x = canvas.width - (x + width);
-      }
+      if(cfg.mirror){ x = canvas.width - (x + width); }
       const box = { x, y, width, height };
       logDiag({ finalDetect_ms: ms, scale: cfg.w, mirror: cfg.mirror, box });
       return { elapsed_ms: ms, box };
@@ -211,7 +214,6 @@ async function detectBlazeMulti(canvas){
   logDiag({ finalDetect: "no face" });
   return null;
 }
-
 async function roughLocate(canvas){
   const tinyW=160, tinyH=Math.round(tinyW*(canvas.height/canvas.width));
   const tmp=Object.assign(document.createElement("canvas"),{width:tinyW,height:tinyH});
@@ -232,7 +234,7 @@ async function roughLocate(canvas){
   return null;
 }
 
-/* ---------- face-api fallback with TRUE multi‑CDN ---------- */
+/* ---------- face-api fallback with multi‑CDN ---------- */
 let FA_WEIGHTS=null;
 async function fetchJson(url){ const r=await fetch(url,{cache:"no-store"}); if(!r.ok) throw new Error("status "+r.status); return r.json(); }
 async function verifyManifestAndShards(base, name){
@@ -275,18 +277,14 @@ async function analyzeFlow(auto=false){
     setProgress(10, auto ? "Auto-analyzing…" : "Analyzing…");
     await ensureBlaze();
 
-    // Render current settings
     let canvas = renderWorkingCanvas(1024);
 
-    // Rough pass → draw cyan box immediately
     const rough = await roughLocate(canvas);
     if(rough){
       drawLabelBox(canvas, rough, "#06b6d4", "rough");
-      // Re-center + auto-zoom around rough box
       canvas = renderWorkingCanvas(1024, rough);
     }
 
-    // Final multi‑scale (and mirrored) BlazeFace detect
     const det = await detectBlazeMulti(canvas);
     if(det){
       drawLabelBox(canvas, det.box, "#22c55e", `BlazeFace • ${det.elapsed_ms}ms`);
@@ -294,7 +292,6 @@ async function analyzeFlow(auto=false){
       return;
     }
 
-    // Fallback to face‑api (only if BlazeFace fails)
     try{
       await ensureFaceApi();
       const sizes=[256,192,160,128];
@@ -336,8 +333,7 @@ async function handleBlob(blob, label){
 fileInput.addEventListener("change", async ()=>{
   if(!fileInput.files.length){ analyzeBtn.disabled=true; enhanceBtn.disabled=true; savePngBtn.disabled=true; return; }
   const f = fileInput.files[0];
-  logDiag({ fileName:f.name, type:f.type, size_bytes:f.size, w: (await decodeOriginal(f)).width, h: (await decodeOriginal(f)).height });
-  // decode once properly
+  logDiag({ fileName:f.name, type:f.type, size_bytes:f.size });
   await handleBlob(f, "photo");
 });
 
@@ -361,11 +357,10 @@ analyzeBtn.addEventListener("click", ()=> analyzeFlow(false));
 savePngBtn.addEventListener("click", ()=>{
   try{
     const url = overlay.toDataURL("image/png");
-    const a = Object.assign(document.createElement("a"), { href:url, download:"yorn-debug.png" });
+    const a = Object.assign(document.createElement("a"), { href:url, download:`yorn-${REVISION}.png` });
     document.body.appendChild(a); a.click(); a.remove();
   }catch(e){ logDiag({ savePngError: e && e.message }); }
 });
 </script>
 </body>
 </html>
-
