@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN Alpha — 1.10.0 UX+Data pass</title>
+<title>YorN Alpha — 1.10.1 UX+Debug</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root{color-scheme:light dark}
@@ -12,8 +12,8 @@
   .container{max-width:980px;margin:0 auto;padding:16px}
   h2{margin:8px 0 0 0}
   .card{background:#0f172a;border:1px solid #233046;border-radius:12px;padding:12px;margin-top:12px}
-  .row{display:grid;grid-template-columns:1fr auto auto auto auto auto auto;gap:8px;align-items:end}
-  .controls{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-top:8px}
+  .row{display:grid;grid-template-columns:1fr auto auto auto auto auto auto auto;gap:8px;align-items:end}
+  .controls{display:grid;grid-template-columns:repeat(9,1fr);gap:8px;margin-top:8px}
   @media (max-width:720px){
     .row{grid-template-columns:1fr;gap:10px}
     .controls{grid-template-columns:1fr 1fr;gap:10px}
@@ -49,7 +49,7 @@
   .ok{background:rgba(16,185,129,.15);color:#a7f3d0;border-color:rgba(16,185,129,.55)}
   .warn{background:rgba(245,158,11,.15);color:#fde68a;border-color:rgba(245,158,11,.55)}
   .hints{font-size:12px;color:#A9B4C8;margin-top:6px}
-  .actions{display:flex;gap:8px;margin-top:8px}
+  .actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
   /* badges */
   #revBadge{position:fixed;top:8px;right:10px;z-index:9999;background:rgba(0,0,0,.6);color:#fff;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid rgba(255,255,255,.18);border-radius:999px;backdrop-filter:saturate(120%) blur(4px)}
   #readyBadge{position:fixed;top:36px;right:10px;z-index:9999;display:none;background:rgba(16,185,129,.15);color:#a7f3d0;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid rgba(16,185,129,.55);border-radius:999px;backdrop-filter:saturate(120%) blur(4px)}
@@ -84,7 +84,8 @@
       <button id="enhanceBtn" class="btn btn-secondary" disabled>Auto‑Enhance & Retry</button>
       <button id="detectBtn" class="btn" disabled>Detect</button>
       <button id="startAnalysisBtn" class="btn btn-primary" disabled>Start Analysis</button>
-      <button id="savePngBtn" class="btn btn-secondary" disabled>Save Debug Snapshot</button>
+      <button id="rerunBtn" class="btn btn-secondary" disabled>Re‑run w/ Next Fix</button>
+      <button id="resetBtn" class="btn btn-secondary">Reset Controls</button>
       <button id="clearLogsBtn" class="btn btn-secondary">Clear Logs</button>
     </div>
 
@@ -105,6 +106,15 @@
       <label class="chk"><input id="showHUD" type="checkbox" /> Show HUD</label>
       <label class="chk"><input id="autoAnalyze" type="checkbox" /> Auto‑analyze</label>
       <label class="chk"><input id="consent" type="checkbox" /> Include in research</label>
+      <div>
+        <label>HUD pin</label>
+        <select id="hudPin">
+          <option value="TL" selected>Top‑Left</option>
+          <option value="TR">Top‑Right</option>
+          <option value="BL">Bottom‑Left</option>
+          <option value="BR">Bottom‑Right</option>
+        </select>
+      </div>
     </div>
 
     <div id="progressContainer"><div id="progressBar"></div></div>
@@ -133,6 +143,10 @@
           </div>
         </div>
         <div id="diagnostics">No diagnostics yet.</div>
+        <div class="actions">
+          <button id="copySummaryBtn" class="btn btn-secondary" disabled>Copy Summary</button>
+          <button id="bundleBtn" class="btn btn-secondary" disabled>Download Debug Bundle (.zip)</button>
+        </div>
       </div>
     </div>
   </div>
@@ -159,11 +173,13 @@
   </div>
 
   <div class="card" id="historyCard">
-    <div style="display:flex;justify-content:space-between;align-items:center">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <strong>Analysis History</strong>
       <div class="actions">
+        <label class="chk" style="padding:6px 10px"><input id="persistHistory" type="checkbox" /> Persist history</label>
         <button id="exportAllJSON" class="btn btn-secondary" disabled>Export JSON</button>
         <button id="exportAllCSV" class="btn btn-secondary" disabled>Export CSV</button>
+        <button id="purgePersisted" class="btn btn-secondary" disabled>Purge</button>
         <button id="clearHistory" class="btn btn-secondary" disabled>Clear</button>
       </div>
     </div>
@@ -173,18 +189,19 @@
 
 <script>
 /* ====== Revision / IDs ====== */
-const REVISION = "1.10.0-alpha";
+const REVISION = "1.10.1-alpha";
 document.getElementById("revText").textContent = REVISION;
 const session_id = crypto.randomUUID();
-let session_salt = null; (async()=>{ const raw=new TextEncoder().encode(session_id); const dig=await crypto.subtle.digest("SHA-256",raw); session_salt = Array.from(new Uint8Array(dig)).slice(0,8); })();
 
 /* ====== Elements ====== */
 const $ = id => document.getElementById(id);
 const fileInput=$("fileInput"), sampleBtn=$("sampleBtn"), detectBtn=$("detectBtn"), enhanceBtn=$("enhanceBtn");
-const startAnalysisBtn=$("startAnalysisBtn"), savePngBtn=$("savePngBtn"), clearLogsBtn=$("clearLogsBtn");
+const startAnalysisBtn=$("startAnalysisBtn"), savePngBtn=$("savePngBtn"), clearLogsBtn=$("clearLogsBtn"), rerunBtn=$("rerunBtn"), resetBtn=$("resetBtn");
 const copyJsonBtn=$("copyJsonBtn"), exportJsonBtn=$("exportJsonBtn");
-const exportAllJSON=$("exportAllJSON"), exportAllCSV=$("exportAllCSV"), clearHistory=$("clearHistory");
+const exportAllJSON=$("exportAllJSON"), exportAllCSV=$("exportAllCSV"), clearHistory=$("clearHistory"), purgePersisted=$("purgePersisted");
+const copySummaryBtn=$("copySummaryBtn"), bundleBtn=$("bundleBtn");
 const fixModeSel=$("fixMode"), showOverlaysChk=$("showOverlays"), showHUDChk=$("showHUD"), autoAnalyzeChk=$("autoAnalyze"), consentChk=$("consent");
+const hudPinSel=$("hudPin");
 const imgBase=$("base"), cvRough=$("overlayRough"), cvOverlay=$("overlay");
 const progressBar=$("progressBar"), progressText=$("progressText"), readyBadge=$("readyBadge");
 const diagnostics=$("diagnostics"), diagSearch=$("diagSearch");
@@ -198,63 +215,61 @@ let baseBitmap=null, workCanvas=null, blazeModel=null, faceApiReady=false;
 let lastCanvas=null, lastBox=null, lastAnalysis=null;
 let readyTimeout=null, roughFadeTimer=null;
 let showOverlays=true, showHUD=false, autoAnalyze=false;
-let history=[]; // in-memory history
+let history=[]; // in-memory
+let persistHistory=false;
 
 /* ====== Diagnostics (typed + filterable) ====== */
 const typeFilters = new Set(["detect","overlay","analysis","config","error"]);
 function trimDiag(){const MAX=25000,CUT=18000;if(diagnostics.textContent.length>MAX){diagnostics.textContent=diagnostics.textContent.slice(diagnostics.textContent.length-CUT)}}
+function matchesFilter(type,line){const q = diagSearch.value?.toLowerCase() || ""; return typeFilters.has(type) && (q==="" || line.toLowerCase().includes(q));}
 function logEvt(type,payload){
   const now=new Date().toISOString();
   const line = `[${now}] ${JSON.stringify({type,...payload})}\n`;
-  // filter live view
-  const q = diagSearch.value?.toLowerCase() || "";
-  if(typeFilters.has(type) && (q==="" || line.toLowerCase().includes(q))){
-    diagnostics.textContent = line + diagnostics.textContent;
-    trimDiag();
-  }
+  if(matchesFilter(type,line)){ diagnostics.textContent = line + diagnostics.textContent; trimDiag(); }
 }
 function setError(msg){setProgress(0,"");logEvt("error",{error:msg})}
 function setProgress(p,t){progressBar.style.width=(p||0)+'%';progressText.textContent=t||''}
-
-// filter UI
 Array.from(document.getElementsByClassName("diagType")).forEach(cb=>{
-  cb.addEventListener("change",()=>{
-    if(cb.checked) typeFilters.add(cb.value); else typeFilters.delete(cb.value);
-  });
+  cb.addEventListener("change",()=>{ if(cb.checked) typeFilters.add(cb.value); else typeFilters.delete(cb.value); });
 });
-diagSearch.addEventListener("input",()=>{ /* live filter on new logs only; keeps simple */ });
+diagSearch.addEventListener("input",()=>{ /* live filter applies to new lines */ });
 
-/* ====== Toggles ====== */
-showOverlaysChk.addEventListener("change",()=>{
-  showOverlays=showOverlaysChk.checked; localStorage.setItem("yorn_showOverlays",showOverlays?"1":"0");
-  cvOverlay.style.visibility=cvRough.style.visibility=showOverlays?"visible":"hidden";
-  logEvt("config",{showOverlays})
-});
-showHUDChk.addEventListener("change",()=>{
-  showHUD=showHUDChk.checked; localStorage.setItem("yorn_showHUD",showHUD?"1":"0");
-  hud.style.display=showHUD?"block":"none";
-  logEvt("config",{showHUD})
-});
-autoAnalyzeChk.addEventListener("change",()=>{
-  autoAnalyze=autoAnalyzeChk.checked; localStorage.setItem("yorn_autoAnalyze",autoAnalyze?"1":"0");
-  logEvt("config",{autoAnalyze})
-});
-consentChk.addEventListener("change",()=>{ localStorage.setItem("yorn_consent",consentChk.checked?"1":"0"); logEvt("config",{research_consent:consentChk.checked}) });
-
+/* ====== Toggles & persistence ====== */
 function loadToggles(){
-  const so=localStorage.getItem("yorn_showOverlays"); showOverlays=(so===null)?true:(so==="1"); showOverlaysChk.checked=showOverlays; cvOverlay.style.visibility=cvRough.style.visibility=showOverlays?"visible":"hidden";
-  const sh=localStorage.getItem("yorn_showHUD"); showHUD=(sh==="1"); showHUDChk.checked=showHUD; hud.style.display=showHUD?"block":"none";
-  const aa=localStorage.getItem("yorn_autoAnalyze"); autoAnalyze=(aa==="1"); autoAnalyzeChk.checked=autoAnalyze;
-  const rc=localStorage.getItem("yorn_consent"); consentChk.checked=(rc==="1");
+  showOverlays = (localStorage.getItem("yorn_showOverlays")??"1")==="1"; showOverlaysChk.checked=showOverlays; cvOverlay.style.visibility=cvRough.style.visibility=showOverlays?"visible":"hidden";
+  showHUD = (localStorage.getItem("yorn_showHUD")??"0")==="1"; showHUDChk.checked=showHUD; hud.style.display=showHUD?"block":"none";
+  autoAnalyze = (localStorage.getItem("yorn_autoAnalyze")??"0")==="1"; autoAnalyzeChk.checked=autoAnalyze;
+  consentChk.checked=(localStorage.getItem("yorn_consent")??"0")==="1";
+  persistHistory=(localStorage.getItem("yorn_persist")??"0")==="1"; $("persistHistory").checked=persistHistory;
+  const savedPin=localStorage.getItem("yorn_hudPin")||"TL"; hudPinSel.value=savedPin; applyHudPin(savedPin);
 }
+showOverlaysChk.addEventListener("change",()=>{ showOverlays=showOverlaysChk.checked; localStorage.setItem("yorn_showOverlays",showOverlays?"1":"0"); cvOverlay.style.visibility=cvRough.style.visibility=showOverlays?"visible":"hidden"; logEvt("config",{showOverlays})});
+showHUDChk.addEventListener("change",()=>{ showHUD=showHUDChk.checked; localStorage.setItem("yorn_showHUD",showHUD?"1":"0"); hud.style.display=showHUD?"block":"none"; logEvt("config",{showHUD})});
+autoAnalyzeChk.addEventListener("change",()=>{ autoAnalyze=autoAnalyzeChk.checked; localStorage.setItem("yorn_autoAnalyze",autoAnalyze?"1":"0"); logEvt("config",{autoAnalyze})});
+consentChk.addEventListener("change",()=>{ localStorage.setItem("yorn_consent",consentChk.checked?"1":"0"); logEvt("config",{research_consent:consentChk.checked})});
+$("persistHistory").addEventListener("change",()=>{ persistHistory=$("persistHistory").checked; localStorage.setItem("yorn_persist",persistHistory?"1":"0"); if(!persistHistory){localStorage.removeItem("yorn_history")} updateHistoryButtons(); logEvt("config",{persistHistory})});
+purgePersisted.addEventListener("click",()=>{ localStorage.removeItem("yorn_history"); logEvt("config",{purged:true}); updateHistoryButtons() });
+function updateHistoryButtons(){
+  const has = history.length>0;
+  exportAllJSON.disabled=!has; exportAllCSV.disabled=!has; clearHistory.disabled=!has; purgePersisted.disabled = !(persistHistory && localStorage.getItem("yorn_history"));
+}
+
+/* ====== HUD pin ====== */
+function applyHudPin(pin){
+  const wrap = document.getElementById("previewWrap");
+  hud.style.left = ""; hud.style.right = ""; hud.style.top = ""; hud.style.bottom = "";
+  if(pin==="TL"){hud.style.left="10px"; hud.style.top="16px"}
+  if(pin==="TR"){hud.style.right="10px"; hud.style.top="16px"}
+  if(pin==="BL"){hud.style.left="10px"; hud.style.bottom="16px"}
+  if(pin==="BR"){hud.style.right="10px"; hud.style.bottom="16px"}
+}
+hudPinSel.addEventListener("change",()=>{ localStorage.setItem("yorn_hudPin",hudPinSel.value); applyHudPin(hudPinSel.value) });
 
 /* ====== Canvas helpers ====== */
 function ensureWorkCanvas(){if(!workCanvas){workCanvas=document.createElement("canvas")}return workCanvas}
 function syncCanvasSizes(w,h){[cvRough,cvOverlay].forEach(c=>{c.width=w;c.height=h;c.classList.remove("hidden")})}
 function paintBaseCanvas(canvas){
-  imgBase.src = canvas.toDataURL("image/png");
-  imgBase.classList.remove("hidden");
-  syncCanvasSizes(canvas.width, canvas.height);
+  imgBase.src = canvas.toDataURL("image/png"); imgBase.classList.remove("hidden"); syncCanvasSizes(canvas.width, canvas.height);
 }
 function drawBox(ctx,box,color,label){
   if(!showOverlays) return;
@@ -270,7 +285,7 @@ function drawCross(ctx,cx,cy,offX,offY){
   ctx.stroke();
   ctx.fillStyle="#60a5fa"; ctx.font="12px ui-monospace,monospace";
   const text=`(${Math.round(cx)},${Math.round(cy)}) | offX ${offX.toFixed(1)}% • offY ${offY.toFixed(1)}%`;
-  const tx=Math.min(cx+10, cvOverlay.width-240), ty=Math.min(cy+14, cvOverlay.height-4);
+  const tx=Math.min(cx+10, cvOverlay.width-260), ty=Math.min(cy+14, cvOverlay.height-4);
   ctx.fillText(text, tx, ty);
 }
 
@@ -332,8 +347,8 @@ async function ensureFaceApi(){ if(faceApiReady2) return; const base=await pickW
 
 /* ====== Detection Flow ====== */
 function showReady(){
-  readyBadge.style.display="inline-flex";
-  startAnalysisBtn.disabled=false; startAnalysisBtn.classList.add("pulse");
+  readyBadge.style.display="inline-flex"; startAnalysisBtn.disabled=false; startAnalysisBtn.classList.add("pulse");
+  rerunBtn.disabled=false; copySummaryBtn.disabled=false; bundleBtn.disabled=false;
   logEvt("detect",{readyForAnalysis:true,revision:REVISION,box:lastBox});
   if(readyTimeout)clearTimeout(readyTimeout);
   readyTimeout=setTimeout(()=>{readyBadge.style.display="none";startAnalysisBtn.classList.remove("pulse")},4000);
@@ -347,7 +362,7 @@ async function detectFlow(){
     let canvas=renderWorkingCanvas(1024);
     lastCanvas=canvas; paintBaseCanvas(canvas);
 
-    // rough on its own layer
+    // rough on layer
     const rctx=cvRough.getContext("2d"); rctx.clearRect(0,0,cvRough.width,cvRough.height);
     const rough=await (async ()=>{
       const tinyW=160,tinyH=Math.round(tinyW*(canvas.height/canvas.width));
@@ -420,19 +435,7 @@ function toGrayLuma(r,g,b){return 0.299*r+0.587*g+0.114*b}
 function cropFace(canvas,box,size=128){const c=document.createElement("canvas");c.width=size;c.height=size;const ctx=c.getContext("2d");ctx.drawImage(canvas,Math.max(0,Math.round(box.x)),Math.max(0,Math.round(box.y)),Math.max(1,Math.round(box.width)),Math.max(1,Math.round(box.height)),0,0,size,size);return c}
 function meanStdevGray(id){const d=id.data;const n=d.length/4;let sum=0,sum2=0;for(let i=0;i<d.length;i+=4){const y=toGrayLuma(d[i],d[i+1],d[i+2]);sum+=y;sum2+=y*y}const mean=sum/n;const variance=Math.max(0,(sum2/n)-mean*mean);return {mean,stdev:Math.sqrt(variance)}}
 function laplacianVariance(gray,w,h){let sum=0,sum2=0,count=0;for(let y=1;y<h-1;y++){for(let x=1;x<w-1;x++){const i=(y*w+x);let v=0;v+=gray[i-w];v+=gray[i-1];v+=gray[i]*(-4);v+=gray[i+1];v+=gray[i+w];sum+=v;sum2+=v*v;count++}}const mean=sum/Math.max(1,count);return Math.max(0,(sum2/Math.max(1,count))-mean*mean)}
-function setBadge(el,ok,textOk,textWarn,isOk){ el.textContent = isOk?textOk:textWarn; el.className = "badge " + (isOk?"ok":"warn"); }
-
-async function imageIdFromBlob(blob){
-  try{
-    const reader = blob.stream ? blob.stream() : new Response(blob).body;
-    const chunk = await new Response(reader).arrayBuffer(); // may read whole; acceptable for now
-    const buf = new Uint8Array(chunk).slice(0, 65536);
-    // mix with session salt
-    if(session_salt){ for(let i=0;i<session_salt.length && i<buf.length;i++){ buf[i]^=session_salt[i]; } }
-    const dig = await crypto.subtle.digest("SHA-256", buf);
-    return Array.from(new Uint8Array(dig)).map(b=>b.toString(16).padStart(2,"0")).join("").slice(0,16);
-  }catch{return crypto.randomUUID().slice(0,16)}
-}
+function setBadge(el,isOk,textOk,textWarn){ el.textContent = isOk?textOk:textWarn; el.className = "badge " + (isOk?"ok":"warn"); }
 
 function runLightAnalysis(){
   if(!lastCanvas||!lastBox){setError("Analysis requested but no detection box.");return}
@@ -444,24 +447,22 @@ function runLightAnalysis(){
   const {mean,stdev}=meanStdevGray(id); const gray=new Float32Array(128*128); for(let i=0,p=0;i<id.data.length;i+=4,p++){gray[p]=toGrayLuma(id.data[i],id.data[i+1],id.data[i+2])}
   const sharpVar=laplacianVariance(gray,128,128);
 
-  // thresholds
+  // thresholds (contrast upper bound relaxed to 65)
   const okArea = areaPct>=7 && areaPct<=15;
   const okBri = mean>=110 && mean<=160;
-  const okCon = stdev>=30 && stdev<=60;
+  const okCon = stdev>=30 && stdev<=65;
   const okSharp = sharpVar>=120;
   const okOffX = Math.abs(offX)<=12;
   const okOffY = Math.abs(offY)<=12;
 
-  // badges
-  setBadge(bdg.area, okArea, "ok", "adjust", okArea);
-  setBadge(bdg.bri, okBri, "ok", "±light", okBri);
-  setBadge(bdg.con, okCon, "ok", "±contrast", okCon);
-  setBadge(bdg.sharp, okSharp, "crisp", "blurry", okSharp);
-  setBadge(bdg.offx, okOffX, "centered", "offset", okOffX);
-  setBadge(bdg.offy, okOffY, "centered", "offset", okOffY);
-  setBadge(bdg.ar, (orient!=="near-square"), orient, orient==="near-square"?false:true);
+  setBadge(bdg.area, okArea, "ok", "adjust");
+  setBadge(bdg.bri, okBri, "ok", "±light");
+  setBadge(bdg.con, okCon, "ok", "±contrast");
+  setBadge(bdg.sharp, okSharp, "crisp", "blurry");
+  setBadge(bdg.offx, okOffX, "centered", "offset");
+  setBadge(bdg.offy, okOffY, "centered", "offset");
+  setBadge(bdg.ar, (orient!=="near-square"), orient, "squareish");
 
-  // Hints
   const hints=[]; if(!okArea) hints.push("Adjust crop to ~7–15% face area");
   if(!okBri) hints.push(mean<110?"Increase lighting":"Reduce brightness");
   if(!okCon) hints.push(stdev<30?"Boost contrast a bit":"Softer contrast may help");
@@ -469,7 +470,6 @@ function runLightAnalysis(){
   if(!(okOffX&&okOffY)) hints.push("Center the face in frame");
   if(hints.length===0) hints.push("Looks good!");
 
-  // Fill UI
   analysisCard.style.display="";
   const ts = new Date(); tsBadge.textContent = ts.toLocaleString();
   kv.area.textContent=areaPct.toFixed(2)+" %"; kv.ar.textContent=ar.toFixed(3); kv.orient.textContent=orient;
@@ -477,7 +477,6 @@ function runLightAnalysis(){
   kv.offx.textContent=(offX>=0?"+":"")+offX.toFixed(1)+" %"; kv.offy.textContent=(offY>=0?"+":"")+offY.toFixed(1)+" %";
   $("analysisHints").textContent="Hints: "+hints.join(" • ");
 
-  // Build JSON blob
   lastAnalysis = {
     revision: REVISION,
     session_id,
@@ -497,21 +496,32 @@ function runLightAnalysis(){
     hints
   };
 
-  enableExport();
-  logEvt("analysis",{analysis:lastAnalysis});
+  enableExport(); logEvt("analysis",{analysis:lastAnalysis});
   addToHistory(lastAnalysis);
 }
 
 /* ====== Export (single) ====== */
-function enableExport(){copyJsonBtn.disabled=false;exportJsonBtn.disabled=false}
-function disableExport(){copyJsonBtn.disabled=true;exportJsonBtn.disabled=true}
+function enableExport(){copyJsonBtn.disabled=false;exportJsonBtn.disabled=false;copySummaryBtn.disabled=false;bundleBtn.disabled=false}
+function disableExport(){copyJsonBtn.disabled=true;exportJsonBtn.disabled=true;copySummaryBtn.disabled=true;bundleBtn.disabled=true}
 copyJsonBtn.addEventListener("click",async()=>{if(!lastAnalysis)return;const text=JSON.stringify(lastAnalysis,null,2);try{await navigator.clipboard.writeText(text);logEvt("analysis",{copied:true})}catch(e){logEvt("error",{copyError:e&&e.message})}});
 exportJsonBtn.addEventListener("click",()=>{if(!lastAnalysis)return;const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=Object.assign(document.createElement("a"),{href:url,download:`yorn-analysis-${REVISION}.json`});document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);logEvt("analysis",{downloaded:true})});
+copySummaryBtn.addEventListener("click",async()=>{
+  if(!lastAnalysis) return;
+  const a=lastAnalysis;
+  const lines=[
+    `YorN ${a.revision} — ${new Date(a.timestamp).toLocaleString()}`,
+    `Area: ${a.box.area_pct}% | AR: ${a.box.aspect} (${a.orientation})`,
+    `Bright: ${a.lighting.brightness_mean} | Contrast: ${a.lighting.contrast_stdev} | Sharp: ${a.sharpness.laplacian_variance}`,
+    `Center off: x ${a.box.center_offset_pct.x}% , y ${a.box.center_offset_pct.y}%`,
+    `Hints: ${a.hints.join(" • ")}`
+  ];
+  try{await navigator.clipboard.writeText(lines.join("\n")); logEvt("analysis",{summaryCopied:true})}catch(e){logEvt("error",{summaryCopyError:e&&e.message})}
+});
 
-/* ====== History (table + export all) ====== */
+/* ====== History (table + export all + persistence) ====== */
 function historyToTable(rows){
-  if(!rows.length){ historyWrap.innerHTML = '<em style="color:#A9B4C8">No entries yet.</em>'; exportAllJSON.disabled=true; exportAllCSV.disabled=true; clearHistory.disabled=true; return; }
-  exportAllJSON.disabled=false; exportAllCSV.disabled=false; clearHistory.disabled=false;
+  if(!rows.length){ historyWrap.innerHTML = '<em style="color:#A9B4C8">No entries yet.</em>'; updateHistoryButtons(); return; }
+  exportAllJSON.disabled=false; exportAllCSV.disabled=false; clearHistory.disabled=false; if(persistHistory) purgePersisted.disabled=false;
   const head = `<thead><tr><th>#</th><th>time</th><th>consent</th><th>area%</th><th>bri</th><th>con</th><th>sharp</th><th>offX</th><th>offY</th><th>actions</th></tr></thead>`;
   const body = rows.map((r,i)=>`<tr>
     <td>${i+1}</td><td>${new Date(r.timestamp).toLocaleTimeString()}</td>
@@ -528,11 +538,9 @@ function historyToTable(rows){
       navigator.clipboard.writeText(text).then(()=>logEvt("analysis",{historyCopy:i}));
     });
   });
+  if(persistHistory){ localStorage.setItem("yorn_history", JSON.stringify(rows)); }
 }
-function addToHistory(entry){
-  history.unshift(entry);
-  historyToTable(history);
-}
+function addToHistory(entry){ history.unshift(entry); historyToTable(history); updateHistoryButtons(); }
 exportAllJSON.addEventListener("click",()=>{
   const blob=new Blob([JSON.stringify(history,null,2)],{type:"application/json"}); const url=URL.createObjectURL(blob);
   const a=Object.assign(document.createElement("a"),{href:url,download:`yorn-history-${REVISION}.json`}); document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
@@ -540,16 +548,88 @@ exportAllJSON.addEventListener("click",()=>{
 exportAllCSV.addEventListener("click",()=>{
   if(!history.length) return;
   const cols=["timestamp","consented","area_pct","bri","con","sharp","offX","offY","rev"];
-  const rows=history.map(h=>[
-    h.timestamp, h.consented, h.box.area_pct, h.lighting.brightness_mean, h.lighting.contrast_stdev,
-    h.sharpness.laplacian_variance, h.box.center_offset_pct.x, h.box.center_offset_pct.y, h.revision
-  ]);
+  const rows=history.map(h=>[h.timestamp, h.consented, h.box.area_pct, h.lighting.brightness_mean, h.lighting.contrast_stdev, h.sharpness.laplacian_variance, h.box.center_offset_pct.x, h.box.center_offset_pct.y, h.revision]);
   const csv=[cols.join(","), ...rows.map(r=>r.join(","))].join("\n");
   const blob=new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob);
-  const a=Object.assign(document.createElement("a"),{href:url,download:`yorn-history-${REVISION}.csv`}); document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  const a=Object.assign(document.createElement("a"),{href=url,download:`yorn-history-${REVISION}.csv`}); document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 });
-clearHistory.addEventListener("click",()=>{
-  history=[]; historyToTable(history); logEvt("config",{historyCleared:true});
+clearHistory.addEventListener("click",()=>{ history=[]; historyToTable(history); updateHistoryButtons(); logEvt("config",{historyCleared:true})});
+
+/* ====== ZIP (store method) ====== */
+const CRC_TABLE = (()=>{let c,table=new Uint32Array(256);for(let n=0;n<256;n++){c=n;for(let k=0;k<8;k++){c=((c&1)?(0xEDB88320^(c>>>1)):(c>>>1))}table[n]=c>>>0}return table})();
+function crc32(buf){let c=0xFFFFFFFF;for(let i=0;i<buf.length;i++){c=CRC_TABLE[(c^buf[i])&0xFF]^(c>>>8)}return (c^0xFFFFFFFF)>>>0}
+function strBytes(s){return new TextEncoder().encode(s)}
+function le32(v){const b=new Uint8Array(4);new DataView(b.buffer).setUint32(0,v,true);return b}
+function le16(v){const b=new Uint8Array(2);new DataView(b.buffer).setUint16(0,v,true);return b}
+function makeLocalHeader(nameBytes,crc,size,offset){ // returns header bytes
+  const sig=strBytes("PK\u0003\u0004");
+  return concatBytes([
+    sig, le16(20), le16(0), le16(0), le16(0), le16(0),
+    le32(crc), le32(size), le32(size), le16(nameBytes.length), le16(0), nameBytes
+  ]);
+}
+function makeCentralHeader(nameBytes,crc,size,offset){
+  const sig=strBytes("PK\u0001\u0002");
+  return concatBytes([
+    sig, le16(0x14), le16(0x14), le16(0), le16(0), le16(0), le16(0),
+    le32(crc), le32(size), le32(size), le16(nameBytes.length), le16(0), le16(0),
+    le16(0), le16(0), le32(0), le32(offset), nameBytes
+  ]);
+}
+function makeEndRecord(count,cdSize,cdOffset){
+  const sig=strBytes("PK\u0005\u0006");
+  return concatBytes([sig, le16(0), le16(0), le16(count), le16(count), le32(cdSize), le32(cdOffset), le16(0)]);
+}
+function concatBytes(arrs){let len=0;arrs.forEach(a=>len+=a.length);const out=new Uint8Array(len);let off=0;arrs.forEach(a=>{out.set(a,off);off+=a.length});return out}
+async function buildZip(files){ // files: [{name, data: Uint8Array}]
+  const parts=[]; const centrals=[]; let offset=0;
+  for(const f of files){
+    const nameB=strBytes(f.name), data=f.data; const crc=crc32(data);
+    const lh=makeLocalHeader(nameB,crc,data.length,offset);
+    parts.push(lh,data); offset += lh.length + data.length;
+    const ch=makeCentralHeader(nameB,crc,data.length, offset - data.length - lh.length);
+    centrals.push(ch);
+  }
+  const cd=concatBytes(centrals); const end=makeEndRecord(centrals.length, cd.length, offset);
+  const blob = new Blob([concatBytes([...parts, cd, end])], {type:"application/zip"});
+  return blob;
+}
+
+/* ====== Debug bundle ====== */
+async function makeDebugBundle(){
+  if(!lastAnalysis || !lastCanvas) return;
+  const pngDataUrl = cvOverlay.toDataURL("image/png");
+  const pngBytes = new Uint8Array(await (await fetch(pngDataUrl)).arrayBuffer());
+  const jsonBytes = strBytes(JSON.stringify(lastAnalysis,null,2));
+  const diagBytes = strBytes(diagnostics.textContent);
+  const a=lastAnalysis;
+  const csvLine = ["timestamp","rev","area_pct","bri","con","sharp","offX","offY"].join(",")+"\n"+
+    [a.timestamp,a.revision,a.box.area_pct,a.lighting.brightness_mean,a.lighting.contrast_stdev,a.sharpness.laplacian_variance,a.box.center_offset_pct.x,a.box.center_offset_pct.y].join(",");
+  const csvBytes = strBytes(csvLine);
+  const zip = await buildZip([
+    {name:`overlay-${REVISION}.png`, data: pngBytes},
+    {name:`analysis-${REVISION}.json`, data: jsonBytes},
+    {name:`diagnostics-${REVISION}.log.txt`, data: diagBytes},
+    {name:`row-${REVISION}.csv`, data: csvBytes},
+  ]);
+  const url=URL.createObjectURL(zip);
+  const aTag = Object.assign(document.createElement("a"),{href:url,download:`yorn-debug-bundle-${REVISION}.zip`});
+  document.body.appendChild(aTag); aTag.click(); aTag.remove(); URL.revokeObjectURL(url);
+}
+
+/* ====== Buttons: bundle & rerun & reset ====== */
+bundleBtn.addEventListener("click",()=>{makeDebugBundle()});
+rerunBtn.addEventListener("click",()=>{
+  const vals=["blazeonly","cdn","native"];
+  const idx = vals.indexOf(fixModeSel.value);
+  const next = vals[(idx+1)%vals.length];
+  fixModeSel.value = next; localStorage.setItem("yorn_fixMode",next);
+  logEvt("config",{rerunWith:next}); detectFlow();
+});
+resetBtn.addEventListener("click",()=>{
+  rotDeg.value=0; zoom.value=1.2; bri.value=1.10; con.value=1.15;
+  zoomLabel.textContent="1.2"; briLabel.textContent="1.10"; conLabel.textContent="1.15";
+  if(baseBitmap){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c); }
 });
 
 /* ====== Events ====== */
@@ -564,11 +644,10 @@ async function handleBlob(blob,label){
   imgBase.classList.add("hidden"); cvOverlay.classList.add("hidden"); cvRough.classList.add("hidden");
   setProgress(8,`Decoding ${label}…`);
   baseBitmap = await decodeOriginal(blob);
-  const imgId = await imageIdFromBlob(blob);
-  logEvt("detect",{fileName:(blob.name||label),size_bytes:blob.size||0,image_id:imgId});
+  logEvt("detect",{fileName:(blob.name||label),size_bytes:blob.size||0});
   setProgress(12,`${label} ready.`);
   const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c);
-  detectBtn.disabled=false; enhanceBtn.disabled=false; savePngBtn.disabled=false;
+  detectBtn.disabled=false; enhanceBtn.disabled=false; savePngBtn.disabled=false; rerunBtn.disabled=false;
 }
 
 fileInput.addEventListener("change",async()=>{
@@ -587,12 +666,18 @@ clearLogsBtn.addEventListener("click",()=>{diagnostics.textContent="No diagnosti
 
 /* ====== Init ====== */
 (function init(){
-  if(!("FaceDetector" in window)){ /* native path disabled silently */ }
+  if(!("FaceDetector" in window)){ /* native path UI remains, will fallback */ }
   const saved = localStorage.getItem("yorn_fixMode"); if(saved && [...fixModeSel.options].some(o=>o.value===saved)){fixModeSel.value=saved}
   fixModeSel.addEventListener("change",()=>{localStorage.setItem("yorn_fixMode",fixModeSel.value);logEvt("config",{fixMode:fixModeSel.value})});
-  // toggles
   loadToggles();
   historyToTable(history);
+  updateHistoryButtons();
+
+  // Restore persisted history if enabled
+  const persisted = localStorage.getItem("yorn_history");
+  if(persistHistory && persisted){
+    try{ history = JSON.parse(persisted) || []; historyToTable(history); }catch{}
+  }
 })();
 </script>
 </body>
