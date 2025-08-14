@@ -785,6 +785,20 @@ window.addEventListener('load', async ()=>{
     logEvt('config',{boot:'complete'});
   }catch(e){ document.getElementById('veil').style.display='flex'; document.getElementById('veilMsg').textContent='Framework init failed'; logEvt('error',{frameworks:e.message||String(e)}) }
 });
+<script>
+/* Mirror Diagnostics → console (dev convenience) */
+(() => {
+  const __orig = window.logEvt;
+  window.logEvt = function(type, payload){
+    try { __orig(type, payload); } finally {
+      try {
+        const lvl = (type === 'error') ? 'error' : (type === 'config' ? 'info' : 'log');
+        console[lvl](`[YorN] ${type}`, payload || {});
+      } catch (_) {}
+    }
+  };
+})();
+</script>
 </script>
 </body>
 </html>
