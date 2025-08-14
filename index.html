@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN — 1.16.1-alpha</title>
+<title>YorN — 1.16.2-alpha</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- CSP tuned for local file + TFJS usage -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self' https: data: blob:;
   script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;
@@ -86,8 +87,8 @@
 <div id="readyBadge"><span id="readyDot"></span><span id="readyText">Ready for Analysis</span></div>
 <div id="readinessBadge" title="Auto‑test readiness badge">READY</div>
 
-<div id="veil" class="hidden">
-  <div class="spin"></div>
+<div id="veil" class="hidden" aria-hidden="true">
+  <div class="spin" aria-label="Loading"></div>
   <div class="msg" id="veilMsg">Frameworks loading…</div>
   <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center">
     <button id="dismissVeilBtn" class="btn">Dismiss</button>
@@ -251,7 +252,7 @@
 
 <script>
 /* ===== Core helpers ===== */
-const REVISION = "1.16.1-alpha";
+const REVISION = "1.16.2-alpha";
 const $ = (id)=>document.getElementById(id);
 const diagnostics = { el: null };
 function _appendTop(s){ if(!diagnostics.el) return; diagnostics.el.textContent = s + (diagnostics.el.textContent || ""); }
@@ -269,8 +270,8 @@ document.addEventListener("DOMContentLoaded", ()=>{
 });
 
 /* ===== Veil (fail-safe, non-blocking) ===== */
-function showVeil(msg){ const v=$("veil"); if(!v) return; $("veilMsg").textContent=msg||"Loading…"; v.classList.remove("hidden"); }
-function hideVeil(){ const v=$("veil"); if(v) v.classList.add("hidden"); }
+function showVeil(msg){ const v=$("veil"); if(!v) return; $("veilMsg").textContent=msg||"Loading…"; v.classList.remove("hidden"); v.setAttribute("aria-hidden","false"); }
+function hideVeil(){ const v=$("veil"); if(v){ v.classList.add("hidden"); v.setAttribute("aria-hidden","true"); } }
 window.addEventListener("load", hideVeil);
 document.addEventListener("click",(e)=>{ if(e.target && (e.target.id==="dismissVeilBtn")) hideVeil(); if(e.target && e.target.id==="retryInitBtn") { hideVeil(); initFrameworks(true); } });
 
@@ -291,7 +292,7 @@ async function initFrameworks(userTriggered=false){
   const HARD_TIMEOUT_MS = 4000;
   const tm = setTimeout(()=>{ hideVeil(); logEvt("config",{veil:"hard-timeout-hide"}) }, HARD_TIMEOUT_MS);
   try{
-    // TFJS
+    // TFJS presence
     let tfOK=false;
     for(let i=0;i<20;i++){ if(window.tf){ tfOK=true; break } await new Promise(r=>setTimeout(r,100)); }
     if(!tfOK){ logEvt("error",{tf_presence:"timeout"}); hideVeil(); return; }
@@ -302,7 +303,7 @@ async function initFrameworks(userTriggered=false){
       logEvt("error",{tf_init:e.message||String(e)});
       try{ await tf.setBackend('webgl'); await tf.ready(); logEvt("config",{tf:"ready",backend:tf.getBackend(),fallback:"webgl"});}catch(e2){ logEvt("error",{tf_fallback:e2.message||String(e2)}); }
     }
-    // Blaze
+    // BlazeFace
     let blazeOK=false;
     for(let i=0;i<40;i++){ if(window.blazeface){ blazeOK=true; break } await new Promise(r=>setTimeout(r,100)); }
     if(!blazeOK){ logEvt("error",{blazeface_presence:"timeout"}); hideVeil(); return; }
@@ -379,6 +380,7 @@ async function detectFlow(){
     let canvas=renderWorkingCanvas(1024); if(!canvas){ logEvt("error",{render:"failed"}); return }
     lastCanvas=canvas; paintBaseCanvas(canvas);
 
+    // Rough locate to auto-zoom
     const tinyW=160,tinyH=Math.round(tinyW*(canvas.height/canvas.width));
     const tmp=Object.assign(document.createElement("canvas"),{width:tinyW,height:tinyH});
     tmp.getContext("2d").drawImage(canvas,0,0,tinyW,tinyH);
@@ -390,6 +392,7 @@ async function detectFlow(){
       canvas=renderWorkingCanvas(1024,rough); lastCanvas=canvas; paintBaseCanvas(canvas);
     } else { logEvt("detect",{roughLocate_ms:ms,box:null}) }
 
+    // Multi-scale
     const cfgs=[{w:256,mirror:false},{w:384,mirror:false},{w:512,mirror:false},{w:384,mirror:true},{w:512,mirror:true}];
     let det=null;
     for(const cfg of cfgs){
@@ -415,6 +418,7 @@ async function detectFlow(){
     drawCross(octx,cx,cy,offX,offY);
     logEvt("detect",{finalDetect_ms:det.elapsed_ms,scale:det.scale,mirror:det.mirror,box:lastBox});
 
+    // Optional refine
     if ($("fixMode").value === "cdn") {
       try {
         setProgress(75, "Refining (face‑api)…");
@@ -540,42 +544,74 @@ $("exportDSJsonBtn").addEventListener('click', ()=>{
 });
 dsCount();
 
-/* ===== PDF report (print‑to‑PDF) ===== */
+/* ===== PDF/HTML report (popup-safe) ===== */
 $("exportPdfBtn").addEventListener('click', ()=>{
-  if(!lastAnalysis || !lastCanvas) return;
+  if(!lastAnalysis || !lastCanvas){
+    logEvt('error',{report:'no_analysis_or_canvas'});
+    return;
+  }
   const imgData = lastCanvas.toDataURL('image/png');
   const a = lastAnalysis, b = a.box, l = a.lighting, s = a.sharpness;
-  const html = `
-<!DOCTYPE html><html><head><meta charset="utf-8"><title>YorN Report</title>
-<style>
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,sans-serif;margin:24px;color:#111}
-  h1,h2{margin:0 0 12px}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .kv{padding:8px;border:1px solid #ddd;border-radius:8px;display:flex;justify-content:space-between}
-  img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:8px}
-  footer{margin-top:16px;font-size:12px;color:#555}
-  @media print { body{margin:0.5in} }
-</style></head><body>
-<h1>YorN Analysis Report</h1>
-<p><b>Revision:</b> ${a.revision} &nbsp; <b>Timestamp:</b> ${a.timestamp}</p>
-<img src="${imgData}" alt="Analyzed image">
-<h2>Metrics</h2>
-<div class="grid">
-  <div class="kv"><span>Face area</span><b>${b.area_pct}%</b></div>
-  <div class="kv"><span>Aspect ratio</span><b>${b.aspect}</b></div>
-  <div class="kv"><span>Orientation</span><b>${a.orientation}</b></div>
-  <div class="kv"><span>Brightness (mean)</span><b>${l.brightness_mean}</b></div>
-  <div class="kv"><span>Contrast (stdev)</span><b>${l.contrast_stdev}</b></div>
-  <div class="kv"><span>Sharpness (Laplacian var)</span><b>${s.laplacian_variance}</b></div>
-  <div class="kv"><span>Center offset X</span><b>${b.center_offset_pct.x}%</b></div>
-  <div class="kv"><span>Center offset Y</span><b>${b.center_offset_pct.y}%</b></div>
-</div>
-<footer>Generated by YorN • ${new Date().toLocaleString()}</footer>
-<script>setTimeout(()=>window.print(),100);</script>
-</body></html>`;
-  const w = window.open('', '_blank');
-  if(w){ w.document.open(); w.document.write(html); w.document.close(); }
-  logEvt('config',{report:'pdf_print_opened'});
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>YorN Report</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,sans-serif;margin:24px;color:#111}
+    h1,h2{margin:0 0 12px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .kv{padding:8px;border:1px solid #ddd;border-radius:8px;display:flex;justify-content:space-between}
+    img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:8px}
+    footer{margin-top:16px;font-size:12px;color:#555}
+    @media print { body{margin:0.5in} }
+  </style></head><body>
+  <h1>YorN Analysis Report</h1>
+  <p><b>Revision:</b> ${a.revision} &nbsp; <b>Timestamp:</b> ${a.timestamp}</p>
+  <img src="${imgData}" alt="Analyzed image">
+  <h2>Metrics</h2>
+  <div class="grid">
+    <div class="kv"><span>Face area</span><b>${b.area_pct}%</b></div>
+    <div class="kv"><span>Aspect ratio</span><b>${b.aspect}</b></div>
+    <div class="kv"><span>Orientation</span><b>${a.orientation}</b></div>
+    <div class="kv"><span>Brightness (mean)</span><b>${l.brightness_mean}</b></div>
+    <div class="kv"><span>Contrast (stdev)</span><b>${l.contrast_stdev}</b></div>
+    <div class="kv"><span>Sharpness (Laplacian var)</span><b>${s.laplacian_variance}</b></div>
+    <div class="kv"><span>Center offset X</span><b>${b.center_offset_pct.x}%</b></div>
+    <div class="kv"><span>Center offset Y</span><b>${b.center_offset_pct.y}%</b></div>
+  </div>
+  <footer>Generated by YorN • ${new Date().toLocaleString()}</footer>
+  <script>setTimeout(()=>{ try{ window.print(); }catch(_){} }, 120);<\/script>
+  </body></html>`;
+
+  let w = null;
+  try { w = window.open('', '_blank', 'noopener'); } catch (e) {
+    logEvt('error', { report_open_exception: e.message || String(e) });
+  }
+  if(!w || w.closed || typeof w.closed === 'undefined'){
+    try{
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const aDL = document.createElement('a');
+      aDL.href = url;
+      aDL.download = `yorn-report-${Date.now()}.html`;
+      document.body.appendChild(aDL);
+      aDL.click();
+      aDL.remove();
+      URL.revokeObjectURL(url);
+      logEvt('config', { report: 'html_download_fallback' });
+      $("progressText").textContent = 'Report downloaded (HTML). Open and print to save as PDF.';
+      setTimeout(()=>$("progressText").textContent='', 2400);
+    }catch(e){
+      logEvt('error', { report_fallback_exception: e.message || String(e) });
+    }
+    return;
+  }
+  try{
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    logEvt('config',{report:'pdf_print_opened'});
+  }catch(e){
+    logEvt('error',{ report_write_exception: e.message || String(e) });
+  }
 });
 
 /* ===== Copy helpers ===== */
@@ -679,8 +715,6 @@ $("exportJsonBtn").addEventListener('click', ()=>{
   const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 });
-
-/* ===== Buttons & filters already wired above ===== */
 
 /* ===== Boot ===== */
 window.addEventListener('load', ()=>{
