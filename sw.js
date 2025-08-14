@@ -1,73 +1,91 @@
-// sw.js — YorN service worker
-const CACHE = 'yorn-weights-v1';
-let cacheFirst = false;
+/* YorN Service Worker – simple precache + runtime cache
+   Scope: same folder as index.html
+*/
+const SW_VERSION = 'yorn-sw-v1';
+const APP_SHELL = [
+  './',          // ensure scope root
+  './index.html' // your single-file app
+];
 
-self.addEventListener('install', (e) => {
-  self.skipWaiting();
+// Matchers for runtime caching (weights, libs, sample image)
+const RUNTIME_ALLOWLIST = [
+  /\/face-api\.js@[^/]+\/(dist|weights)\//i,
+  /\/vladmandic\/face-api\/model/i,
+  /@tensorflow\/tfjs/i,
+  /@tensorflow-models\/blazeface/i,
+  /images\.unsplash\.com\/photo-1502685104226/i
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(SW_VERSION);
+    await cache.addAll(APP_SHELL.map(u => new Request(u, { cache: 'reload' })));
+    // Activate immediately on first load
+    await self.skipWaiting();
+  })());
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil(self.clients.claim());
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const names = await caches.keys();
+    await Promise.all(names.map(n => n !== SW_VERSION ? caches.delete(n) : Promise.resolve()));
+    await self.clients.claim();
+  })());
 });
 
-// Utility to add many URLs
-async function addAllToCache(urls) {
-  const c = await caches.open(CACHE);
-  await c.addAll(urls);
+self.addEventListener('fetch', (event) => {
+  // Only cache GETs
+  if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+
+  // Same-origin shell: try cache first, then network (offline-friendly)
+  const isShell = (url.origin === self.location.origin) &&
+                  (url.pathname === '/' || url.pathname.endsWith('/index.html'));
+
+  // Runtime allowlist (CDNs for weights/libs, sample image)
+  const shouldRuntimeCache = RUNTIME_ALLOWLIST.some(rx => rx.test(event.request.url));
+
+  if (isShell || shouldRuntimeCache) {
+    event.respondWith(staleWhileRevalidate(event.request));
+  }
+  // else default network (let browser handle)
+});
+
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(SW_VERSION);
+  const cached = await cache.match(request);
+  const networkPromise = fetch(request).then(response => {
+    // Cache successful (200) or opaque responses
+    const cacheable = response && (response.status === 200 || response.type === 'opaque');
+    if (cacheable) {
+      cache.put(request, response.clone()).catch(() => {});
+    }
+    return response;
+  }).catch(() => cached); // if network fails, fall back to cache
+  return cached || networkPromise;
 }
 
-self.addEventListener('message', async (e) => {
-  const data = e.data || {};
-  try {
-    if (data.type === 'PRECACHE' && Array.isArray(data.urls)) {
-      await addAllToCache(data.urls);
-      e.source?.postMessage({ type: 'PRECACHE_OK', count: data.urls.length });
-    }
-    if (data.type === 'MODE') {
-      cacheFirst = (data.mode === 'cache-first');
-      e.source?.postMessage({ type: 'MODE_SET', mode: cacheFirst ? 'cache-first' : 'network-first' });
-    }
-  } catch (err) {
-    e.source?.postMessage({ type: 'PRECACHE_ERR', msg: String(err) });
-  }
-});
-
-self.addEventListener('fetch', (e) => {
-  const req = e.request;
-  if (req.method !== 'GET') return;
-
-  // Intercept only likely model assets
-  const url = new URL(req.url);
-  const isModel =
-    /face-api|\/weights\/|tfjs-backend-wasm|\/wasm\//i.test(url.href);
-
-  if (!isModel) return;
-
-  if (cacheFirst) {
-    e.respondWith((async () => {
-      const c = await caches.open(CACHE);
-      const hit = await c.match(req);
-      if (hit) return hit;
-      const resp = await fetch(req);
-      if (resp.ok) c.put(req, resp.clone());
-      return resp;
+/* Messages from the page:
+   - {type:'yorn:clear'}             -> clears all caches
+   - {type:'yorn:precache', urls:[]} -> fetch+cache list of URLs
+*/
+self.addEventListener('message', (event) => {
+  const data = event.data || {};
+  if (data.type === 'yorn:clear') {
+    event.waitUntil((async () => {
+      const names = await caches.keys();
+      await Promise.all(names.map(n => caches.delete(n)));
     })());
-  } else {
-    // network-first fallback to cache
-    e.respondWith((async () => {
-      try {
-        const resp = await fetch(req);
-        if (resp.ok) {
-          const c = await caches.open(CACHE);
-          c.put(req, resp.clone());
-        }
-        return resp;
-      } catch {
-        const c = await caches.open(CACHE);
-        const hit = await c.match(req);
-        if (hit) return hit;
-        throw new Error('Network failed and no cache');
-      }
+  } else if (data.type === 'yorn:precache' && Array.isArray(data.urls)) {
+    event.waitUntil((async () => {
+      const cache = await caches.open(SW_VERSION);
+      await Promise.all(data.urls.map(async (u) => {
+        try {
+          const res = await fetch(u, { cache: 'reload' });
+          if (res.ok || res.type === 'opaque') await cache.put(u, res.clone());
+        } catch (_e) { /* ignore */ }
+      }));
     })());
   }
 });
