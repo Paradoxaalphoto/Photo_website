@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN — 1.14.0-alpha</title>
+<title>YorN — 1.14.1-alpha</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:; img-src * data: blob:; connect-src * data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; upgrade-insecure-requests">
+
 <style>
   :root{color-scheme:light dark}
   *{box-sizing:border-box}
@@ -12,15 +13,21 @@
   body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,sans-serif;background:#0b1220;color:#e6eaf2;overflow-x:hidden}
   .container{max-width:980px;margin:0 auto;padding:16px}
   .card{background:#0f172a;border:1px solid #233046;border-radius:12px;padding:12px;margin-top:12px}
-  .row{display:grid;grid-template-columns:1fr auto auto auto auto auto auto auto auto;gap:8px;align-items:end}
+  .row{display:grid;grid-template-columns:1fr auto auto auto auto auto auto auto auto auto;gap:8px;align-items:end}
   .controls{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-top:8px}
-  @media (max-width:720px){ .row{grid-template-columns:1fr;gap:10px} .controls{grid-template-columns:1fr 1fr;gap:10px} .two-col{grid-template-columns:1fr;gap:12px} .research-grid{grid-template-columns:1fr} }
+  @media (max-width:720px){
+    .row{grid-template-columns:1fr;gap:10px}
+    .controls{grid-template-columns:1fr 1fr;gap:10px}
+    .two-col{grid-template-columns:1fr;gap:12px}
+    .research-grid{grid-template-columns:1fr}
+  }
   label{font-size:12px;color:#A9B4C8}
   input[type="range"],input[type="number"],select,textarea{width:100%;padding:6px;border:1px solid #233046;border-radius:8px;background:#0b1220;color:#E6EAF2}
   textarea{min-height:72px;resize:vertical}
   .btn{padding:10px 14px;border-radius:8px;border:1px solid #233046;background:#1f2937;color:#E6EAF2;cursor:pointer}
   .btn[disabled]{opacity:.5;cursor:not-allowed}
   .btn-primary{background:#2563eb}
+
   #progressContainer{height:8px;background:#1e293b;border-radius:6px;overflow:hidden;margin-top:8px}
   #progressBar{height:100%;width:0;background:#38bdf8;transition:width .25s}
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -39,13 +46,21 @@
   .ok{background:rgba(16,185,129,.15);color:#a7f3d0;border-color:rgba(16,185,129,.55)}
   .warn{background:rgba(245,158,11,.15);color:#fde68a;border-color:rgba(245,158,11,.55)}
 
+  /* Tiny corner badges */
   #revBadge{position:fixed;top:8px;right:10px;z-index:9999;background:#0008;color:#fff;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid #fff3;border-radius:999px}
   #readyBadge{position:fixed;top:36px;right:10px;z-index:9999;display:none;background:#10b98126;color:#a7f3d0;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid #10b9818c;border-radius:999px}
   #readyDot{display:inline-block;width:8px;height:8px;border-radius:999px;background:#10b981;margin-right:6px}
+
+  /* NEW: Readiness badge */
+  #readinessBadge{position:fixed;top:64px;right:10px;z-index:9999;display:none;font:12px ui-monospace,monospace;padding:3px 8px;border-radius:999px;border:1px solid #233046}
+  #readinessBadge.ready{background:#052e1b; color:#a7f3d0; border-color:#0a5a33}
+  #readinessBadge.blocked{background:#3a0b0b; color:#fecaca; border-color:#7f1d1d}
+
   #veil{position:fixed;inset:0;background:#0b1220;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:10000}
   #veil .spin{width:28px;height:28px;border-radius:999px;border:3px solid #334155;border-top-color:#38bdf8;animation:sp 0.9s linear infinite}
   #veil .msg{color:#A9B4C8;font:13px ui-monospace,monospace}
   @keyframes sp{to{transform:rotate(360deg)}}
+
   footer{opacity:.8;font:12px ui-monospace,monospace;margin-top:10px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 
   .research-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -62,6 +77,7 @@
 <body>
 <div id="revBadge">YorN Rev <span id="revText"></span></div>
 <div id="readyBadge"><span id="readyDot"></span><span id="readyText">Ready for Analysis</span></div>
+<div id="readinessBadge" title="Auto‑test readiness badge">READY</div>
 <div id="veil"><div class="spin"></div><div class="msg" id="veilMsg">Frameworks loading…</div></div>
 
 <div class="container">
@@ -75,6 +91,7 @@
       <button id="detectBtn" class="btn" disabled>Detect</button>
       <button id="startAnalysisBtn" class="btn btn-primary" disabled>Start Analysis</button>
       <button id="autoTestBtn" class="btn">Auto Test</button>
+      <button id="autoTestReportBtn" class="btn" disabled>Copy Auto‑Test Report</button>
       <button id="resetBtn" class="btn">Reset</button>
       <button id="clearLogsBtn" class="btn">Clear Logs</button>
       <button id="copyDiagBtn" class="btn" disabled>Copy Diagnostics</button>
@@ -226,39 +243,65 @@
 </div>
 
 <script>
-const REVISION="1.14.0-alpha"; document.getElementById("revText").textContent=REVISION;
+const REVISION="1.14.1-alpha"; document.getElementById("revText").textContent=REVISION;
 const $=id=>document.getElementById(id);
 const diagnostics=$("diagnostics");
 function appendTop(s){ diagnostics.textContent = s + diagnostics.textContent; toggleCopyBtns() }
 function logEvt(type,payload){ appendTop(`[${new Date().toISOString()}] ${JSON.stringify({type,...(payload||{})})}\n`) }
-function toggleCopyBtns(){ const empty = diagnostics.textContent.trim().length===0 || diagnostics.textContent.includes("No diagnostics yet."); $("copyDiagBtn").disabled=empty; $("copyAllBtn").disabled=empty }
 
-/* boot error hooks */
+/*** Robust copy helpers ***/
+async function copyTextRobust(text){
+  if(text==null) text='';
+  try{
+    if(navigator.clipboard && window.isSecureContext){
+      await navigator.clipboard.writeText(text);
+      return {ok:true,via:'clipboard'};
+    }
+  }catch(_){}
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px';
+    document.body.appendChild(ta); ta.select();
+    const ok=document.execCommand('copy');
+    document.body.removeChild(ta);
+    if(ok) return {ok:true,via:'execCommand'};
+  }catch(e){ return {ok:false,via:'fallback',err:e.message||String(e)} }
+  return {ok:false,via:'none',err:'No clipboard available'};
+}
+function toggleCopyBtns(){
+  const has = diagnostics && diagnostics.textContent && diagnostics.textContent.trim().length>0 && !diagnostics.textContent.includes('No diagnostics yet.');
+  $("copyDiagBtn").disabled = !has;
+  $("copyAllBtn").disabled = !has;
+  $("autoTestReportBtn").disabled = !has || !__autoTestRunId;
+}
+
+/*** Global error hooks ***/
 window.addEventListener('error', e=>logEvt('error',{global:e.message,at:(e.filename||'')+':'+(e.lineno||'')}));
 window.addEventListener('unhandledrejection', e=>{ const r=e&&e.reason; logEvt('error',{unhandled:(r&&(r.message||r))||String(r)}) });
 
-/* UI refs */
+/*** UI refs ***/
 const progressBar=$("progressBar"), progressText=$("progressText");
 const imgBase=$("base"), cvRough=$("overlayRough"), cvOverlay=$("overlay");
 const fileInput=$("fileInput"), sampleBtn=$("sampleBtn"), detectBtn=$("detectBtn"), startAnalysisBtn=$("startAnalysisBtn");
 const enhanceBtn=$("enhanceBtn"), clearLogsBtn=$("clearLogsBtn"), resetBtn=$("resetBtn"), sharePngBtn=$("sharePngBtn");
 const copyAllBtn=$("copyAllBtn"), copyDiagBtn=$("copyDiagBtn");
 const rotDeg=$("rotDeg"), zoom=$("zoom"), zoomLabel=$("zoomLabel"), bri=$("bri"), briLabel=$("briLabel"), con=$("con"), conLabel=$("conLabel");
-const fixModeSel=$("fixMode"), weightsSrc=$("weightsSrc"), precacheBtn=$("precacheBtn"), autoTestBtn=$("autoTestBtn");
+const fixModeSel=$("fixMode"), weightsSrc=$("weightsSrc"), precacheBtn=$("precacheBtn"), autoTestBtn=$("autoTestBtn"), autoTestReportBtn=$("autoTestReportBtn");
 const swPill=$("swPill"); const veil=$("veil"), veilMsg=$("veilMsg");
+const readinessBadge=$("readinessBadge");
 
-/* research refs */
+/*** Research refs ***/
 const researchCard=$("researchCard"), consentSel=$("consent"), ageGroupSel=$("ageGroup"), raterGenderSel=$("raterGender");
 const ratingRange=$("rating"), confRange=$("confidence"), notesArea=$("notes");
 const saveRowBtn=$("saveRowBtn"), exportCSVBtn=$("exportCSVBtn"), exportDSJsonBtn=$("exportDSJsonBtn"), dsCountEl=$("dsCount");
 
-/* progress + badges */
+/*** Progress + badges ***/
 function setProgress(p,t){progressBar.style.width=(p||0)+'%';progressText.textContent=t||''}
 function showVeil(msg){ veilMsg.textContent=msg||'Frameworks loading…'; veil.style.display='flex' }
 function hideVeil(){ veil.style.display='none' }
 const waitFor=(cond,label,timeout=8000,int=100)=>new Promise((res,rej)=>{const t0=performance.now();const iv=setInterval(()=>{try{if(cond()){clearInterval(iv);res(true)}else if(performance.now()-t0>timeout){clearInterval(iv);rej(new Error(label+' timeout'))}}catch(e){clearInterval(iv);rej(e)}},int)});
 
-/* session metrics */
+/*** Session metrics ***/
 let detTimes=[], anaCount=0, detCount=0, hintCounts={};
 function updateFooter(){
   const avg = detTimes.length ? Math.round(detTimes.reduce((a,b)=>a+b,0)/detTimes.length) : '—';
@@ -266,7 +309,7 @@ function updateFooter(){
   $("sessDet").textContent=`${detCount} detects`; $("sessAna").textContent=`${anaCount} analyses`; $("sessAvg").textContent=avg; $("sessHint").textContent=common;
 }
 
-/* TFJS/Models boot */
+/*** TFJS/Models boot ***/
 async function initFrameworks(){
   showVeil('Loading TensorFlow…');
   await waitFor(()=>window.tf,'tf presence',10000).catch(e=>{ logEvt('error',{tf_presence:e.message}); throw e });
@@ -286,22 +329,22 @@ async function initFrameworks(){
   detectBtn.disabled=false; enhanceBtn.disabled=false;
 }
 
-/* SW helpers (precache UX) */
+/*** SW helpers (precache UX) ***/
 async function getSWReg(){ if(!('serviceWorker' in navigator)){ logEvt('error',{sw:'unsupported'}); return null } try{ const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./'}); logEvt('config',{sw:'registered',scope:reg.scope||'n/a'}); return reg }catch(e){ logEvt('error',{sw_reg:String(e.message||e)}); return null } }
-function setPrecacheLabel(txt, disabled=false){ precacheBtn.textContent = txt; precacheBtn.disabled = !!disabled }
+function setPrecacheLabel(txt, disabled=false){ $("precacheBtn").textContent = txt; $("precacheBtn").disabled = !!disabled }
 async function getSWControllerStatus(){ try{ const reg=await navigator.serviceWorker.getRegistration(); return {supported:'serviceWorker' in navigator, registered:!!reg, controlling:!!navigator.serviceWorker.controller} }catch{ return {supported:false,registered:false,controlling:false} } }
-function updateSWPillText(st){ swPill.textContent = !st.supported ? 'SW: unsupported' : !st.registered ? 'SW: none' : !st.controlling ? 'SW: registered (reload needed)' : 'SW: controlling' }
+function updateSWPillText(st){ $("swPill").textContent = !st.supported ? 'SW: unsupported' : !st.registered ? 'SW: none' : !st.controlling ? 'SW: registered (reload needed)' : 'SW: controlling' }
 async function refreshSWPill(){ const st=await getSWControllerStatus(); updateSWPillText(st) }
 
-/* images */
+/*** Images ***/
 async function blobToCanvasViaImg(blob){ const url=URL.createObjectURL(blob); try{ const img=new Image(); img.decoding="sync"; img.loading="eager"; await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url}); const c=document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext("2d").drawImage(img,0,0); return c } finally{ URL.revokeObjectURL(url) } }
 async function decodeOriginal(fileOrBlob){
   try{ if('createImageBitmap' in window){ const bmp=await createImageBitmap(fileOrBlob); logEvt('detect',{decode:'createImageBitmap',w:bmp.width,h:bmp.height}); return {bitmap:bmp,width:bmp.width,height:bmp.height}; } }
   catch(e){ logEvt('error',{decode_createImageBitmap:e.message||String(e)}) }
-  const can=await blobToCanvasViaImg(fileOrBlob); logEvt('detect',{decode:'blob->img',size_bytes:blob.size||0}); return {canvas:can,width:can.width,height:can.height};
+  const can=await blobToCanvasViaImg(fileOrBlob); logEvt('detect',{decode:'blob->img',size_bytes:fileOrBlob.size||0}); return {canvas:can,width:can.width,height:can.height};
 }
 
-/* preview & overlay */
+/*** Preview & overlay ***/
 let baseSource=null, workCanvas=null, lastCanvas=null, lastBox=null, lastLandmarks=null, lastAnalysis=null;
 function ensureWork(){ if(!workCanvas) workCanvas=document.createElement('canvas'); return workCanvas }
 function syncOverlaySize(){ const w=imgBase.clientWidth,h=imgBase.clientHeight; if(!w||!h) return; [cvRough,cvOverlay].forEach(c=>{c.style.width=w+'px'; c.style.height=h+'px'}) }
@@ -333,18 +376,22 @@ function renderWorkingCanvas(maxSide=1024,centerBox=null){
   return c;
 }
 
-/* drawing */
+/*** Drawing ***/
 function drawBox(ctx,box,color,label){ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(box.x,box.y,box.width,box.height);ctx.fillStyle=color;ctx.font="12px ui-monospace,monospace";ctx.fillText(label,box.x,Math.max(12,box.y-4))}
 function drawCross(ctx,cx,cy,offX,offY){ctx.strokeStyle="#60a5fa";ctx.beginPath();ctx.moveTo(cx-8,cy);ctx.lineTo(cx+8,cy);ctx.moveTo(cx,cy-8);ctx.lineTo(cx,cy+8);ctx.stroke();ctx.fillStyle="#60a5fa";ctx.font="12px ui-monospace,monospace";const text=`(${Math.round(cx)},${Math.round(cy)}) | offX ${offX.toFixed(1)}% • offY ${offY.toFixed(1)}%`;const tx=Math.min(cx+10,cvOverlay.width-260),ty=Math.min(cy+14,cvOverlay.height-4);ctx.fillText(text,tx,ty)}
 function drawLandmarks(ctx,landmarks){ try{ const pts=landmarks.positions||landmarks; ctx.fillStyle="#f472b6"; for(const p of pts){ ctx.fillRect(p.x-1,p.y-1,2,2) } }catch(_){} }
 
-/* models */
+/*** Models ***/
 let blazeModel=null; async function ensureBlaze(){ if(blazeModel) return; blazeModel=window.__blazeModel; }
 async function headOK(url, max=2){ for(let i=0;i<max;i++){ try{ const r=await fetch(url,{method:'HEAD',cache:'no-store'}); return r.ok }catch(e){ await new Promise(r=>setTimeout(r,200)) } } return false }
+
+/*** PATCH: Bind tf into face-api and load nets safely ***/
 let faceApiReady=false, FA_BASE=null;
 async function ensureFaceApi(){
   if(faceApiReady) return true;
   if(!window.faceapi){ logEvt('error',{faceapi_presence:'missing'}); return false }
+  try { faceapi.tf = tf } catch(_) {} // bind TF
+
   const base=(weightsSrc.value||"").replace(/\/$/,"");
   FA_BASE=base;
   const mani1 = base+"/tiny_face_detector_model-weights_manifest.json";
@@ -352,16 +399,22 @@ async function ensureFaceApi(){
   const ok1 = await headOK(mani1); const ok2 = await headOK(mani2);
   logEvt('detect',{weightsHealth:{mani1:ok1,mani2:ok2,base}});
   if(!ok1 || !ok2){ logEvt('error',{weightsBase:'health-check-failed',base}); return false }
-  await faceapi.nets.tinyFaceDetector.loadFromUri(base);
-  await faceapi.nets.faceLandmark68Net.loadFromUri(base);
-  faceApiReady=true; logEvt("detect",{faceapiReady:true,usingWeightsFrom:base});
-  return true;
+
+  try{
+    await faceapi.nets.tinyFaceDetector.loadFromUri(base);
+    await faceapi.nets.faceLandmark68Net.loadFromUri(base);
+    faceApiReady=true; logEvt("detect",{faceapiReady:true,usingWeightsFrom:base});
+    return true;
+  }catch(e){
+    logEvt('error',{faceapi_load:e.message||String(e)});
+    return false;
+  }
 }
 
-/* util */
+/*** Util ***/
 function downsample(canvas,w,mirror=false){const h=Math.round(w*(canvas.height/canvas.width));const tmp=Object.assign(document.createElement("canvas"),{width:w,height:h});const ctx=tmp.getContext("2d");if(mirror){ctx.translate(w,0);ctx.scale(-1,1)}ctx.drawImage(canvas,0,0,w,h);return tmp}
 
-/* detection flow */
+/*** Detection flow ***/
 async function detectFlow(){
   try{
     lastBox=null; lastCanvas=null; lastLandmarks=null; $("analysisCard").style.display="none"; researchCard.style.display="none";
@@ -405,39 +458,47 @@ async function detectFlow(){
     drawCross(octx,cx,cy,offX,offY);
     logEvt("detect",{finalDetect_ms:det.elapsed_ms,scale:det.scale,mirror:det.mirror,box:lastBox});
 
+    /* Refine (safe) */
     if(fixModeSel.value==="cdn"){
       try{
         setProgress(75,"Refining (face‑api)…");
-        const ok = await ensureFaceApi();
-        if(ok){
-          const opts=new faceapi.TinyFaceDetectorOptions({ inputSize:256, scoreThreshold:0.3 });
+        const ok=await ensureFaceApi();
+        if(!ok){
+          logEvt("detect",{refine_skipped:"faceapi not ready"});
+        }else if(!faceapi.tf || typeof faceapi.tf.engine!=="function"){
+          logEvt("error",{refine_guard:"tf binding missing"});
+        }else{
+          const opts=new faceapi.TinyFaceDetectorOptions({inputSize:256,scoreThreshold:0.3});
           const tR=performance.now();
-          const result=await faceapi.detectSingleFace(lastCanvas, opts).withFaceLandmarks();
+          const result=await faceapi.detectSingleFace(lastCanvas,opts).withFaceLandmarks();
           const msR=Math.round(performance.now()-tR);
           if(result){
             const b=result.detection.box;
             lastBox={x:b.x,y:b.y,width:b.width,height:b.height};
             lastLandmarks=result.landmarks;
             octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
-            drawBox(octx,lastBox,"#f59e0b",`Refined • ${msR}ms`);
-            drawLandmarks(octx,lastLandmarks);
+            drawBox(octx,lastBox,"#f59e0b",`Refined • ${msR}ms`); drawLandmarks(octx,lastLandmarks);
             const cx2=lastBox.x+lastBox.width/2, cy2=lastBox.y+lastBox.height/2;
-            const offX2=((cx2-canvas.width/2)/(canvas.width/2))*100, offY2=((cy2-canvas.height/2)/(canvas.height/2))*100;
+            const offX2=((cx2-lastCanvas.width/2)/(lastCanvas.width/2))*100, offY2=((cy2-lastCanvas.height/2)/(lastCanvas.height/2))*100;
             drawCross(octx,cx2,cy2,offX2,offY2);
             logEvt("detect",{refine_ms:msR,faceapi:true,box:lastBox,landmarks:68});
           }else{
             logEvt("detect",{refine_ms:msR,faceapi:false,reason:"no detection"});
           }
         }
-      }catch(e){ logEvt("error",{refine:e.message||String(e)}) }
+      }catch(e){
+        const msg=(e&&(e.message||e.stack))?(e.message+" | "+(e.stack||"")):String(e);
+        logEvt("error",{refine_exception:msg});
+      }
     }
 
-    setProgress(100,"Done."); startAnalysisBtn.disabled=false; document.getElementById("readyBadge").style.display="inline-flex";
+    setProgress(100,"Done."); $("readyBadge").style.display="inline-flex";
+    startAnalysisBtn.disabled=false;
     if($("autoAnalyze").checked){ startAnalysisBtn.click(); }
   }catch(e){ logEvt("error",{detectFlow:e.message||String(e)}) }
 }
 
-/* lightweight analysis */
+/*** Lightweight analysis ***/
 function runLightAnalysis(){
   if(!lastCanvas||!lastBox){ logEvt("error",{analysis:"no detection"}); return }
   const imgW=lastCanvas.width,imgH=lastCanvas.height,b=lastBox;
@@ -484,7 +545,7 @@ function runLightAnalysis(){
   $("copyJsonBtn").disabled=false; $("exportJsonBtn").disabled=false; $("sharePngBtn").disabled=false;
 }
 
-/* research dataset (local) */
+/*** Research dataset ***/
 const DS_KEY='yorn_dataset_v1';
 function loadDS(){ try{ return JSON.parse(localStorage.getItem(DS_KEY)||'[]') }catch(_){ return [] } }
 function saveDS(rows){ try{ localStorage.setItem(DS_KEY, JSON.stringify(rows)) }catch(_){} }
@@ -498,7 +559,7 @@ saveRowBtn.addEventListener('click', ()=>{
     rating:+ratingRange.value, notes:(notesArea.value||'').trim()||null, analysis:lastAnalysis };
   const rows=loadDS(); rows.push(row); saveDS(rows); dsCount(); logEvt('analysis',{saved:true,row});
 });
-function toCSV(rows){ const esc=v=>(v==null?'':String(v).replace(/"/g,'""'));
+function toCSV(rows){ const esc=v=>(v==null?'':String(v).replace(/"/g,'"\"'));
   const hdr=['created_at','rater_age_group','rater_gender','confidence_pct','rating','notes','img_w','img_h','box_x','box_y','box_w','box_h','box_area_pct','box_aspect','center_x','center_y','off_x_pct','off_y_pct','brightness_mean','contrast_stdev','sharpness_var','orientation','landmarks','revision'];
   const lines=[hdr.join(',')];
   for(const r of rows){ const a=r.analysis||{}; const b=a.box||{center:{},center_offset_pct:{}}; const cells=[r.created_at,r.rater?.age_group,r.rater?.gender,r.rater?.confidence_pct,r.rating,r.notes,a.image?.width,a.image?.height,b.x,b.y,b.width,b.height,a.box?.area_pct,a.box?.aspect,b.center?.x,b.center?.y,b.center_offset_pct?.x,b.center_offset_pct?.y,a.lighting?.brightness_mean,a.lighting?.contrast_stdev,a.sharpness?.laplacian_variance,a.orientation,a.refine?.landmarks,a.revision].map(esc); lines.push(cells.map(v=>`"${v}"`).join(',')); }
@@ -512,12 +573,13 @@ $("exportDSJsonBtn").addEventListener('click', ()=>{ const rows=loadDS(); if(!ro
   a.href=url; a.download=`yorn-dataset-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{dataset:'json_export',rows:rows.length}) });
 dsCount();
 
-/* copy/export & basic controls */
-copyDiagBtn.addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(diagnostics.textContent); logEvt('config',{copiedDiagnostics:true}) }catch(e){ logEvt('error',{copyDiagnosticsError:e.message||String(e)}) }});
-copyAllBtn.addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(diagnostics.textContent); logEvt('config',{copiedAll:true}) }catch(e){ logEvt('error',{copyAll:e.message||String(e)}) }});
+/*** Copy/export & basic controls ***/
+$("copyDiagBtn").onclick = async ()=>{ try{ const visible = diagnostics ? diagnostics.innerText : ''; const res = await copyTextRobust(visible); if(res.ok){ logEvt('config',{copiedDiagnostics:true,via:res.via,length:visible.length}); progressText.textContent='Diagnostics copied'; setTimeout(()=>progressText.textContent='',1200);} else { logEvt('error',{copyDiagnosticsError:res.err||'unknown',via:res.via}); } }catch(e){ logEvt('error',{copyDiagnosticsException:e.message||String(e)}) } };
+$("copyAllBtn").onclick = async ()=>{ try{ const allLogs = diagnostics ? diagnostics.innerText : ''; const res = await copyTextRobust(allLogs); if(res.ok){ logEvt('config',{copiedAll:true,via:res.via,length:allLogs.length}); progressText.textContent='All logs copied'; setTimeout(()=>progressText.textContent='',1200);} else { logEvt('error',{copyAllError:res.err||'unknown',via:res.via}); } }catch(e){ logEvt('error',{copyAllException:e.message||String(e)}) } };
+
 $("clearLogsBtn").addEventListener('click',()=>{ diagnostics.textContent='No diagnostics yet.'; toggleCopyBtns() });
 $("resetBtn").addEventListener('click',()=>{ ["base"].forEach(id=>$(id).classList.add('hidden')); baseSource=null; lastCanvas=null; lastBox=null; lastLandmarks=null; $("analysisCard").style.display="none"; researchCard.style.display="none"; logEvt('config',{reset:true}) });
-$("copyJsonBtn").addEventListener('click',async()=>{ try{ if(!lastAnalysis) return; await navigator.clipboard.writeText(JSON.stringify(lastAnalysis,null,2)); logEvt('config',{copiedJSON:true}); }catch(e){ logEvt('error',{copyJSON:e.message||String(e)}) }});
+$("copyJsonBtn").addEventListener('click',async()=>{ try{ if(!lastAnalysis) return; const res = await copyTextRobust(JSON.stringify(lastAnalysis,null,2)); if(res.ok){ logEvt('config',{copiedJSON:true,via:res.via}); } }catch(e){ logEvt('error',{copyJSON:e.message||String(e)}) }});
 $("exportJsonBtn").addEventListener('click',()=>{ try{ if(!lastAnalysis) return; const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:"application/json"}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{downloadJSON:true}); }catch(e){ logEvt('error',{downloadJSON:e.message||String(e)}) }});
 $("sharePngBtn").addEventListener('click',async()=>{ try{ if(!lastCanvas) return; const out=document.createElement('canvas'); out.width=lastCanvas.width; out.height=lastCanvas.height; const ctx=out.getContext('2d'); ctx.drawImage(lastCanvas,0,0); ctx.drawImage(cvOverlay,0,0); ctx.globalAlpha=0.85; ctx.fillStyle="#000000A0"; ctx.fillRect(out.width-240-10, out.height-32-10, 240, 28); ctx.globalAlpha=1; ctx.fillStyle="#E6EAF2"; ctx.font="12px ui-monospace,monospace"; ctx.fillText(`YorN ${REVISION} • ${new Date().toISOString().slice(0,19)}`, out.width-230-10, out.height-14-10); const blob=await new Promise(r=>out.toBlob(r,'image/png',0.92)); const file=new File([blob],'yorn-snapshot.png',{type:'image/png'}); if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:'YorN Snapshot', text:'Face detection preview'}); logEvt('config',{share:'webshare'}); } else { const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-snapshot-${Date.now()}.png`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{share:'download'}) } }catch(e){ logEvt('error',{sharePNG:e.message||String(e)}) }});
 zoom.addEventListener("input",()=>{ zoomLabel.textContent=(+zoom.value).toFixed(2); if(baseSource){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c) }});
@@ -525,12 +587,12 @@ bri.addEventListener("input",()=>{ briLabel.textContent=(+bri.value).toFixed(2);
 con.addEventListener("input",()=>{ conLabel.textContent=(+con.value).toFixed(2); if(baseSource){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c) }});
 $("rotDeg").addEventListener("change",()=>{ if(baseSource){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c) }});
 
-/* detect & analysis buttons */
+/*** Buttons: detect & analysis ***/
 $("enhanceBtn").addEventListener("click",()=>{ zoom.value=Math.max(+zoom.value,1.5); zoomLabel.textContent=(+zoom.value).toFixed(2); bri.value=Math.max(+bri.value,1.18); briLabel.textContent=(+bri.value).toFixed(2); con.value=Math.max(+con.value,1.25); conLabel.textContent=(+con.value).toFixed(2); detectFlow() });
 $("detectBtn").addEventListener("click",()=>detectFlow());
 $("startAnalysisBtn").addEventListener("click",()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis() });
 
-/* sample & file */
+/*** Sample & file ***/
 $("fileInput").addEventListener('change', async ()=>{
   if(!fileInput.files.length) return;
   const f=fileInput.files[0]; setProgress(8,'Decoding photo…');
@@ -549,76 +611,144 @@ $("sampleBtn").addEventListener('click', async ()=>{
   }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) }
 });
 
-/* Auto Test */
-autoTestBtn.addEventListener('click', runAutoTest);
+/*** Auto‑Test: report + readiness ***/
+let __autoTestRunId = null;
+let __autoTestStartIdx = 0;
+
+function getAllLogsText(){ return diagnostics ? diagnostics.innerText || diagnostics.textContent || '' : '' }
+
+function buildAutoTestReport(){
+  const full = getAllLogsText();
+  const chunk = full.slice(__autoTestStartIdx);
+  const revMatch = full.match(/"rev":"([^"]+)"/) || [];
+  const backendMatch = full.match(/"backend":"([^"]+)"/) || [];
+  const weightsBase = chunk.match(/"weightsHealth":\{[^}]*"base":"([^"]+)"/) || [];
+  const refined = /"refine_ms":/.test(chunk) ? "yes" : /"refine_skipped"|"refine_guard"|"refine_exception"/.test(chunk) ? "attempted (fallback)" : "no";
+  const passes = (chunk.match(/"test","step":"[^"]+","ok":true/g) || []).length;
+  const fails  = (chunk.match(/"type":"error"/g) || []).length + (chunk.match(/"test","step":"fail"/g) || []).length;
+
+  const summaryLine = `YorN ${revMatch[1]||'—'} • TF backend: ${backendMatch[1]||'—'} • refine: ${refined} • passes: ${passes} • fails: ${fails}`;
+  const header = [
+    '=== YorN Auto‑Test Report ===',
+    summaryLine,
+    weightsBase[1] ? `weights: ${weightsBase[1]}` : ''
+  ].filter(Boolean).join('\n');
+
+  const lines = chunk.split('\n').filter(l => /"type":"test"|"type":"detect"|"type":"analysis"|"type":"config"|"type":"error"/.test(l));
+  return header + '\n\n' + lines.join('\n') + '\n=== End Report ===\n';
+}
+
+$("autoTestReportBtn").onclick = async () => {
+  try {
+    const report = buildAutoTestReport();
+    const res = await copyTextRobust(report);
+    if (res.ok) {
+      logEvt('config', { copiedAutoTestReport: true, via: res.via, length: report.length });
+      progressText.textContent = 'Auto‑Test report copied';
+      setTimeout(()=>progressText.textContent='', 1200);
+    } else {
+      logEvt('error', { copyAutoTestReportError: res.err || 'unknown', via: res.via });
+    }
+  } catch (e) {
+    logEvt('error', { copyAutoTestReportException: e.message || String(e) });
+  }
+};
+
+function setReadinessBadge(state, tooltip){
+  readinessBadge.style.display='inline-flex';
+  readinessBadge.className = '';
+  readinessBadge.classList.add(state==='ready' ? 'ready' : 'blocked');
+  readinessBadge.textContent = state==='ready' ? 'READY' : 'BLOCKED';
+  readinessBadge.title = tooltip || '';
+}
+
+/*** Auto Test (instrumented) ***/
+$("autoTestBtn").addEventListener('click', runAutoTest);
 async function runAutoTest(){
-  autoTestBtn.disabled=true; const oldFix=fixModeSel.value; const oldOver=$("showOverlays").checked;
-  const tStart=performance.now(); let passes=0, fails=0;
-  function tlog(step,extra){ logEvt('test',{step,...(extra||{})}) }
+  $("autoTestBtn").disabled = true;
+  const oldFix = fixModeSel.value;
+  const oldOver = $("showOverlays").checked;
+
+  const fullBefore = getAllLogsText();
+  __autoTestStartIdx = fullBefore.length;
+  __autoTestRunId = crypto.randomUUID ? crypto.randomUUID() : ('run_'+Date.now());
+  logEvt('test', { step:'begin', run: __autoTestRunId });
+
+  let passes = 0, fails = 0;
+  const tStart = performance.now();
+  const tlog = (step, extra) => logEvt('test', { step, ...(extra||{}) });
+
   try{
     setProgress(3,'Auto Test: loading sample');
-    // 1) Load sample
     await $("sampleBtn").click();
     await new Promise(r=>setTimeout(r,400));
-    if(!baseSource){ fails++; tlog('sample','no baseSource'); throw new Error('sample failed') }
-    passes++; tlog('sample',{ok:true,dim:{w:baseSource.width,h:baseSource.height}});
+    if(!baseSource){ fails++; tlog('sample', { ok:false, reason:'no baseSource' }); throw new Error('sample failed') }
+    passes++; tlog('sample', { ok:true, dim:{w:baseSource.width, h:baseSource.height} });
 
-    // 2) Blaze detect
     setProgress(20,'Auto Test: blaze detect');
-    fixModeSel.value='blazeonly';
+    fixModeSel.value = 'blazeonly';
     await detectFlow();
     await new Promise(r=>setTimeout(r,300));
-    if(!lastBox){ fails++; tlog('blaze_detect','no box'); throw new Error('detect failed') }
-    passes++; tlog('blaze_detect',{ok:true,box:lastBox});
+    if(!lastBox){ fails++; tlog('blaze_detect', { ok:false }); throw new Error('detect failed') }
+    passes++; tlog('blaze_detect', { ok:true, box:lastBox });
 
-    // 3) Optional refine (if weights healthy)
     setProgress(55,'Auto Test: refine check');
     const base=(weightsSrc.value||"").replace(/\/$/,"");
-    const ok = await headOK(base+"/tiny_face_detector_model-weights_manifest.json") && await headOK(base+"/face_landmark_68_model-weights_manifest.json");
-    tlog('weights_health',{base,ok});
-    if(ok){
-      fixModeSel.value='cdn';
+    const okWeights = await headOK(base+"/tiny_face_detector_model-weights_manifest.json") && await headOK(base+"/face_landmark_68_model-weights_manifest.json");
+    tlog('weights_health', { base, ok: okWeights });
+    if (okWeights) {
+      fixModeSel.value = 'cdn';
       await detectFlow();
       await new Promise(r=>setTimeout(r,300));
-      passes += lastBox ? 1 : 0;
-      tlog('refine_attempt',{ok:!!lastBox,landmarks:!!lastLandmarks});
+      const refined = !!lastLandmarks || !!lastBox;
+      tlog('refine_attempt', { ok: refined, landmarks: !!lastLandmarks });
+      passes += refined ? 1 : 0;
     } else {
-      tlog('refine_skipped','weights unhealthy');
+      tlog('refine_skipped', 'weights unhealthy');
     }
 
-    // 4) Analysis
     setProgress(80,'Auto Test: analysis');
     $("startAnalysisBtn").click();
-    await new Promise(r=>setTimeout(r,200));
-    if(!lastAnalysis){ fails++; tlog('analysis','no analysis'); throw new Error('analysis failed') }
-    passes++; tlog('analysis',{ok:true,summary:{
-      area_pct:lastAnalysis.box.area_pct,
-      brightness:lastAnalysis.lighting.brightness_mean,
-      contrast:lastAnalysis.lighting.contrast_stdev,
-      sharp:lastAnalysis.sharpness.laplacian_variance
-    }});
+    await new Promise(r=>setTimeout(r,250));
+    if(!lastAnalysis){ fails++; tlog('analysis', { ok:false }); throw new Error('analysis failed') }
+    passes++; tlog('analysis', {
+      ok:true,
+      summary:{
+        area_pct:lastAnalysis.box.area_pct,
+        brightness:lastAnalysis.lighting.brightness_mean,
+        contrast:lastAnalysis.lighting.contrast_stdev,
+        sharp:lastAnalysis.sharpness.laplacian_variance
+      }
+    });
 
-    // Summary
-    const ms=Math.round(performance.now()-tStart);
+    const ms = Math.round(performance.now()-tStart);
     setProgress(100,'Auto Test: complete');
-    tlog('summary',{passes, fails, ms, revision:REVISION});
-  }catch(e){
-    tlog('fail',{error:e.message||String(e)});
-  }finally{
-    // restore
-    fixModeSel.value=oldFix; $("showOverlays").checked=oldOver;
-    autoTestBtn.disabled=false;
+    tlog('summary', { passes, fails, ms, revision: REVISION, backend: (tf && tf.getBackend && tf.getBackend()) || 'unknown' });
+
+    // NEW: readiness badge logic
+    const ready = (fails===0 && passes>=3);
+    setReadinessBadge(ready ? 'ready' : 'blocked', `passes=${passes} fails=${fails} • ${ms}ms`);
+
+  } catch(e){
+    tlog('fail', { error: e.message || String(e) });
+    setReadinessBadge('blocked', e.message || 'Auto‑test failed');
+  } finally {
+    fixModeSel.value = oldFix;
+    $("showOverlays").checked = oldOver;
+    $("autoTestBtn").disabled = false;
+    $("autoTestReportBtn").disabled = false;
+    tlog('end', { run: __autoTestRunId });
+    toggleCopyBtns();
   }
 }
 
-/* Precache button behavior */
-precacheBtn.addEventListener('click', async ()=>{
+/*** Precache button ***/
+$("precacheBtn").addEventListener('click', async ()=>{
   setPrecacheLabel('Precaching…', true);
   const reg = await getSWReg();
   if(reg && !navigator.serviceWorker.controller){
     logEvt('config',{sw_notice:'Reload once so SW controls this page'});
   }
-  // simple manifest prefetch (weights URIs)
   const base=(weightsSrc.value||"").replace(/\/$/,"");
   const list=[ 'tiny_face_detector_model-weights_manifest.json', 'face_landmark_68_model-weights_manifest.json' ].map(f=>`${base}/${f}`);
   for(const u of list){ try{ await fetch(u,{cache:'reload'}); }catch(e){ logEvt('error',{precache_fetch:u,msg:e.message||String(e)}) } }
@@ -626,7 +756,7 @@ precacheBtn.addEventListener('click', async ()=>{
   await refreshSWPill();
 });
 
-/* init */
+/*** Init ***/
 window.addEventListener('load', async ()=>{
   document.getElementById("revText").textContent=REVISION;
   logEvt('config',{boot:'ui-ready',rev:REVISION});
@@ -637,6 +767,7 @@ window.addEventListener('load', async ()=>{
       const saved=localStorage.getItem("yorn_last_analysis");
       if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}); researchCard.style.display=""; }
     }catch(_){}
+    logEvt('config',{boot:'frameworks-ready'});
     logEvt('config',{boot:'complete'});
   }catch(e){ document.getElementById('veil').style.display='flex'; document.getElementById('veilMsg').textContent='Framework init failed'; logEvt('error',{frameworks:e.message||String(e)}) }
 });
