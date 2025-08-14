@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN — 1.16.2-alpha</title>
+<title>YorN — 1.16.3-alpha</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <!-- CSP tuned for local file + TFJS usage -->
 <meta http-equiv="Content-Security-Policy" content="
@@ -59,7 +59,6 @@
 
   #revBadge{position:fixed;top:8px;right:10px;z-index:9999;background:#0008;color:#fff;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid #fff3;border-radius:999px}
   #readyBadge{position:fixed;top:36px;right:10px;z-index:9999;display:none;background:#10b98126;color:#a7f3d0;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid #10b9818c;border-radius:999px}
-  #readyDot{display:inline-block;width:8px;height:8px;border-radius:999px;background:#10b981;margin-right:6px}
   #readinessBadge{position:fixed;top:64px;right:10px;z-index:9999;display:none;font:12px ui-monospace,monospace;padding:3px 8px;border-radius:999px;border:1px solid #233046}
   #readinessBadge.ready{background:#052e1b; color:#a7f3d0; border-color:#0a5a33}
   #readinessBadge.blocked{background:#3a0b0b; color:#fecaca; border-color:#7f1d1d}
@@ -84,7 +83,7 @@
 </head>
 <body>
 <div id="revBadge">YorN Rev <span id="revText"></span></div>
-<div id="readyBadge"><span id="readyDot"></span><span id="readyText">Ready for Analysis</span></div>
+<div id="readyBadge"><span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:#10b981;margin-right:6px"></span><span id="readyText">Ready for Analysis</span></div>
 <div id="readinessBadge" title="Auto‑test readiness badge">READY</div>
 
 <div id="veil" class="hidden" aria-hidden="true">
@@ -252,7 +251,7 @@
 
 <script>
 /* ===== Core helpers ===== */
-const REVISION = "1.16.2-alpha";
+const REVISION = "1.16.3-alpha";
 const $ = (id)=>document.getElementById(id);
 const diagnostics = { el: null };
 function _appendTop(s){ if(!diagnostics.el) return; diagnostics.el.textContent = s + (diagnostics.el.textContent || ""); }
@@ -649,19 +648,34 @@ $("sampleBtn").addEventListener('click', async ()=>{
   }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) }
 });
 
-/* ===== Auto Test ===== */
+/* ===== Auto Test (dual path) ===== */
 let __autoTestStartIdx=0;
 function buildAutoTestReport(){
   const full = getAllLogsText();
   const chunk = full.slice(__autoTestStartIdx);
+
   const backendMatch = full.match(/"backend":"([^"]+)"/) || [];
-  const refineYes = /"refine_ms":/.test(chunk);
+  const backend = backendMatch[1] || '—';
   const errors = (chunk.match(/"type":"error"/g) || []).length;
-  const passes = (chunk.match(/"test","step":"[^"]+","ok":true/g) || []).length;
-  const roughMs = (chunk.match(/"roughLocate_ms":(\d+)/) || [])[1];
-  const finalMs = (chunk.match(/"finalDetect_ms":(\d+)/) || [])[1];
-  const summaryLine = `YorN ${REVISION} • TF backend: ${backendMatch[1]||'—'} • refine: ${refineYes?'yes':'no'} • passes: ${passes} • errors: ${errors} • rough: ${roughMs||'—'} ms • final: ${finalMs||'—'} ms`;
-  const lines = chunk.split('\n').filter(l => /"type":"test"|"type":"detect"|"type":"analysis"|"type":"config"|"type":"error"/.test(l));
+
+  const rough = (chunk.match(/"roughLocate_ms":(\d+)/) || [])[1];
+  const finalBlaze = (chunk.match(/"step":"detect_blazeonly".*?"ms":(\d+)/) || [])[1] || (chunk.match(/"finalDetect_ms":(\d+)/)||[])[1];
+  const finalCdn   = (chunk.match(/"step":"detect_cdn".*?"ms":(\d+)/) || [])[1];
+
+  const refineOK   = /"step":"refine","ok":true/.test(chunk);
+  const anaBlazeOK = /"step":"analysis_blazeonly","ok":true/.test(chunk);
+  const anaCdnOK   = /"step":"analysis_cdn","ok":true/.test(chunk);
+
+  const passes = (chunk.match(/"ok":true/g) || []).length;
+
+  const summaryLine =
+    `YorN ${REVISION} • TF backend: ${backend} • refine path: ${refineOK?'ok':'fail'} • `+
+    `rough: ${rough||'—'} ms • final(blaze): ${finalBlaze||'—'} ms • final(cdn): ${finalCdn||'—'} ms • `+
+    `analysis(blaze/cdn): ${anaBlazeOK?'ok':'fail'}/${anaCdnOK?'ok':'fail'} • errors: ${errors} • passes: ${passes}`;
+
+  const lines = chunk.split('\n')
+    .filter(l => /"type":"test"|"type":"detect"|"type":"analysis"|"type":"config"|"type":"error"/.test(l));
+
   return ['=== YorN Auto‑Test Report ===', summaryLine, '', ...lines, '=== End Report ===', ''].join('\n');
 }
 $("copyTestBtn").addEventListener('click', async ()=>{
@@ -669,38 +683,67 @@ $("copyTestBtn").addEventListener('click', async ()=>{
 });
 $("autoTestBtn").addEventListener('click', runAutoTest);
 async function runAutoTest(){
-  $("autoTestBtn").disabled = true; $("copyTestBtn").disabled = true;
-  const fullBefore = getAllLogsText(); __autoTestStartIdx = fullBefore.length;
+  $("autoTestBtn").disabled = true;
+  $("copyTestBtn").disabled = true;
+
+  const fullBefore = getAllLogsText();
+  __autoTestStartIdx = fullBefore.length;
   logEvt('test', { step:'begin', rev: REVISION });
+
   try{
     const tfPresent = !!window.tf;
     logEvt('test',{step:'tf_present',ok:tfPresent});
     if(!tfPresent) throw new Error('tf missing');
 
-    await $("sampleBtn").click(); await new Promise(r=>setTimeout(r,400));
+    // Ensure sample is loaded once
+    await $("sampleBtn").click();
+    await new Promise(r=>setTimeout(r,400));
     logEvt('test',{step:'sample',ok:!!baseSource});
 
-    const t0=performance.now();
-    await detectFlow();
-    await new Promise(r=>setTimeout(r,350));
-    const tDetect = Math.round(performance.now()-t0);
-    logEvt('test',{step:'detect',ok:!!lastBox, ms:tDetect});
+    // Helper to run one scenario (mode = 'blazeonly' or 'cdn')
+    const runScenario = async (modeLabel)=>{
+      const original = $("fixMode").value;
+      $("fixMode").value = modeLabel;
 
-    if($("fixMode").value === "cdn"){
-      const hadRefine = /"refine_ms":/.test(getAllLogsText().slice(__autoTestStartIdx));
-      logEvt('test',{step:'refine',ok:hadRefine});
-    } else {
-      logEvt('test',{step:'refine_guard',ok:true});
+      const t0 = performance.now();
+      await detectFlow();
+      await new Promise(r=>setTimeout(r,350));
+      const tDetect = Math.round(performance.now()-t0);
+      logEvt('test',{step:`detect_${modeLabel}`,ok:!!lastBox, ms:tDetect});
+
+      if(modeLabel === "cdn"){
+        const hadRefine = /"refine_ms":/.test(getAllLogsText().slice(__autoTestStartIdx));
+        logEvt('test',{step:'refine',ok:hadRefine});
+      } else {
+        logEvt('test',{step:'refine_guard',ok:true});
+      }
+
+      $("startAnalysisBtn").click();
+      await new Promise(r=>setTimeout(r,300));
+      const okAnalysis = !!lastAnalysis;
+      logEvt('test',{step:`analysis_${modeLabel}`,ok:okAnalysis});
+
+      $("fixMode").value = original;
+      return { ok: !!(baseSource && lastBox && okAnalysis) };
+    };
+
+    // Run BlazeFace‑only then face‑api refine
+    const r1 = await runScenario('blazeonly');
+    const r2 = await runScenario('cdn');
+
+    const ok = r1.ok && r2.ok;
+    const badge = $("readinessBadge");
+    if(badge){
+      badge.style.display='inline-block';
+      badge.className = ok ? 'ready' : 'blocked';
+      badge.textContent = ok ? 'READY' : 'BLOCKED';
     }
+    logEvt('test',{step:'summary_dual',ok});
+    setTimeout(()=>{ $("copyTestBtn").disabled = false; }, 150);
+  }catch(e){
+    logEvt('error',{autoTest:e.message||String(e)});
+  }
 
-    $("startAnalysisBtn").click(); await new Promise(r=>setTimeout(r,300));
-    logEvt('test',{step:'analysis',ok:!!lastAnalysis});
-
-    const ok = !!(baseSource && lastBox && lastAnalysis);
-    const badge = $("readinessBadge"); if(badge){ badge.style.display='inline-block'; badge.className = ok ? 'ready' : 'blocked'; badge.textContent = ok ? 'READY' : 'BLOCKED'; }
-    logEvt('test',{step:'summary',ok});
-    $("copyTestBtn").disabled = false;
-  }catch(e){ logEvt('error',{autoTest:e.message||String(e)}) }
   $("autoTestBtn").disabled = false;
 }
 
