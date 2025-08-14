@@ -2,10 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN — 1.14.4-alpha</title>
+<title>YorN — 1.16.0-alpha</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:; img-src * data: blob:; connect-src * data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; upgrade-insecure-requests">
-
+<!-- CSP wide enough for TFJS/webgl/wasm/CDNs and local file:// usage -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self' https: data: blob:;
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;
+  style-src 'self' 'unsafe-inline';
+  img-src * data: blob:;
+  connect-src * data: blob:;
+  object-src 'none';
+  base-uri 'self';
+  frame-ancestors 'self';
+  upgrade-insecure-requests
+">
 <style>
   :root{color-scheme:light dark}
   *{box-sizing:border-box}
@@ -19,7 +29,6 @@
     .row{grid-template-columns:1fr;gap:10px}
     .controls{grid-template-columns:1fr 1fr;gap:10px}
     .two-col{grid-template-columns:1fr;gap:12px}
-    .research-grid{grid-template-columns:1fr}
   }
   label{font-size:12px;color:#A9B4C8}
   input[type="range"],input[type="number"],select,textarea{width:100%;padding:6px;border:1px solid #233046;border-radius:8px;background:#0b1220;color:#E6EAF2}
@@ -36,7 +45,7 @@
   .previewWrap canvas{pointer-events:none}
   .previewSurface{width:100%;height:auto;display:block}
 
-  #diagnostics{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:12px ui-monospace,Menlo,Consolas,monospace;background:#0b1220;border:1px solid #233046;border-radius:8px;padding:8px;height:220px;max-height:40vh;overflow:auto}
+  #diagnostics{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:12px ui-monospace,Menlo,Consolas,monospace;background:#0b1220;border:1px solid #233046;border-radius:8px;padding:8px;height:240px;max-height:42vh;overflow:auto}
   .diag-tools{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
   .filter-chip{display:inline-flex;gap:6px;align-items:center;padding:4px 8px;border:1px solid #233046;border-radius:999px;background:#0b1220;font-size:12px}
 
@@ -47,17 +56,13 @@
   .ok{background:rgba(16,185,129,.15);color:#a7f3d0;border-color:rgba(16,185,129,.55)}
   .warn{background:rgba(245,158,11,.15);color:#fde68a;border-color:rgba(245,158,11,.55)}
 
-  /* Tiny corner badges */
   #revBadge{position:fixed;top:8px;right:10px;z-index:9999;background:#0008;color:#fff;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid #fff3;border-radius:999px}
   #readyBadge{position:fixed;top:36px;right:10px;z-index:9999;display:none;background:#10b98126;color:#a7f3d0;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid #10b9818c;border-radius:999px}
   #readyDot{display:inline-block;width:8px;height:8px;border-radius:999px;background:#10b981;margin-right:6px}
-
-  /* Readiness badge */
   #readinessBadge{position:fixed;top:64px;right:10px;z-index:9999;display:none;font:12px ui-monospace,monospace;padding:3px 8px;border-radius:999px;border:1px solid #233046}
   #readinessBadge.ready{background:#052e1b; color:#a7f3d0; border-color:#0a5a33}
   #readinessBadge.blocked{background:#3a0b0b; color:#fecaca; border-color:#7f1d1d}
 
-  /* Loading veil */
   #veil{position:fixed;inset:0;background:#0b1220;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:10000}
   #veil .spin{width:28px;height:28px;border-radius:999px;border:3px solid #334155;border-top-color:#38bdf8;animation:sp 0.9s linear infinite}
   #veil .msg{color:#A9B4C8;font:13px ui-monospace,monospace}
@@ -65,10 +70,6 @@
 
   .hidden{display:none !important}
   footer{opacity:.8;font:12px ui-monospace,monospace;margin-top:10px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
-
-  .research-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .hint{font-size:12px;color:#A9B4C8}
-  #swPill{font:11px ui-monospace,monospace;padding:4px 8px;border-radius:999px;border:1px solid #233046;background:#0b1220;opacity:.9}
 </style>
 
 <!-- libs -->
@@ -82,7 +83,6 @@
 <div id="readyBadge"><span id="readyDot"></span><span id="readyText">Ready for Analysis</span></div>
 <div id="readinessBadge" title="Auto‑test readiness badge">READY</div>
 
-<!-- Veil -->
 <div id="veil" class="hidden">
   <div class="spin"></div>
   <div class="msg" id="veilMsg">Frameworks loading…</div>
@@ -132,10 +132,6 @@
           <option value="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights">jsDelivr (npm)</option>
         </select>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <button id="precacheBtn" class="btn">Precache Weights (Offline)</button>
-        <span id="swPill" title="Service Worker status">SW: —</span>
-      </div>
       <label style="display:flex;gap:8px;align-items:center"><input id="showOverlays" type="checkbox" /> Show overlays</label>
       <label style="display:flex;gap:8px;align-items:center"><input id="showHUD" type="checkbox" /> Show HUD</label>
       <label style="display:flex;gap:8px;align-items:center"><input id="autoAnalyze" type="checkbox" /> Auto‑analyze</label>
@@ -177,7 +173,6 @@
       <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap">
         <button id="copyJsonBtn" class="btn" disabled>Copy JSON</button>
         <button id="exportJsonBtn" class="btn" disabled>Download JSON</button>
-        <button id="sharePngBtn" class="btn" disabled>Share Snapshot</button>
       </div>
     </div>
     <div class="analysis-grid" style="margin-top:8px">
@@ -193,57 +188,6 @@
     <div class="hints" id="analysisHints"></div>
   </div>
 
-  <div class="card" id="researchCard" style="display:none">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-      <strong>Research Mode</strong>
-      <span class="hint">Opt‑in; saved locally only</span>
-    </div>
-    <div class="research-grid" style="margin-top:8px">
-      <div>
-        <label>Consent <span style="color:#fb7185">*</span></label>
-        <select id="consent">
-          <option value="">— Select —</option>
-          <option value="yes">I consent to store this rating locally</option>
-          <option value="no">No (don’t store)</option>
-        </select>
-      </div>
-      <div>
-        <label>Rater age group <span style="color:#fb7185">*</span></label>
-        <select id="ageGroup">
-          <option value="">— Select —</option>
-          <option>20–24</option><option>25–29</option><option>30–34</option><option>35–39</option>
-          <option>40–44</option><option>45–49</option><option>50–54</option><option>55–59</option>
-          <option>60–64</option><option>65–69</option><option>70–74</option><option>75–80</option>
-        </select>
-      </div>
-      <div>
-        <label>Rater gender (optional)</label>
-        <select id="raterGender">
-          <option value="">Prefer not to say</option>
-          <option>Female</option><option>Male</option><option>Nonbinary/Other</option>
-        </select>
-      </div>
-      <div>
-        <label>Attractiveness (1–10)</label>
-        <input id="rating" type="range" min="1" max="10" step="1" value="5" />
-      </div>
-      <div>
-        <label>Confidence (0–100%)</label>
-        <input id="confidence" type="range" min="0" max="100" step="5" value="70" />
-      </div>
-      <div>
-        <label>Notes (optional)</label>
-        <textarea id="notes" placeholder="lighting, angle, makeup, beard, etc."></textarea>
-      </div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-      <button id="saveRowBtn" class="btn btn-primary" disabled>Save to Dataset</button>
-      <button id="exportCSVBtn" class="btn" disabled>Export CSV</button>
-      <button id="exportDSJsonBtn" class="btn" disabled>Export JSON</button>
-      <span class="hint">Rows: <span id="dsCount">0</span></span>
-    </div>
-  </div>
-
   <footer>
     <div>Session: <span id="sessDet">0 detects</span> • <span id="sessAna">0 analyses</span> • avg detect <span id="sessAvg">—</span> ms</div>
     <div>Common hint: <span id="sessHint">—</span></div>
@@ -251,50 +195,359 @@
 </div>
 
 <script>
-/* ---------- helpers must exist BEFORE any use ---------- */
+/* ========= core ========= */
+const REVISION = "1.16.0-alpha";
 const $ = (id)=>document.getElementById(id);
 const diagnostics = { el: null };
-function _appendTop(s){ if(!diagnostics.el) return; diagnostics.el.textContent = s + diagnostics.el.textContent; }
+function _appendTop(s){ if(!diagnostics.el) return; diagnostics.el.textContent = s + (diagnostics.el.textContent || ""); }
 function logEvt(type,payload){ _appendTop(`[${new Date().toISOString()}] ${JSON.stringify({type,...(payload||{})})}\n`) }
 window.addEventListener('error', e=>logEvt('error',{global:e.message,at:(e.filename||'')+':'+(e.lineno||'')}));
 window.addEventListener('unhandledrejection', e=>{ const r=e&&e.reason; logEvt('error',{unhandled:(r&&(r.message||r))||String(r)}) });
 
-/* ---------- rest of app ---------- */
-const REVISION = "1.14.4-alpha";
-
-const progressBarId="progressBar", progressTextId="progressText";
 let progressBar, progressText, imgBase, cvRough, cvOverlay;
-/* defer DOM binds until ready */
 document.addEventListener("DOMContentLoaded", ()=>{
   diagnostics.el = $("diagnostics");
-  progressBar = $(progressBarId); progressText = $(progressTextId);
+  progressBar = $("progressBar"); progressText = $("progressText");
   imgBase = $("base"); cvRough = $("overlayRough"); cvOverlay = $("overlay");
-  const revSpan = $("revText"); if (revSpan) revSpan.textContent = REVISION;
-  logEvt('config',{boot:'dom-ready',rev:REVISION});
+  $("revText").textContent = REVISION;
+  hideVeil(); logEvt('config',{boot:'dom-ready',rev:REVISION});
 });
 
-/* (the remainder is identical to 1.14.3 except for the early $ fix and deferred rev text) */
-/* ---- everything below is the same logic you had, trimmed only where unchanged ---- */
+/* ========= veil (never blocks) ========= */
+function showVeil(msg){ const v=$("veil"); if(!v) return; $("veilMsg").textContent=msg||"Loading…"; v.classList.remove("hidden"); }
+function hideVeil(){ const v=$("veil"); if(v) v.classList.add("hidden"); }
+window.addEventListener("load", hideVeil);
+document.addEventListener("click",(e)=>{ if(e.target && (e.target.id==="dismissVeilBtn")) hideVeil(); if(e.target && e.target.id==="retryInitBtn") { hideVeil(); initFrameworks(true); } });
 
-/* progress */
+/* ========= progress ========= */
 function setProgress(p,t){ if(progressBar) progressBar.style.width=(p||0)+'%'; if(progressText) progressText.textContent=t||'' }
 
-/* tiny veil helpers */
-const veil=()=>$("veil"), veilMsg=()=>$("veilMsg");
-function showVeil(msg){ const v=veil(); if(!v) return; const m=veilMsg(); if(m) m.textContent=msg||"Loading…"; v.classList.remove("hidden"); }
-function hideVeil(){ const v=veil(); if(v) v.classList.add("hidden"); logEvt("config",{veil:"hidden"}) }
-window.addEventListener("DOMContentLoaded", hideVeil);
-window.addEventListener("load", hideVeil);
+/* ========= session stats ========= */
+let detTimes=[], anaCount=0, detCount=0, hintCounts={};
+function updateFooter(){
+  const avg = detTimes.length ? Math.round(detTimes.reduce((a,b)=>a+b,0)/detTimes.length) : '—';
+  const common = Object.entries(hintCounts).sort((a,b)=>b[1]-a[1])[0]?.[0] || '—';
+  $("sessDet").textContent=`${detCount} detects`; $("sessAna").textContent=`${anaCount} analyses`; $("sessAvg").textContent=avg; $("sessHint").textContent=common;
+}
 
-/* (… keep the rest of the previous script exactly as in 1.14.3 …) */
+/* ========= frameworks ========= */
+async function initFrameworks(userTriggered=false){
+  showVeil(userTriggered ? "Re-initializing…" : "Loading frameworks…");
+  const HARD_TIMEOUT_MS = 4000;
+  const tm = setTimeout(()=>{ hideVeil(); logEvt("config",{veil:"hard-timeout-hide"}) }, HARD_TIMEOUT_MS);
+  try{
+    // TFJS
+    let tfOK=false;
+    for(let i=0;i<20;i++){ if(window.tf){ tfOK=true; break } await new Promise(r=>setTimeout(r,100)); }
+    if(!tfOK){ logEvt("error",{tf_presence:"timeout"}); hideVeil(); return; }
+    try{
+      if(tf.wasm) tf.wasm.setWasmPaths("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/");
+      await tf.setBackend('wasm'); await tf.ready(); logEvt("config",{tf:"ready",backend:tf.getBackend()});
+    }catch(e){
+      logEvt("error",{tf_init:e.message||String(e)});
+      try{ await tf.setBackend('webgl'); await tf.ready(); logEvt("config",{tf:"ready",backend:tf.getBackend(),fallback:"webgl"});}catch(e2){ logEvt("error",{tf_fallback:e2.message||String(e2)}); }
+    }
+    // Blaze
+    let blazeOK=false;
+    for(let i=0;i<40;i++){ if(window.blazeface){ blazeOK=true; break } await new Promise(r=>setTimeout(r,100)); }
+    if(!blazeOK){ logEvt("error",{blazeface_presence:"timeout"}); hideVeil(); return; }
+    if(!window.__blazeModel){ const t0=performance.now(); window.__blazeModel=await blazeface.load(); logEvt("detect",{blazefaceReady:true,ms:Math.round(performance.now()-t0)}) }
+  }catch(e){ logEvt("error",{initFrameworks:e.message||String(e)}) }
+  clearTimeout(tm); hideVeil(); logEvt("config",{boot:"frameworks-ready"});
+}
+window.addEventListener("load", ()=>initFrameworks(false));
 
-/* ====== Due to message size limits, the logic for detection, analysis, research dataset,
-   auto-test, SW, copy, etc. is unchanged from 1.14.3-alpha and should remain as in your
-   last working file. Only critical fixes are:
-   1) define $ before usage,
-   2) delay rev text set to DOMContentLoaded,
-   3) diagnostics element grabbed after DOM is ready.
-   If you need me to resend the full script block verbatim with no truncation, say “resend full” and I’ll paste it. ====== */
+/* ========= image decode & preview ========= */
+async function blobToCanvasViaImg(blob){ const url=URL.createObjectURL(blob); try{ const img=new Image(); img.decoding="sync"; img.loading="eager"; await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url}); const c=document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext("2d").drawImage(img,0,0); return c } finally{ URL.revokeObjectURL(url) } }
+async function decodeOriginal(fileOrBlob){
+  try{ if('createImageBitmap' in window){ const bmp=await createImageBitmap(fileOrBlob); logEvt('detect',{decode:'createImageBitmap',w:bmp.width,h:bmp.height}); return {bitmap:bmp,width:bmp.width,height:bmp.height}; } }
+  catch(e){ logEvt('error',{decode_createImageBitmap:e.message||String(e)}) }
+  const can=await blobToCanvasViaImg(fileOrBlob); logEvt('detect',{decode:'blob->img',size_bytes:fileOrBlob.size||0}); return {canvas:can,width:can.width,height:can.height};
+}
+let baseSource=null, workCanvas=null, lastCanvas=null, lastBox=null, lastLandmarks=null, lastAnalysis=null;
+function ensureWork(){ if(!workCanvas) workCanvas=document.createElement('canvas'); return workCanvas }
+function syncOverlaySize(){ const w=imgBase.clientWidth,h=imgBase.clientHeight; if(!w||!h) return; [cvRough,cvOverlay].forEach(c=>{c.style.width=w+'px'; c.style.height=h+'px'}) }
+let __rsTO=null; function onViewportResize(){ clearTimeout(__rsTO); __rsTO=setTimeout(syncOverlaySize,120) }
+window.addEventListener('resize', onViewportResize); window.addEventListener('orientationchange', onViewportResize);
+function paintBaseCanvas(canvas){ $("base").src=canvas.toDataURL('image/png'); $("base").classList.remove('hidden'); [cvRough,cvOverlay].forEach(c=>{c.width=canvas.width;c.height=canvas.height;c.classList.remove('hidden')}); syncOverlaySize(); logEvt('overlay',{painted:{w:canvas.width,h:canvas.height}}) }
+function renderWorkingCanvas(maxSide=1024,centerBox=null){
+  if(!baseSource){ logEvt('error',{render:'no baseSource'}); return null }
+  const srcW0=baseSource.width, srcH0=baseSource.height;
+  const angle=(parseInt($("rotDeg").value,10)||0)%360; let z=parseFloat($("zoom").value)||1.0;
+  const br=parseFloat($("bri").value)||1.0, cr=parseFloat($("con").value)||1.0;
+  const scale0=Math.min(1, maxSide/Math.max(srcW0,srcH0));
+  const w0=Math.max(1,Math.round(srcW0*scale0)), h0=Math.max(1,Math.round(srcH0*scale0));
+  let cx=srcW0/2, cy=srcH0/2;
+  if(centerBox){
+    cx=centerBox.x+centerBox.width/2; cy=centerBox.y+centerBox.height/2;
+    const zx=(w0/(centerBox.width*scale0))*0.9, zy=(h0/(centerBox.height*scale0))*0.9; z=Math.max(z,Math.min(zx,zy,1.8));
+    logEvt('overlay',{autoZoomApplied:+z.toFixed(2)});
+  }
+  const dstW=w0, dstH=h0, cropW=Math.round(dstW/(scale0*z)), cropH=Math.round(dstH/(scale0*z));
+  const sx=Math.max(0,Math.round(cx-cropW/2)), sy=Math.max(0,Math.round(cy-cropH/2));
+  const c=ensureWork(); if((angle%180)===0){c.width=dstW;c.height=dstH}else{c.width=dstH;c.height=dstW}
+  const ctx=c.getContext('2d'); ctx.save(); ctx.clearRect(0,0,c.width,c.height);
+  ctx.translate(c.width/2,c.height/2); ctx.rotate(angle*Math.PI/180);
+  ctx.filter=`brightness(${br}) contrast(${cr})`;
+  const src = baseSource.bitmap || baseSource.canvas;
+  ctx.drawImage(src, sx,sy, Math.max(1,cropW),Math.max(1,cropH), -dstW/2,-dstH/2, dstW,dstH);
+  ctx.restore();
+  return c;
+}
+function drawBox(ctx,box,color,label){ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(box.x,box.y,box.width,box.height);ctx.fillStyle=color;ctx.font="12px ui-monospace,monospace";ctx.fillText(label,box.x,Math.max(12,box.y-4))}
+function drawCross(ctx,cx,cy,offX,offY){ctx.strokeStyle="#60a5fa";ctx.beginPath();ctx.moveTo(cx-8,cy);ctx.lineTo(cx+8,cy);ctx.moveTo(cx,cy-8);ctx.lineTo(cx,cy+8);ctx.stroke();ctx.fillStyle="#60a5fa";ctx.font="12px ui-monospace,monospace";const text=`(${Math.round(cx)},${Math.round(cy)}) | offX ${offX.toFixed(1)}% • offY ${offY.toFixed(1)}%`;const tx=Math.min(cx+10,cvOverlay.width-260),ty=Math.min(cy+14,cvOverlay.height-4);ctx.fillText(text,tx,ty)}
+
+/* ========= models & refine ========= */
+let blazeModel=null; async function ensureBlaze(){ if(blazeModel) return; blazeModel=window.__blazeModel; }
+async function headOK(url, max=2){ for(let i=0;i<max;i++){ try{ const r=await fetch(url,{method:'HEAD',cache:'no-store'}); return r.ok }catch(e){ await new Promise(r=>setTimeout(r,200)) } } return false }
+
+let faceApiReady=false, FA_BASE=null;
+async function ensureFaceApi(){
+  if(faceApiReady) return true;
+  if(!window.faceapi){ logEvt('config',{faceapi:'missing'}); return false }
+  try{ faceapi.tf = tf }catch(_){}
+  let engineOk=false; try{ engineOk = (faceapi.tf && typeof faceapi.tf.engine === "function" && !!faceapi.tf.engine()); }catch(e){}
+  if(!engineOk){ logEvt('error',{faceapi_engine:'unavailable'}); return false }
+  const base=($("weightsSrc").value||"").replace(/\/$/,""); FA_BASE=base;
+  const m1=base+"/tiny_face_detector_model-weights_manifest.json"; const m2=base+"/face_landmark_68_model-weights_manifest.json";
+  const ok1=await headOK(m1), ok2=await headOK(m2); logEvt('detect',{weightsHealth:{mani1:ok1,mani2:ok2,base}});
+  if(!(ok1&&ok2)) return false;
+  try{ await faceapi.nets.tinyFaceDetector.loadFromUri(base); await faceapi.nets.faceLandmark68Net.loadFromUri(base); faceApiReady=true; logEvt('detect',{faceapiReady:true,usingWeightsFrom:base}); return true }catch(e){ logEvt('error',{faceapi_load:e.message||String(e)}); return false }
+}
+
+/* ========= detect ========= */
+function downsample(canvas,w,mirror=false){const h=Math.round(w*(canvas.height/canvas.width));const tmp=Object.assign(document.createElement("canvas"),{width:w,height:h});const ctx=tmp.getContext("2d");if(mirror){ctx.translate(w,0);ctx.scale(-1,1)}ctx.drawImage(canvas,0,0,w,h);return tmp}
+async function detectFlow(){
+  try{
+    lastBox=null; lastCanvas=null; lastLandmarks=null; $("analysisCard").style.display="none";
+    setProgress(10,"Analyzing…"); await ensureBlaze();
+    let canvas=renderWorkingCanvas(1024); if(!canvas){ logEvt("error",{render:"failed"}); return }
+    lastCanvas=canvas; paintBaseCanvas(canvas);
+
+    const tinyW=160,tinyH=Math.round(tinyW*(canvas.height/canvas.width));
+    const tmp=Object.assign(document.createElement("canvas"),{width:tinyW,height:tinyH});
+    tmp.getContext("2d").drawImage(canvas,0,0,tinyW,tinyH);
+    const t0=performance.now(); const faces=await blazeModel.estimateFaces(tmp,false); const ms=Math.round(performance.now()-t0);
+    let rough=null;
+    if(faces&&faces.length){
+      const f=faces[0]; const tl=Array.isArray(f.topLeft)?f.topLeft:await f.topLeft.array(); const br=Array.isArray(f.bottomRight)?f.bottomRight:await f.bottomRight.array();
+      const sx=canvas.width/tinyW, sy=canvas.height/tinyH; rough={x:tl[0]*sx,y:tl[1]*sy,width:(br[0]-tl[0])*sx,height:(br[1]-tl[1])*sy}; logEvt("detect",{roughLocate_ms:ms,box:rough});
+      canvas=renderWorkingCanvas(1024,rough); lastCanvas=canvas; paintBaseCanvas(canvas);
+    } else { logEvt("detect",{roughLocate_ms:ms,box:null}) }
+
+    const cfgs=[{w:256,mirror:false},{w:384,mirror:false},{w:512,mirror:false},{w:384,mirror:true},{w:512,mirror:true}];
+    let det=null;
+    for(const cfg of cfgs){
+      const tmp=downsample(canvas,cfg.w,cfg.mirror);
+      const t0=performance.now(); const faces=await blazeModel.estimateFaces(tmp,false); const ms2=Math.round(performance.now()-t0);
+      if(faces&&faces.length){
+        const f=faces[0];
+        const tl=Array.isArray(f.topLeft)?f.topLeft:await f.topLeft.array();
+        const br=Array.isArray(f.bottomRight)?f.bottomRight:await f.bottomRight.array();
+        const sx=canvas.width/tmp.width, sy=canvas.height/tmp.height;
+        let x=tl[0]*sx, y=tl[1]*sy, w=(br[0]-tl[0])*sx, h=(br[1]-tl[1])*sy;
+        if(cfg.mirror){ x=canvas.width-(x+w) }
+        det={elapsed_ms:ms2,box:{x,y,width:w,height:h},scale:cfg.w,mirror:cfg.mirror};
+        detTimes.push(ms2); detCount++; updateFooter();
+        break;
+      }
+    }
+
+    const octx=cvOverlay.getContext("2d"); octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
+    if(!det){ logEvt("error",{msg:"BlazeFace found no face"}); setProgress(0,""); return }
+    lastBox=det.box; drawBox(octx,lastBox,"#22c55e",`BlazeFace • ${det.elapsed_ms}ms`);
+    const cx=lastBox.x+lastBox.width/2, cy=lastBox.y+lastBox.height/2; const offX=((cx-canvas.width/2)/(canvas.width/2))*100, offY=((cy-canvas.height/2)/(canvas.height/2))*100;
+    drawCross(octx,cx,cy,offX,offY);
+    logEvt("detect",{finalDetect_ms:det.elapsed_ms,scale:det.scale,mirror:det.mirror,box:lastBox});
+
+    if ($("fixMode").value === "cdn") {
+      try {
+        setProgress(75, "Refining (face‑api)…");
+        const ok = await ensureFaceApi();
+        if (ok && lastCanvas) {
+          const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.3 });
+          const tR = performance.now();
+          let result = null;
+          try { result = await faceapi.detectSingleFace(lastCanvas, opts).withFaceLandmarks(); } catch (e) { logEvt("error", { refine_exception: (e && (e.stack || e.message)) || String(e) }); }
+          const msR = Math.round(performance.now() - tR);
+          if (result && result.detection && result.detection.box) {
+            const b = result.detection.box;
+            lastBox = { x: b.x, y: b.y, width: b.width, height: b.height };
+            lastLandmarks = result.landmarks || null;
+            octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
+            drawBox(octx,lastBox,"#f59e0b",`Refined • ${msR}ms`);
+            if(lastLandmarks) try{ const pts=lastLandmarks.positions||lastLandmarks; octx.fillStyle="#f472b6"; for(const p of pts){ octx.fillRect(p.x-1,p.y-1,2,2) } }catch(_){}
+            const cx2=lastBox.x+lastBox.width/2, cy2=lastBox.y+lastBox.height/2;
+            const offX2=((cx2 - lastCanvas.width/2)/(lastCanvas.width/2))*100, offY2=((cy2 - lastCanvas.height/2)/(lastCanvas.height/2))*100;
+            drawCross(octx,cx2,cy2,offX2,offY2);
+            logEvt("detect",{refine_ms:msR,faceapi:true,box:lastBox,landmarks:lastLandmarks?68:0});
+          } else {
+            logEvt("detect",{refine_ms:msR,faceapi:false,reason:"no detection"});
+          }
+        } else {
+          logEvt("detect", { refine_skipped: "faceapi not ready" });
+        }
+      } catch (e) {
+        logEvt("error", { refine_exception_top: (e && (e.stack || e.message)) || String(e) });
+      }
+    }
+
+    setProgress(100,"Done."); $("readyBadge").style.display="inline-flex";
+    $("startAnalysisBtn").disabled=false;
+    if($("autoAnalyze").checked){ $("startAnalysisBtn").click(); }
+  }catch(e){ logEvt("error",{detectFlow:e.message||String(e)}) }
+}
+
+/* ========= analysis ========= */
+function runLightAnalysis(){
+  if(!lastCanvas||!lastBox){ logEvt("error",{analysis:"no detection"}); return }
+  const imgW=lastCanvas.width,imgH=lastCanvas.height,b=lastBox;
+  const areaPct=(b.width*b.height)/(imgW*imgH)*100, ar=b.width/b.height;
+  const orient = ar>=1.15 ? "landscape" : (ar<=0.87 ? "portrait" : "near-square");
+  const cx=b.x+b.width/2, cy=b.y+b.height/2; const offX=((cx-imgW/2)/(imgW/2))*100, offY=((cy-imgH/2)/(imgH/2))*100;
+  const crop=document.createElement("canvas"); crop.width=128; crop.height=128;
+  crop.getContext("2d").drawImage(lastCanvas,Math.max(0,Math.round(b.x)),Math.max(0,Math.round(b.y)),Math.max(1,Math.round(b.width)),Math.max(1,Math.round(b.height)),0,0,128,128);
+  const id=crop.getContext("2d").getImageData(0,0,128,128);
+  let sum=0,sum2=0; for(let i=0;i<id.data.length;i+=4){const y=0.299*id.data[i]+0.587*id.data[i+1]+0.114*id.data[i+2]; sum+=y; sum2+=y*y}
+  const mean=sum/(id.data.length/4), stdev=Math.sqrt(Math.max(0,(sum2/(id.data.length/4))-mean*mean));
+  const gray=new Float32Array(128*128); for(let i=0,p=0;i<id.data.length;i+=4,p++){gray[p]=0.299*id.data[i]+0.587*id.data[i+1]+0.114*id.data[i+2]}
+  let lapSum=0,lapSum2=0,count=0; for(let y=1;y<127;y++){for(let x=1;x<127;x++){const i=(y*128+x);const v=gray[i-128]+gray[i-1]-4*gray[i]+gray[i+1]+gray[i+128]; lapSum+=v; lapSum2+=v*v; count++;}}
+  const lapVar=Math.max(0,(lapSum2/Math.max(1,count))-(lapSum/Math.max(1,count))**2);
+
+  const okArea=areaPct>=7&&areaPct<=15, okBri=mean>=110&&mean<=160, okCon=stdev>=30&&stdev<=65, okSharp=lapVar>=120, okOffX=Math.abs(offX)<=12, okOffY=Math.abs(offY)<=12;
+
+  $("analysisCard").style.display="";
+  $("kv_area").textContent=areaPct.toFixed(2)+" %"; $("kv_ar").textContent=ar.toFixed(3); $("kv_orient").textContent=orient;
+  $("kv_bri").textContent=mean.toFixed(1); $("kv_contrast").textContent=stdev.toFixed(1);
+  $("kv_sharp").textContent=lapVar.toFixed(1);
+  $("kv_offx").textContent=(offX>=0?"+":"")+offX.toFixed(1)+" %"; $("kv_offy").textContent=(offY>=0?"+":"")+offY.toFixed(1)+" %";
+
+  function setBadge(el,ok,okTxt,badTxt){ el.textContent=ok?okTxt:badTxt; el.className="badge "+(ok?"ok":"warn") }
+  setBadge($("bdg_area"),okArea,"ok","adjust"); setBadge($("bdg_bri"),okBri,"ok","±light"); setBadge($("bdg_con"),okCon,"ok","±contrast"); setBadge($("bdg_sharp"),okSharp,"crisp","blurry"); setBadge($("bdg_offx"),okOffX,"centered","offset"); setBadge($("bdg_offy"),okOffY,"centered","offset");
+  const hints=[]; if(!okArea)hints.push("Adjust crop to ~7–15% face area"); if(!okBri)hints.push(mean<110?"Increase lighting":"Reduce brightness"); if(!okCon)hints.push(stdev<30?"Boost contrast":"Soften contrast"); if(!okSharp)hints.push("Reduce motion/clean lens"); if(!(okOffX&&okOffY))hints.push("Center the face");
+  hints.forEach(h=> hintCounts[h]=(hintCounts[h]||0)+1); anaCount++; updateFooter();
+
+  lastAnalysis={
+    revision:REVISION,
+    timestamp:new Date().toISOString(),
+    image:{width:imgW,height:imgH},
+    box:{x:+b.x.toFixed(2),y:+b.y.toFixed(2),width:+b.width.toFixed(2),height:+b.height.toFixed(2),area_pct:+areaPct.toFixed(4),aspect:+ar.toFixed(4),center:{x:+(b.x+b.width/2).toFixed(2),y:+(b.y+b.height/2).toFixed(2)},center_offset_pct:{x:+offX.toFixed(2),y:+offY.toFixed(2)}},
+    lighting:{brightness_mean:+mean.toFixed(3),contrast_stdev:+stdev.toFixed(3)},
+    sharpness:{laplacian_variance:+lapVar.toFixed(3)},
+    orientation:orient,
+    refine:{landmarks: lastLandmarks ? 68 : 0}
+  };
+  try{ localStorage.setItem("yorn_last_analysis", JSON.stringify(lastAnalysis)) }catch(_){}
+  $("analysisHints").textContent="Hints: "+(hints.length?hints.join(" • "):"Looks good!");
+  logEvt("analysis",{analysis:lastAnalysis});
+}
+
+/* ========= copy helpers ========= */
+async function copyTextRobust(text){
+  if(text==null) text='';
+  try{ if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(text); return {ok:true,via:'clipboard'} } }catch(_){}
+  try{ const ta=document.createElement('textarea'); ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px'; document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy'); document.body.removeChild(ta); if(ok) return {ok:true,via:'execCommand'} }catch(e){ return {ok:false,via:'fallback',err:e.message||String(e)} }
+  return {ok:false,via:'none',err:'No clipboard available'};
+}
+function getAllLogsText(){ const el=$("diagnostics"); return el ? (el.innerText || el.textContent || '') : '' }
+
+/* ========= UI binds ========= */
+$("enhanceBtn").addEventListener("click",()=>{ const z=$("zoom"); z.value=Math.max(+z.value,1.5); $("zoomLabel").textContent=(+z.value).toFixed(2); const b=$("bri"); b.value=Math.max(+b.value,1.18); $("briLabel").textContent=(+b.value).toFixed(2); const c=$("con"); c.value=Math.max(+c.value,1.25); $("conLabel").textContent=(+c.value).toFixed(2); detectFlow() });
+$("detectBtn").addEventListener("click",()=>detectFlow());
+$("startAnalysisBtn").addEventListener("click",()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis() });
+$("clearLogsBtn").addEventListener('click',()=>{ const d=$("diagnostics"); if(d) d.textContent='No diagnostics yet.'; });
+$("resetBtn").addEventListener('click',()=>{ ["base"].forEach(id=>$(id).classList.add('hidden')); baseSource=null; lastCanvas=null; lastBox=null; lastLandmarks=null; $("analysisCard").style.display="none"; logEvt('config',{reset:true}) });
+
+/* sample + file */
+$("fileInput").addEventListener('change', async ()=>{
+  if(!$("fileInput").files.length) return;
+  const f=$("fileInput").files[0]; setProgress(8,'Decoding photo…');
+  try{ baseSource = await decodeOriginal(f); const canvas = renderWorkingCanvas(1024); if(canvas){ paintBaseCanvas(canvas); setProgress(12,'Photo ready'); $("detectBtn").disabled=false; $("enhanceBtn").disabled=false; } }catch(e){ logEvt('error',{decode_failed:e.message||String(e)}) }
+});
+$("sampleBtn").addEventListener('click', async ()=>{
+  try{
+    setProgress(5,'Fetching sample…');
+    const u="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
+    const res=await fetch(u,{cache:"no-store"}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const blob=await res.blob();
+    baseSource = await decodeOriginal(blob);
+    const canvas=renderWorkingCanvas(1024);
+    if(canvas){ paintBaseCanvas(canvas); setProgress(12,'Sample ready'); $("detectBtn").disabled=false; $("enhanceBtn").disabled=false; }
+    logEvt('detect',{sampleImage:u});
+  }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) }
+});
+
+/* ========= Auto Test ========= */
+let __autoTestStartIdx=0;
+function buildAutoTestReport(){
+  const full = getAllLogsText();
+  const chunk = full.slice(__autoTestStartIdx);
+  const backendMatch = full.match(/"backend":"([^"]+)"/) || [];
+  const refineYes = /"refine_ms":/.test(chunk);
+  const errors = (chunk.match(/"type":"error"/g) || []).length;
+  const passes = (chunk.match(/"test","step":"[^"]+","ok":true/g) || []).length;
+  const roughMs = (chunk.match(/"roughLocate_ms":(\d+)/) || [])[1];
+  const finalMs = (chunk.match(/"finalDetect_ms":(\d+)/) || [])[1];
+  const summaryLine = `YorN ${REVISION} • TF backend: ${backendMatch[1]||'—'} • refine: ${refineYes?'yes':'no'} • passes: ${passes} • errors: ${errors} • rough: ${roughMs||'—'} ms • final: ${finalMs||'—'} ms`;
+  const lines = chunk.split('\n').filter(l => /"type":"test"|"type":"detect"|"type":"analysis"|"type":"config"|"type":"error"/.test(l));
+  return ['=== YorN Auto‑Test Report ===', summaryLine, '', ...lines, '=== End Report ===', ''].join('\n');
+}
+
+$("copyTestBtn").addEventListener('click', async ()=>{
+  try{ const report = buildAutoTestReport(); const res = await copyTextRobust(report); if (res.ok) { logEvt('config', { copiedAutoTestReport: true, via: res.via, length: report.length }); $("progressText").textContent = 'Test result copied'; setTimeout(()=>$("progressText").textContent='', 1200); } else { logEvt('error', { copyAutoTestReportError: res.err || 'unknown', via: res.via }); } }catch(e){ logEvt('error', { copyAutoTestReportException: e.message || String(e) }); }
+});
+
+$("autoTestBtn").addEventListener('click', runAutoTest);
+async function runAutoTest(){
+  $("autoTestBtn").disabled = true; $("copyTestBtn").disabled = true;
+  const fullBefore = getAllLogsText(); __autoTestStartIdx = fullBefore.length;
+  logEvt('test', { step:'begin', rev: REVISION });
+  try{
+    // Frameworks
+    const tfPresent = !!window.tf;
+    logEvt('test',{step:'tf_present',ok:tfPresent});
+    if(!tfPresent) throw new Error('tf missing');
+
+    // Sample load
+    await $("sampleBtn").click(); await new Promise(r=>setTimeout(r,400));
+    logEvt('test',{step:'sample',ok:!!baseSource});
+
+    // Blaze detect
+    const t0=performance.now();
+    await detectFlow();
+    await new Promise(r=>setTimeout(r,350));
+    const tDetect = Math.round(performance.now()-t0);
+    logEvt('test',{step:'detect',ok:!!lastBox, ms:tDetect});
+
+    // Optional refine probe if selected
+    if($("fixMode").value === "cdn"){
+      const hadRefine = /"refine_ms":/.test(getAllLogsText().slice(__autoTestStartIdx));
+      logEvt('test',{step:'refine',ok:hadRefine});
+    } else {
+      logEvt('test',{step:'refine_guard',ok:true});
+    }
+
+    // Analysis
+    $("startAnalysisBtn").click(); await new Promise(r=>setTimeout(r,300));
+    logEvt('test',{step:'analysis',ok:!!lastAnalysis});
+
+    // Ready badge
+    const ok = !!(baseSource && lastBox && lastAnalysis);
+    const badge = $("readinessBadge"); if(badge){ badge.style.display='inline-block'; badge.className = ok ? 'ready' : 'blocked'; badge.textContent = ok ? 'READY' : 'BLOCKED'; }
+    logEvt('test',{step:'summary',ok});
+    $("copyTestBtn").disabled = false;
+  }catch(e){ logEvt('error',{autoTest:e.message||String(e)}); }
+  $("autoTestBtn").disabled = false;
+}
+
+/* ========= boot ========= */
+window.addEventListener('load', ()=>{
+  try{
+    const saved=localStorage.getItem("yorn_last_analysis");
+    if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}); }
+  }catch(_){}
+  logEvt('config',{boot:'complete'});
+});
 </script>
 </body>
 </html>
