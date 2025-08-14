@@ -2,20 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN — 1.12.6-alpha</title>
+<title>YorN — 1.12.7-alpha</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<!-- CSP permits TFJS; WASM backend preferred -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:; img-src * data: blob:; connect-src * data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; upgrade-insecure-requests">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 
-<!-- ultra-early boot logger -->
 <script>
 (function(){
   window.__yornLogs = [];
-  function push(type, payload){
-    try{ window.__yornLogs.unshift(`[${new Date().toISOString()}] ${JSON.stringify({type, ...(payload||{})})}\n`) }catch(_){}
+  function push(type, payload){ try{ window.__yornLogs.unshift(`[${new Date().toISOString()}] ${JSON.stringify({type, ...(payload||{})})}\n`) }catch(_){}
   }
   window.__yornBootLog = push;
   window.addEventListener('error', e=>push('error',{global:e.message,at:(e.filename||'')+':'+(e.lineno||'')}));
@@ -57,7 +54,6 @@
   #revBadge{position:fixed;top:8px;right:10px;z-index:9999;background:#0008;color:#fff;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid #fff3;border-radius:999px}
   #readyBadge{position:fixed;top:36px;right:10px;z-index:9999;display:none;background:#10b98126;color:#a7f3d0;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid #10b9818c;border-radius:999px}
   #readyDot{display:inline-block;width:8px;height:8px;border-radius:999px;background:#10b981;margin-right:6px}
-  /* Loading veil */
   #veil{position:fixed;inset:0;background:#0b1220;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:10000}
   #veil .spin{width:28px;height:28px;border-radius:999px;border:3px solid #334155;border-top-color:#38bdf8;animation:sp 0.9s linear infinite}
   #veil .msg{color:#A9B4C8;font:13px ui-monospace,monospace}
@@ -65,7 +61,6 @@
   footer{opacity:.8;font:12px ui-monospace,monospace;margin-top:10px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 </style>
 
-<!-- libs (deferred) -->
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.min.js" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js" crossorigin="anonymous"></script>
@@ -182,7 +177,7 @@
 </div>
 
 <script>
-const REVISION="1.12.6-alpha"; document.getElementById("revText").textContent=REVISION;
+const REVISION="1.12.7-alpha"; document.getElementById("revText").textContent=REVISION;
 const $=id=>document.getElementById(id);
 const diagnostics=$("diagnostics"), copyDiagBtn=$("copyDiagBtn");
 function appendTop(s){ diagnostics.textContent = s + diagnostics.textContent; toggleCopyBtns() }
@@ -200,7 +195,6 @@ const enhanceBtn=$("enhanceBtn"), clearLogsBtn=$("clearLogsBtn"), resetBtn=$("re
 const copyAllBtn=$("copyAllBtn");
 const rotDeg=$("rotDeg"), zoom=$("zoom"), zoomLabel=$("zoomLabel"), bri=$("bri"), briLabel=$("briLabel"), con=$("con"), conLabel=$("conLabel");
 const fixModeSel=$("fixMode"), weightsSrc=$("weightsSrc"), precacheBtn=$("precacheBtn");
-const showOverlaysChk=$("showOverlays"), showHUDChk=$("showHUD"), autoAnalyzeChk=$("autoAnalyze");
 const veil=$("veil"), veilMsg=$("veilMsg");
 
 /* helpers */
@@ -253,50 +247,27 @@ async function ensureFaceApi(){
   if(faceApiReady) return;
   const base=(weightsSrc.value||"").replace(/\/$/,"");
   FA_BASE=base;
-  // health check manifests
   const mani1 = base+"/tiny_face_detector_model-weights_manifest.json";
   const mani2 = base+"/face_landmark_68_model-weights_manifest.json";
   const ok1 = await headOK(mani1); const ok2 = await headOK(mani2);
   logEvt('detect',{weightsHealth:{mani1:ok1,mani2:ok2,base}});
   if(!ok1 || !ok2) logEvt('error',{weightsBase:'health-check-failed',base});
-  // load nets with retry
   await faceapi.nets.tinyFaceDetector.loadFromUri(base);
   await faceapi.nets.faceLandmark68Net.loadFromUri(base);
   faceApiReady=true; logEvt("detect",{faceapiReady:true,usingWeightsFrom:base});
 }
 
-/* Offline mode via Service Worker */
-async function registerSW(){
-  if(!('serviceWorker' in navigator)) { logEvt('error',{sw:'unsupported'}); return null }
-  const swCode = `
-    const CACHE='yorn-weights-v1';
-    let cacheFirst=false;
-    self.addEventListener('install',e=>{ self.skipWaiting() });
-    self.addEventListener('activate',e=>{ e.waitUntil(clients.claim()) });
-    async function addAll(urls){ const c=await caches.open(CACHE); await c.addAll(urls) }
-    self.addEventListener('message', async e=>{
-      const {type,urls,mode}=e.data||{};
-      if(type==='PRECACHE' && Array.isArray(urls)){ try{ await addAll(urls); e.source.postMessage({type:'PRECACHE_OK',count:urls.length}) }catch(err){ e.source.postMessage({type:'PRECACHE_ERR',msg:String(err)}) } }
-      if(type==='MODE'){ cacheFirst = (mode==='cache-first'); e.source.postMessage({type:'MODE_SET',mode}) }
-    });
-    self.addEventListener('fetch', e=>{
-      const u=new URL(e.request.url);
-      // only intercept model assets (CDNs allowed)
-      const match = /face-api|tfjs-backend-wasm|\/weights\//.test(u.href);
-      if(!match || e.request.method!=='GET'){ return }
-      if(cacheFirst){
-        e.respondWith( (async()=>{ const c=await caches.open(CACHE); const hit=await c.match(e.request); if(hit) return hit; const resp=await fetch(e.request); if(resp.ok) c.put(e.request, resp.clone()); return resp })() );
-      }
-    });
-  `;
-  const blob=new Blob([swCode],{type:'text/javascript'});
-  const url=URL.createObjectURL(blob);
+/* Service Worker helpers (register real file) */
+async function getSWReg(){
+  if(!('serviceWorker' in navigator)){ logEvt('error',{sw:'unsupported'}); return null }
   try{
-    const reg = await navigator.serviceWorker.register(url, {scope: './'});
-    logEvt('config',{sw:'registered'});
-    // set mode to cache-first once we precache
+    const reg = await navigator.serviceWorker.register('./sw.js', {scope: './'});
+    logEvt('config',{sw:'registered', scope: reg.scope || 'n/a'});
     return reg;
-  }catch(e){ logEvt('error',{sw_reg:e.message||String(e)}); return null }
+  }catch(e){
+    logEvt('error',{sw_reg:String(e.message||e)});
+    return null;
+  }
 }
 async function precacheWeights(){
   try{
@@ -306,18 +277,19 @@ async function precacheWeights(){
     const m1 = await fetchJsonRetry(mani1); const m2 = await fetchJsonRetry(mani2);
     const urls=[mani1, mani2];
     for(const m of [m1,m2]) (m.weights||[]).forEach(w=> (w.paths||[]).forEach(p=> urls.push(base+'/'+p)));
+
     let reg = await navigator.serviceWorker.getRegistration();
-    if(!reg) reg = await registerSW();
-    if(!reg || !navigator.serviceWorker.controller){ logEvt('error',{sw:'no-controller'}); return }
+    if(!reg) reg = await getSWReg();
+    if(!reg){ logEvt('error',{sw:'no-registration'}); return }
+    if(!navigator.serviceWorker.controller){
+      logEvt('error',{sw:'no-controller', hint:'Reload once after registration so SW takes control'});
+    }
     const ch = new MessageChannel();
-    ch.port1.onmessage = ev => {
-      logEvt('config',ev.data||{});
-    };
-    reg.active.postMessage({type:'PRECACHE',urls}, [ch.port2]);
-    // enable cache-first mode
+    ch.port1.onmessage = ev => logEvt('config',ev.data||{});
+    reg.active?.postMessage({type:'PRECACHE',urls}, [ch.port2]);
     const ch2 = new MessageChannel();
     ch2.port1.onmessage = ev => logEvt('config',ev.data||{});
-    reg.active.postMessage({type:'MODE',mode:'cache-first'}, [ch2.port2]);
+    reg.active?.postMessage({type:'MODE',mode:'cache-first'}, [ch2.port2]);
     logEvt('config',{sw_precache:'sent',count:urls.length,base});
   }catch(e){ logEvt('error',{precache:e.message||String(e)}) }
 }
@@ -330,15 +302,15 @@ async function decodeOriginal(fileOrBlob){
   const can=await blobToCanvasViaImg(fileOrBlob); logEvt('detect',{decode:'img→canvas',w:can.width,h:can.height}); return {canvas:can,width:can.width,height:can.height};
 }
 
-/* render */
+/* render & overlays (unchanged from 1.12.6) */
 let baseSource=null, workCanvas=null, lastCanvas=null, lastBox=null, lastLandmarks=null, lastAnalysis=null;
 function ensureWork(){ if(!workCanvas) workCanvas=document.createElement('canvas'); return workCanvas }
-function paintBaseCanvas(canvas){ imgBase.src=canvas.toDataURL('image/png'); imgBase.classList.remove('hidden'); [cvRough,cvOverlay].forEach(c=>{c.width=canvas.width;c.height=canvas.height;c.classList.remove('hidden')}); logEvt('overlay',{painted:{w:canvas.width,h:canvas.height}}) }
+function paintBaseCanvas(canvas){ $("base").src=canvas.toDataURL('image/png'); $("base").classList.remove('hidden'); ["overlayRough","overlay"].forEach(id=>{const c=$(id); c.width=canvas.width;c.height=canvas.height;c.classList.remove('hidden')}); logEvt('overlay',{painted:{w:canvas.width,h:canvas.height}}) }
 function renderWorkingCanvas(maxSide=1024,centerBox=null){
   if(!baseSource){ logEvt('error',{render:'no baseSource'}); return null; }
   const srcW0=baseSource.width, srcH0=baseSource.height;
-  const angle=(parseInt(rotDeg.value,10)||0)%360; let z=parseFloat(zoom.value)||1.0;
-  const br=parseFloat(bri.value)||1.0, cr=parseFloat(con.value)||1.0;
+  const angle=(parseInt($("rotDeg").value,10)||0)%360; let z=parseFloat($("zoom").value)||1.0;
+  const br=parseFloat($("bri").value)||1.0, cr=parseFloat($("con").value)||1.0;
   const scale0=Math.min(1, maxSide/Math.max(srcW0,srcH0));
   const w0=Math.max(1,Math.round(srcW0*scale0)), h0=Math.max(1,Math.round(srcH0*scale0));
   let cx=srcW0/2, cy=srcH0/2;
@@ -358,18 +330,15 @@ function renderWorkingCanvas(maxSide=1024,centerBox=null){
   ctx.restore();
   return c;
 }
+function drawBox(ctx,box,color,label){ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(box.x,box.y,box.width,box.height);ctx.fillStyle=color;ctx.font="12px ui-monospace,monospace";ctx.fillText(label,box.x,Math.max(12,box.y-4))}
+function drawCross(ctx,cx,cy,offX,offY){ctx.strokeStyle="#60a5fa";ctx.beginPath();ctx.moveTo(cx-8,cy);ctx.lineTo(cx+8,cy);ctx.moveTo(cx,cy-8);ctx.lineTo(cx,cy+8);ctx.stroke();ctx.fillStyle="#60a5fa";ctx.font="12px ui-monospace,monospace";const text=`(${Math.round(cx)},${Math.round(cy)}) | offX ${offX.toFixed(1)}% • offY ${offY.toFixed(1)}%`;const tx=Math.min(cx+10,$("overlay").width-260),ty=Math.min(cy+14,$("overlay").height-4);ctx.fillText(text,tx,ty)}
+function drawLandmarks(ctx,landmarks){ try{ const pts=landmarks.positions||landmarks; ctx.fillStyle="#f472b6"; for(const p of pts){ ctx.fillRect(p.x-1,p.y-1,2,2) } }catch(_){} }
 
-/* detection helpers */
+/* detection & analysis (same as 1.12.6) */
 let blazeModel=null;
 async function ensureBlaze(){ if(blazeModel) return; blazeModel=window.__blazeModel; }
 function downsample(canvas,w,mirror=false){const h=Math.round(w*(canvas.height/canvas.width));const tmp=Object.assign(document.createElement("canvas"),{width:w,height:h});const ctx=tmp.getContext("2d");if(mirror){ctx.translate(w,0);ctx.scale(-1,1)}ctx.drawImage(canvas,0,0,w,h);return tmp}
 
-/* overlays */
-function drawBox(ctx,box,color,label){ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(box.x,box.y,box.width,box.height);ctx.fillStyle=color;ctx.font="12px ui-monospace,monospace";ctx.fillText(label,box.x,Math.max(12,box.y-4))}
-function drawCross(ctx,cx,cy,offX,offY){ctx.strokeStyle="#60a5fa";ctx.beginPath();ctx.moveTo(cx-8,cy);ctx.lineTo(cx+8,cy);ctx.moveTo(cx,cy-8);ctx.lineTo(cx,cy+8);ctx.stroke();ctx.fillStyle="#60a5fa";ctx.font="12px ui-monospace,monospace";const text=`(${Math.round(cx)},${Math.round(cy)}) | offX ${offX.toFixed(1)}% • offY ${offY.toFixed(1)}%`;const tx=Math.min(cx+10,cvOverlay.width-260),ty=Math.min(cy+14,cvOverlay.height-4);ctx.fillText(text,tx,ty)}
-function drawLandmarks(ctx,landmarks){ try{ const pts=landmarks.positions||landmarks; ctx.fillStyle="#f472b6"; for(const p of pts){ ctx.fillRect(p.x-1,p.y-1,2,2) } }catch(_){} }
-
-/* main detect flow */
 async function detectFlow(){
   try{
     lastBox=null; lastCanvas=null; lastLandmarks=null; $("analysisCard").style.display="none";
@@ -377,7 +346,6 @@ async function detectFlow(){
     let canvas=renderWorkingCanvas(1024); if(!canvas){ logEvt("error",{render:"failed"}); return }
     lastCanvas=canvas; paintBaseCanvas(canvas);
 
-    // rough locate via BlazeFace
     const tinyW=160,tinyH=Math.round(tinyW*(canvas.height/canvas.width));
     const tmp=Object.assign(document.createElement("canvas"),{width:tinyW,height:tinyH});
     tmp.getContext("2d").drawImage(canvas,0,0,tinyW,tinyH);
@@ -389,7 +357,6 @@ async function detectFlow(){
       canvas=renderWorkingCanvas(1024,rough); lastCanvas=canvas; paintBaseCanvas(canvas);
     } else { logEvt("detect",{roughLocate_ms:ms,box:null}) }
 
-    // final multiscale Blaze
     const cfgs=[{w:256,mirror:false},{w:384,mirror:false},{w:512,mirror:false},{w:384,mirror:true},{w:512,mirror:true}];
     let det=null;
     for(const cfg of cfgs){
@@ -408,15 +375,14 @@ async function detectFlow(){
       }
     }
 
-    const octx=cvOverlay.getContext("2d"); octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
+    const octx=$("overlay").getContext("2d"); octx.clearRect(0,0,$("overlay").width,$("overlay").height);
     if(!det){ logEvt("error",{msg:"BlazeFace found no face"}); setProgress(0,""); return }
     lastBox=det.box; drawBox(octx,lastBox,"#22c55e",`BlazeFace • ${det.elapsed_ms}ms`);
     const cx=lastBox.x+lastBox.width/2, cy=lastBox.y+lastBox.height/2; const offX=((cx-canvas.width/2)/(canvas.width/2))*100, offY=((cy-canvas.height/2)/(canvas.height/2))*100;
     drawCross(octx,cx,cy,offX,offY);
     logEvt("detect",{finalDetect_ms:det.elapsed_ms,scale:det.scale,mirror:det.mirror,box:lastBox});
 
-    // Optional refine with face-api
-    if(fixModeSel.value==="cdn"){
+    if($("fixMode").value==="cdn"){
       try{
         setProgress(75,"Refining (face‑api)…");
         await ensureFaceApi();
@@ -428,7 +394,7 @@ async function detectFlow(){
           const b=result.detection.box;
           lastBox={x:b.x,y:b.y,width:b.width,height:b.height};
           lastLandmarks=result.landmarks;
-          octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
+          octx.clearRect(0,0,$("overlay").width,$("overlay").height);
           drawBox(octx,lastBox,"#f59e0b",`Refined • ${msR}ms`);
           drawLandmarks(octx,lastLandmarks);
           const cx2=lastBox.x+lastBox.width/2, cy2=lastBox.y+lastBox.height/2;
@@ -441,12 +407,12 @@ async function detectFlow(){
       }catch(e){ logEvt("error",{refine:e.message||String(e)}) }
     }
 
-    setProgress(100,"Done."); startAnalysisBtn.disabled=false; document.getElementById("readyBadge").style.display="inline-flex";
-    if(autoAnalyzeChk.checked){ startAnalysisBtn.click(); }
+    setProgress(100,"Done."); $("startAnalysisBtn").disabled=false; document.getElementById("readyBadge").style.display="inline-flex";
+    if($("autoAnalyze").checked){ $("startAnalysisBtn").click(); }
   }catch(e){ logEvt("error",{detectFlow:e.message||String(e)}) }
 }
 
-/* lightweight analysis */
+/* lightweight analysis + autosave */
 function runLightAnalysis(){
   if(!lastCanvas||!lastBox){ logEvt("error",{analysis:"no detection"}); return }
   const imgW=lastCanvas.width,imgH=lastCanvas.height,b=lastBox;
@@ -484,7 +450,6 @@ function runLightAnalysis(){
     orientation:orient,
     refine:{landmarks: lastLandmarks ? 68 : 0}
   };
-  // auto-save
   try{ localStorage.setItem("yorn_last_analysis", JSON.stringify(lastAnalysis)) }catch(_){}
   $("analysisHints").textContent="Hints: "+(hints.length?hints.join(" • "):"Looks good!");
   logEvt("analysis",{analysis:lastAnalysis});
@@ -493,21 +458,17 @@ function runLightAnalysis(){
 
 /* export + copy */
 $("copyDiagBtn").addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(diagnostics.textContent); logEvt('config',{copiedDiagnostics:true}) }catch(e){ logEvt('error',{copyDiagnosticsError:e.message||String(e)}) }});
-copyAllBtn.addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(diagnostics.textContent); logEvt('config',{copiedAll:true}) }catch(e){ logEvt('error',{copyAll:e.message||String(e)}) }});
+$("copyAllBtn").addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(diagnostics.textContent); logEvt('config',{copiedAll:true}) }catch(e){ logEvt('error',{copyAll:e.message||String(e)}) }});
 $("clearLogsBtn").addEventListener('click',()=>{ diagnostics.textContent='No diagnostics yet.'; toggleCopyBtns() });
-$("resetBtn").addEventListener('click',()=>{ baseSource=null; imgBase.classList.add('hidden'); lastCanvas=null; lastBox=null; lastLandmarks=null; $("analysisCard").style.display="none"; logEvt('config',{reset:true}) });
+$("resetBtn").addEventListener('click',()=>{ ["base"].forEach(id=>$(id).classList.add('hidden')); baseSource=null; lastCanvas=null; lastBox=null; lastLandmarks=null; $("analysisCard").style.display="none"; logEvt('config',{reset:true}) });
 
-$("copyJsonBtn").addEventListener('click',async()=>{
-  try{ if(!lastAnalysis) return; await navigator.clipboard.writeText(JSON.stringify(lastAnalysis,null,2)); logEvt('config',{copiedJSON:true}); }catch(e){ logEvt('error',{copyJSON:e.message||String(e)}) }
-});
-$("exportJsonBtn").addEventListener('click',()=>{
-  try{ if(!lastAnalysis) return; const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:"application/json"}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{downloadJSON:true}); }catch(e){ logEvt('error',{downloadJSON:e.message||String(e)}) }
-});
+$("copyJsonBtn").addEventListener('click',async()=>{ try{ if(!lastAnalysis) return; await navigator.clipboard.writeText(JSON.stringify(lastAnalysis,null,2)); logEvt('config',{copiedJSON:true}); }catch(e){ logEvt('error',{copyJSON:e.message||String(e)}) }});
+$("exportJsonBtn").addEventListener('click',()=>{ try{ if(!lastAnalysis) return; const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:"application/json"}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{downloadJSON:true}); }catch(e){ logEvt('error',{downloadJSON:e.message||String(e)}) }});
 $("sharePngBtn").addEventListener('click',async()=>{
   try{
     if(!lastCanvas) return;
     const out=document.createElement('canvas'); out.width=lastCanvas.width; out.height=lastCanvas.height;
-    const ctx=out.getContext('2d'); ctx.drawImage(lastCanvas,0,0); ctx.drawImage(cvOverlay,0,0);
+    const ctx=out.getContext('2d'); ctx.drawImage(lastCanvas,0,0); ctx.drawImage($("overlay"),0,0);
     ctx.globalAlpha=0.85; ctx.fillStyle="#000000A0"; ctx.fillRect(out.width-240-10, out.height-32-10, 240, 28);
     ctx.globalAlpha=1; ctx.fillStyle="#E6EAF2"; ctx.font="12px ui-monospace,monospace";
     ctx.fillText(`YorN ${REVISION} • ${new Date().toISOString().slice(0,19)}`, out.width-230-10, out.height-14-10);
@@ -520,23 +481,23 @@ $("sharePngBtn").addEventListener('click',async()=>{
 
 /* tweak handlers */
 function onTweak(){ if(baseSource){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c) } }
-zoom.addEventListener("input",()=>{zoomLabel.textContent=(+zoom.value).toFixed(2);onTweak()});
-bri.addEventListener("input",()=>{briLabel.textContent=(+bri.value).toFixed(2);onTweak()});
-con.addEventListener("input",()=>{conLabel.textContent=(+con.value).toFixed(2);onTweak()});
-rotDeg.addEventListener("change",onTweak);
+$("zoom").addEventListener("input",()=>{ $("zoomLabel").textContent=(+$("zoom").value).toFixed(2); onTweak()});
+$("bri").addEventListener("input",()=>{ $("briLabel").textContent=(+$("bri").value).toFixed(2); onTweak()});
+$("con").addEventListener("input",()=>{ $("conLabel").textContent=(+$("con").value).toFixed(2); onTweak()});
+$("rotDeg").addEventListener("change",onTweak);
 
 /* buttons */
-enhanceBtn.addEventListener("click",()=>{ zoom.value=Math.max(+zoom.value,1.5); zoomLabel.textContent=(+zoom.value).toFixed(2); bri.value=Math.max(+bri.value,1.18); briLabel.textContent=(+bri.value).toFixed(2); con.value=Math.max(+con.value,1.25); conLabel.textContent=(+con.value).toFixed(2); detectFlow() });
-detectBtn.addEventListener("click",()=>detectFlow());
-startAnalysisBtn.addEventListener("click",()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis() });
+$("enhanceBtn").addEventListener("click",()=>{ $("zoom").value=Math.max(+$("zoom").value,1.5); $("zoomLabel").textContent=(+$("zoom").value).toFixed(2); $("bri").value=Math.max(+$("bri").value,1.18); $("briLabel").textContent=(+$("bri").value).toFixed(2); $("con").value=Math.max(+$("con").value,1.25); $("conLabel").textContent=(+$("con").value).toFixed(2); detectFlow() });
+$("detectBtn").addEventListener("click",()=>detectFlow());
+$("startAnalysisBtn").addEventListener("click",()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis() });
 
 /* file/sample */
-fileInput.addEventListener('change', async ()=>{
-  if(!fileInput.files.length) return;
-  const f=fileInput.files[0]; setProgress(8,'Decoding photo…');
-  try{ baseSource = await decodeOriginal(f); const canvas = renderWorkingCanvas(1024); if(canvas){ paintBaseCanvas(canvas); setProgress(12,'Photo ready'); detectBtn.disabled=false; enhanceBtn.disabled=false; } }catch(e){ logEvt('error',{decode_failed:e.message||String(e)}) }
+$("fileInput").addEventListener('change', async ()=>{
+  if(!$("fileInput").files.length) return;
+  const f=$("fileInput").files[0]; setProgress(8,'Decoding photo…');
+  try{ baseSource = await decodeOriginal(f); const canvas = renderWorkingCanvas(1024); if(canvas){ paintBaseCanvas(canvas); setProgress(12,'Photo ready'); $("detectBtn").disabled=false; $("enhanceBtn").disabled=false; } }catch(e){ logEvt('error',{decode_failed:e.message||String(e)}) }
 });
-sampleBtn.addEventListener('click', async ()=>{
+$("sampleBtn").addEventListener('click', async ()=>{
   try{
     setProgress(5,'Fetching sample…');
     const u="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
@@ -544,26 +505,32 @@ sampleBtn.addEventListener('click', async ()=>{
     const blob=await res.blob();
     baseSource = await decodeOriginal(blob);
     const canvas=renderWorkingCanvas(1024);
-    if(canvas){ paintBaseCanvas(canvas); setProgress(12,'Sample ready'); detectBtn.disabled=false; enhanceBtn.disabled=false; }
+    if(canvas){ paintBaseCanvas(canvas); setProgress(12,'Sample ready'); $("detectBtn").disabled=false; $("enhanceBtn").disabled=false; }
     logEvt('detect',{sampleImage:u});
   }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) }
 });
 
 /* precache */
-precacheBtn.addEventListener('click',()=>precacheWeights());
+$("precacheBtn").addEventListener('click', async ()=>{
+  const reg = await getSWReg();
+  if(reg && !navigator.serviceWorker.controller){
+    logEvt('config',{sw_notice:'Reload once so SW controls this page'});
+  }
+  await precacheWeights();
+});
 
 /* init */
 window.addEventListener('load', async ()=>{
+  document.getElementById("revText").textContent=REVISION;
   logEvt('config',{boot:'ui-ready',rev:REVISION});
   try{
     await initFrameworks();
-    // restore last analysis
     try{
       const saved = localStorage.getItem("yorn_last_analysis");
       if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}); }
     }catch(_){}
     logEvt('config',{boot:'complete'});
-  }catch(e){ showVeil('Framework init failed'); logEvt('error',{frameworks:e.message||String(e)}) }
+  }catch(e){ document.getElementById('veil').style.display='flex'; document.getElementById('veilMsg').textContent='Framework init failed'; logEvt('error',{frameworks:e.message||String(e)}) }
 });
 </script>
 </body>
