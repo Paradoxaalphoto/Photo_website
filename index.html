@@ -56,6 +56,7 @@
   #readinessBadge.ready{background:#052e1b; color:#a7f3d0; border-color:#0a5a33}
   #readinessBadge.blocked{background:#3a0b0b; color:#fecaca; border-color:#7f1d1d}
 
+  /* Loading veil */
   #veil{position:fixed;inset:0;background:#0b1220;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:10000}
   #veil .spin{width:28px;height:28px;border-radius:999px;border:3px solid #334155;border-top-color:#38bdf8;animation:sp 0.9s linear infinite}
   #veil .msg{color:#A9B4C8;font:13px ui-monospace,monospace}
@@ -78,7 +79,13 @@
 <div id="revBadge">YorN Rev <span id="revText"></span></div>
 <div id="readyBadge"><span id="readyDot"></span><span id="readyText">Ready for Analysis</span></div>
 <div id="readinessBadge" title="Auto‑test readiness badge">READY</div>
-<div id="veil"><div class="spin"></div><div class="msg" id="veilMsg">Frameworks loading…</div></div>
+
+<!-- Updated veil: includes manual dismiss button -->
+<div id="veil">
+  <div class="spin"></div>
+  <div class="msg" id="veilMsg">Frameworks loading…</div>
+  <button id="dismissVeilBtn" class="btn" style="margin-top:6px">Dismiss overlay</button>
+</div>
 
 <div class="container">
   <h2>YorN — Face Detection & Research Mode</h2>
@@ -249,6 +256,19 @@ const diagnostics=$("diagnostics");
 function appendTop(s){ diagnostics.textContent = s + diagnostics.textContent; toggleCopyBtns() }
 function logEvt(type,payload){ appendTop(`[${new Date().toISOString()}] ${JSON.stringify({type,...(payload||{})})}\n`) }
 
+/* Mirror Diagnostics → console (dev convenience) */
+(() => {
+  const __orig = window.logEvt;
+  window.logEvt = function(type, payload){
+    try { __orig(type, payload); } finally {
+      try {
+        const lvl = (type === 'error') ? 'error' : (type === 'config' ? 'info' : 'log');
+        console[lvl](`[YorN] ${type}`, payload || {});
+      } catch (_) {}
+    }
+  };
+})();
+
 /*** Robust copy helpers ***/
 async function copyTextRobust(text){
   if(text==null) text='';
@@ -309,24 +329,28 @@ function updateFooter(){
   $("sessDet").textContent=`${detCount} detects`; $("sessAna").textContent=`${anaCount} analyses`; $("sessAvg").textContent=avg; $("sessHint").textContent=common;
 }
 
-/*** TFJS/Models boot ***/
+/*** TFJS/Models boot (now with finally to ensure veil hides) ***/
 async function initFrameworks(){
   showVeil('Loading TensorFlow…');
-  await waitFor(()=>window.tf,'tf presence',10000).catch(e=>{ logEvt('error',{tf_presence:e.message}); throw e });
   try{
-    if (tf && tf.wasm) tf.wasm.setWasmPaths("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/");
-    await tf.setBackend('wasm'); await tf.ready();
-    logEvt('config',{tf:'ready',backend:tf.getBackend()});
-  }catch(e){
-    logEvt('error',{tf_init:e.message||String(e)});
-    try{ await tf.setBackend('webgl'); await tf.ready(); logEvt('config',{tf:'ready',backend:tf.getBackend(),fallback:'webgl'});}catch(e2){ logEvt('error',{tf_fallback:e2.message||String(e2)}); throw e2; }
+    await waitFor(()=>window.tf,'tf presence',10000).catch(e=>{ logEvt('error',{tf_presence:e.message}); throw e });
+    try{
+      if (tf && tf.wasm) tf.wasm.setWasmPaths("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/");
+      await tf.setBackend('wasm'); await tf.ready();
+      logEvt('config',{tf:'ready',backend:tf.getBackend()});
+    }catch(e){
+      logEvt('error',{tf_init:e.message||String(e)});
+      try{ await tf.setBackend('webgl'); await tf.ready(); logEvt('config',{tf:'ready',backend:tf.getBackend(),fallback:'webgl'});}catch(e2){ logEvt('error',{tf_fallback:e2.message||String(e2)}); throw e2; }
+    }
+    showVeil('Loading BlazeFace…');
+    await waitFor(()=>window.blazeface,'blazeface presence',8000).catch(e=>{ logEvt('error',{blaze_presence:e.message}); throw e });
+    try{ window.__blazeModel=await window.blazeface.load(); logEvt("detect",{blazefaceReady:true}); }catch(e){ logEvt('error',{blazeface_load:e.message||String(e)}); throw e }
+    // face-api presence is optional
+    await waitFor(()=>window.faceapi,'faceapi presence',8000).catch(e=>logEvt('error',{faceapi_presence:e.message}));
+    logEvt('config',{boot:'frameworks-ready'});
+  } finally {
+    hideVeil(); // <- always hide overlay
   }
-  showVeil('Loading BlazeFace…');
-  await waitFor(()=>window.blazeface,'blazeface presence',8000).catch(e=>{ logEvt('error',{blaze_presence:e.message}); throw e });
-  try{ window.__blazeModel=await window.blazeface.load(); logEvt("detect",{blazefaceReady:true}); }catch(e){ logEvt('error',{blazeface_load:e.message||String(e)}); throw e }
-  await waitFor(()=>window.faceapi,'faceapi presence',8000).catch(e=>logEvt('error',{faceapi_presence:e.message}));
-  hideVeil(); logEvt('config',{boot:'frameworks-ready'});
-  detectBtn.disabled=false; enhanceBtn.disabled=false;
 }
 
 /*** SW helpers (precache UX) ***/
@@ -765,9 +789,27 @@ $("precacheBtn").addEventListener('click', async ()=>{
   }
   const base=(weightsSrc.value||"").replace(/\/$/,"");
   const list=[ 'tiny_face_detector_model-weights_manifest.json', 'face_landmark_68_model-weights_manifest.json' ].map(f=>`${base}/${f}`);
-  for(const u of list){ try{ await fetch(u,{cache:'reload'}); }catch(e){ logEvt('error',{precache_fetch:u,msg:e.message||String(e)}) } }
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({type:'yorn:precache', urls:list});
+  } else {
+    for(const u of list){ try{ await fetch(u,{cache:'reload'}); }catch(e){ logEvt('error',{precache_fetch:u,msg:e.message||String(e)}) } }
+  }
   setPrecacheLabel('Cached ✓', false);
   await refreshSWPill();
+});
+
+/*** Watchdog & manual dismiss for the veil ***/
+$("dismissVeilBtn").addEventListener('click', ()=>{
+  hideVeil();
+  logEvt('config',{veil:'dismissed-manually'});
+});
+window.addEventListener('load', () => {
+  setTimeout(()=>{
+    if (veil && veil.style.display !== 'none') {
+      logEvt('error',{veil:'watchdog-hide'});
+      hideVeil();
+    }
+  }, 8000);
 });
 
 /*** Init ***/
@@ -776,29 +818,17 @@ window.addEventListener('load', async ()=>{
   logEvt('config',{boot:'ui-ready',rev:REVISION});
   await refreshSWPill();
   try{
-    await initFrameworks();
+    await initFrameworks();  // veil hides in finally{}
     try{
       const saved=localStorage.getItem("yorn_last_analysis");
       if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}); researchCard.style.display=""; }
     }catch(_){}
-    logEvt('config',{boot:'frameworks-ready'});
     logEvt('config',{boot:'complete'});
-  }catch(e){ document.getElementById('veil').style.display='flex'; document.getElementById('veilMsg').textContent='Framework init failed'; logEvt('error',{frameworks:e.message||String(e)}) }
+  }catch(e){
+    logEvt('error',{frameworks:e.message||String(e)});
+    hideVeil(); // double‑guard
+  }
 });
-<script>
-/* Mirror Diagnostics → console (dev convenience) */
-(() => {
-  const __orig = window.logEvt;
-  window.logEvt = function(type, payload){
-    try { __orig(type, payload); } finally {
-      try {
-        const lvl = (type === 'error') ? 'error' : (type === 'config' ? 'info' : 'log');
-        console[lvl](`[YorN] ${type}`, payload || {});
-      } catch (_) {}
-    }
-  };
-})();
-</script>
 </script>
 </body>
 </html>
