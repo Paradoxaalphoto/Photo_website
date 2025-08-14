@@ -2,23 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN — 1.13.0-alpha</title>
+<title>YorN — 1.14.0-alpha</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:; img-src * data: blob:; connect-src * data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; upgrade-insecure-requests">
-<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
-<script>
-(function(){
-  window.__yornLogs = [];
-  function push(type, payload){ try{ window.__yornLogs.unshift(`[${new Date().toISOString()}] ${JSON.stringify({type, ...(payload||{})})}\n`) }catch(_){}
-  }
-  window.__yornBootLog = push;
-  window.addEventListener('error', e=>push('error',{global:e.message,at:(e.filename||'')+':'+(e.lineno||'')}));
-  window.addEventListener('unhandledrejection', e=>{const r=e&&e.reason; push('error',{unhandled:(r&&(r.message||r))||String(r)})});
-  push('config',{boot:'starting', ua:navigator.userAgent});
-})();
-</script>
 <style>
   :root{color-scheme:light dark}
   *{box-sizing:border-box}
@@ -26,7 +12,7 @@
   body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,sans-serif;background:#0b1220;color:#e6eaf2;overflow-x:hidden}
   .container{max-width:980px;margin:0 auto;padding:16px}
   .card{background:#0f172a;border:1px solid #233046;border-radius:12px;padding:12px;margin-top:12px}
-  .row{display:grid;grid-template-columns:1fr auto auto auto auto auto auto auto;gap:8px;align-items:end}
+  .row{display:grid;grid-template-columns:1fr auto auto auto auto auto auto auto auto;gap:8px;align-items:end}
   .controls{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-top:8px}
   @media (max-width:720px){ .row{grid-template-columns:1fr;gap:10px} .controls{grid-template-columns:1fr 1fr;gap:10px} .two-col{grid-template-columns:1fr;gap:12px} .research-grid{grid-template-columns:1fr} }
   label{font-size:12px;color:#A9B4C8}
@@ -39,7 +25,6 @@
   #progressBar{height:100%;width:0;background:#38bdf8;transition:width .25s}
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 
-  /* preview/overlay mobile fix */
   .previewWrap{position:relative;overflow:hidden}
   .previewSurface{width:100%;height:auto;display:block}
 
@@ -63,9 +48,9 @@
   @keyframes sp{to{transform:rotate(360deg)}}
   footer{opacity:.8;font:12px ui-monospace,monospace;margin-top:10px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 
-  /* research mode */
   .research-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .hint{font-size:12px;color:#A9B4C8}
+  #swPill{font:11px ui-monospace,monospace;padding:4px 8px;border-radius:999px;border:1px solid #233046;background:#0b1220;opacity:.9}
 </style>
 
 <!-- libs -->
@@ -89,6 +74,7 @@
       <button id="enhanceBtn" class="btn" disabled>Enhance & Retry</button>
       <button id="detectBtn" class="btn" disabled>Detect</button>
       <button id="startAnalysisBtn" class="btn btn-primary" disabled>Start Analysis</button>
+      <button id="autoTestBtn" class="btn">Auto Test</button>
       <button id="resetBtn" class="btn">Reset</button>
       <button id="clearLogsBtn" class="btn">Clear Logs</button>
       <button id="copyDiagBtn" class="btn" disabled>Copy Diagnostics</button>
@@ -118,7 +104,10 @@
           <option value="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights">jsDelivr (npm)</option>
         </select>
       </div>
-      <button id="precacheBtn" class="btn">Precache Weights (Offline)</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button id="precacheBtn" class="btn">Precache Weights (Offline)</button>
+        <span id="swPill" title="Service Worker status">SW: —</span>
+      </div>
       <label style="display:flex;gap:8px;align-items:center"><input id="showOverlays" type="checkbox" /> Show overlays</label>
       <label style="display:flex;gap:8px;align-items:center"><input id="showHUD" type="checkbox" /> Show HUD</label>
       <label style="display:flex;gap:8px;align-items:center"><input id="autoAnalyze" type="checkbox" /> Auto‑analyze</label>
@@ -146,6 +135,7 @@
             <label class="filter-chip"><input type="checkbox" class="diagType" value="analysis" checked> analysis</label>
             <label class="filter-chip"><input type="checkbox" class="diagType" value="config" checked> config</label>
             <label class="filter-chip"><input type="checkbox" class="diagType" value="error" checked> error</label>
+            <label class="filter-chip"><input type="checkbox" class="diagType" value="test" checked> test</label>
           </div>
         </div>
         <div id="diagnostics">No diagnostics yet.</div>
@@ -178,7 +168,6 @@
     <div class="hints" id="analysisHints"></div>
   </div>
 
-  <!-- NEW: Research Mode -->
   <div class="card" id="researchCard" style="display:none">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
       <strong>Research Mode</strong>
@@ -237,13 +226,14 @@
 </div>
 
 <script>
-const REVISION="1.13.0-alpha"; document.getElementById("revText").textContent=REVISION;
+const REVISION="1.14.0-alpha"; document.getElementById("revText").textContent=REVISION;
 const $=id=>document.getElementById(id);
 const diagnostics=$("diagnostics");
 function appendTop(s){ diagnostics.textContent = s + diagnostics.textContent; toggleCopyBtns() }
 function logEvt(type,payload){ appendTop(`[${new Date().toISOString()}] ${JSON.stringify({type,...(payload||{})})}\n`) }
 function toggleCopyBtns(){ const empty = diagnostics.textContent.trim().length===0 || diagnostics.textContent.includes("No diagnostics yet."); $("copyDiagBtn").disabled=empty; $("copyAllBtn").disabled=empty }
-;(function flushBoot(){ try{ if(Array.isArray(window.__yornLogs)&&window.__yornLogs.length){ appendTop(window.__yornLogs.join("")); window.__yornLogs.length=0 } logEvt('config',{boot:'ui-ready',rev:REVISION}); }catch(_){}})();
+
+/* boot error hooks */
 window.addEventListener('error', e=>logEvt('error',{global:e.message,at:(e.filename||'')+':'+(e.lineno||'')}));
 window.addEventListener('unhandledrejection', e=>{ const r=e&&e.reason; logEvt('error',{unhandled:(r&&(r.message||r))||String(r)}) });
 
@@ -252,17 +242,17 @@ const progressBar=$("progressBar"), progressText=$("progressText");
 const imgBase=$("base"), cvRough=$("overlayRough"), cvOverlay=$("overlay");
 const fileInput=$("fileInput"), sampleBtn=$("sampleBtn"), detectBtn=$("detectBtn"), startAnalysisBtn=$("startAnalysisBtn");
 const enhanceBtn=$("enhanceBtn"), clearLogsBtn=$("clearLogsBtn"), resetBtn=$("resetBtn"), sharePngBtn=$("sharePngBtn");
-const copyAllBtn=$("copyAllBtn");
+const copyAllBtn=$("copyAllBtn"), copyDiagBtn=$("copyDiagBtn");
 const rotDeg=$("rotDeg"), zoom=$("zoom"), zoomLabel=$("zoomLabel"), bri=$("bri"), briLabel=$("briLabel"), con=$("con"), conLabel=$("conLabel");
-const fixModeSel=$("fixMode"), weightsSrc=$("weightsSrc"), precacheBtn=$("precacheBtn");
-const veil=$("veil"), veilMsg=$("veilMsg");
+const fixModeSel=$("fixMode"), weightsSrc=$("weightsSrc"), precacheBtn=$("precacheBtn"), autoTestBtn=$("autoTestBtn");
+const swPill=$("swPill"); const veil=$("veil"), veilMsg=$("veilMsg");
 
 /* research refs */
 const researchCard=$("researchCard"), consentSel=$("consent"), ageGroupSel=$("ageGroup"), raterGenderSel=$("raterGender");
 const ratingRange=$("rating"), confRange=$("confidence"), notesArea=$("notes");
 const saveRowBtn=$("saveRowBtn"), exportCSVBtn=$("exportCSVBtn"), exportDSJsonBtn=$("exportDSJsonBtn"), dsCountEl=$("dsCount");
 
-/* helpers */
+/* progress + badges */
 function setProgress(p,t){progressBar.style.width=(p||0)+'%';progressText.textContent=t||''}
 function showVeil(msg){ veilMsg.textContent=msg||'Frameworks loading…'; veil.style.display='flex' }
 function hideVeil(){ veil.style.display='none' }
@@ -296,87 +286,30 @@ async function initFrameworks(){
   detectBtn.disabled=false; enhanceBtn.disabled=false;
 }
 
-/* fetch helpers */
-async function fetchJsonRetry(url, max=3){
-  let err; for(let i=0;i<max;i++){ try{ const r=await fetch(url,{cache:"no-store"}); if(!r.ok) throw new Error('HTTP '+r.status); return await r.json() }catch(e){ err=e; logEvt('error',{fetch:url,attempt:i+1,msg:e.message}); await new Promise(r=>setTimeout(r, 300*Math.pow(2,i))) } }
-  throw err;
-}
-async function headOK(url, max=2){
-  for(let i=0;i<max;i++){ try{ const r=await fetch(url,{method:'HEAD',cache:'no-store'}); return r.ok }catch(e){ await new Promise(r=>setTimeout(r,200)) } }
-  return false;
-}
+/* SW helpers (precache UX) */
+async function getSWReg(){ if(!('serviceWorker' in navigator)){ logEvt('error',{sw:'unsupported'}); return null } try{ const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./'}); logEvt('config',{sw:'registered',scope:reg.scope||'n/a'}); return reg }catch(e){ logEvt('error',{sw_reg:String(e.message||e)}); return null } }
+function setPrecacheLabel(txt, disabled=false){ precacheBtn.textContent = txt; precacheBtn.disabled = !!disabled }
+async function getSWControllerStatus(){ try{ const reg=await navigator.serviceWorker.getRegistration(); return {supported:'serviceWorker' in navigator, registered:!!reg, controlling:!!navigator.serviceWorker.controller} }catch{ return {supported:false,registered:false,controlling:false} } }
+function updateSWPillText(st){ swPill.textContent = !st.supported ? 'SW: unsupported' : !st.registered ? 'SW: none' : !st.controlling ? 'SW: registered (reload needed)' : 'SW: controlling' }
+async function refreshSWPill(){ const st=await getSWControllerStatus(); updateSWPillText(st) }
 
-/* face-api weights handling */
-let faceApiReady=false, FA_BASE=null;
-async function ensureFaceApi(){
-  if(faceApiReady) return;
-  const base=(weightsSrc.value||"").replace(/\/$/,"");
-  FA_BASE=base;
-  const mani1 = base+"/tiny_face_detector_model-weights_manifest.json";
-  const mani2 = base+"/face_landmark_68_model-weights_manifest.json";
-  const ok1 = await headOK(mani1); const ok2 = await headOK(mani2);
-  logEvt('detect',{weightsHealth:{mani1:ok1,mani2:ok2,base}});
-  if(!ok1 || !ok2) logEvt('error',{weightsBase:'health-check-failed',base});
-  await faceapi.nets.tinyFaceDetector.loadFromUri(base);
-  await faceapi.nets.faceLandmark68Net.loadFromUri(base);
-  faceApiReady=true; logEvt("detect",{faceapiReady:true,usingWeightsFrom:base});
-}
-
-/* Service Worker */
-async function getSWReg(){
-  if(!('serviceWorker' in navigator)){ logEvt('error',{sw:'unsupported'}); return null }
-  try{
-    const reg = await navigator.serviceWorker.register('./sw.js', {scope: './'});
-    logEvt('config',{sw:'registered', scope: reg.scope || 'n/a'});
-    return reg;
-  }catch(e){ logEvt('error',{sw_reg:String(e.message||e)}); return null; }
-}
-async function precacheWeights(){
-  try{
-    const base=(weightsSrc.value||"").replace(/\/$/,"");
-    const mani1 = base+"/tiny_face_detector_model-weights_manifest.json";
-    const mani2 = base+"/face_landmark_68_model-weights_manifest.json";
-    const m1 = await fetchJsonRetry(mani1); const m2 = await fetchJsonRetry(mani2);
-    const urls=[mani1, mani2];
-    for(const m of [m1,m2]) (m.weights||[]).forEach(w=> (w.paths||[]).forEach(p=> urls.push(base+'/'+p)));
-    let reg = await navigator.serviceWorker.getRegistration();
-    if(!reg) reg = await getSWReg();
-    if(!reg){ logEvt('error',{sw:'no-registration'}); return }
-    if(!navigator.serviceWorker.controller){
-      logEvt('config',{sw_notice:'Reload once so SW controls this page'});
-    }
-    const ch = new MessageChannel(); ch.port1.onmessage = ev => logEvt('config',ev.data||{});
-    reg.active?.postMessage({type:'PRECACHE',urls}, [ch.port2]);
-    const ch2 = new MessageChannel(); ch2.port1.onmessage = ev => logEvt('config',ev.data||{});
-    reg.active?.postMessage({type:'MODE',mode:'cache-first'}, [ch2.port2]);
-    logEvt('config',{sw_precache:'sent',count:urls.length,base});
-  }catch(e){ logEvt('error',{precache:e.message||String(e)}) }
-}
-
-/* image decode */
+/* images */
 async function blobToCanvasViaImg(blob){ const url=URL.createObjectURL(blob); try{ const img=new Image(); img.decoding="sync"; img.loading="eager"; await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url}); const c=document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext("2d").drawImage(img,0,0); return c } finally{ URL.revokeObjectURL(url) } }
 async function decodeOriginal(fileOrBlob){
   try{ if('createImageBitmap' in window){ const bmp=await createImageBitmap(fileOrBlob); logEvt('detect',{decode:'createImageBitmap',w:bmp.width,h:bmp.height}); return {bitmap:bmp,width:bmp.width,height:bmp.height}; } }
   catch(e){ logEvt('error',{decode_createImageBitmap:e.message||String(e)}) }
-  const can=await blobToCanvasViaImg(fileOrBlob); logEvt('detect',{decode:'img→canvas',w:can.width,h:can.height}); return {canvas:can,width:can.width,height:can.height};
+  const can=await blobToCanvasViaImg(fileOrBlob); logEvt('detect',{decode:'blob->img',size_bytes:blob.size||0}); return {canvas:can,width:can.width,height:can.height};
 }
 
-/* working canvas + overlays (mobile sync) */
+/* preview & overlay */
 let baseSource=null, workCanvas=null, lastCanvas=null, lastBox=null, lastLandmarks=null, lastAnalysis=null;
 function ensureWork(){ if(!workCanvas) workCanvas=document.createElement('canvas'); return workCanvas }
 function syncOverlaySize(){ const w=imgBase.clientWidth,h=imgBase.clientHeight; if(!w||!h) return; [cvRough,cvOverlay].forEach(c=>{c.style.width=w+'px'; c.style.height=h+'px'}) }
 let __rsTO=null; function onViewportResize(){ clearTimeout(__rsTO); __rsTO=setTimeout(syncOverlaySize,120) }
 window.addEventListener('resize', onViewportResize); window.addEventListener('orientationchange', onViewportResize);
-
-function paintBaseCanvas(canvas){
-  imgBase.src=canvas.toDataURL('image/png');
-  imgBase.classList.remove('hidden');
-  [cvRough,cvOverlay].forEach(c=>{c.width=canvas.width;c.height=canvas.height;c.classList.remove('hidden')});
-  syncOverlaySize();
-  logEvt('overlay',{painted:{w:canvas.width,h:canvas.height}});
-}
+function paintBaseCanvas(canvas){ imgBase.src=canvas.toDataURL('image/png'); imgBase.classList.remove('hidden'); [cvRough,cvOverlay].forEach(c=>{c.width=canvas.width;c.height=canvas.height;c.classList.remove('hidden')}); syncOverlaySize(); logEvt('overlay',{painted:{w:canvas.width,h:canvas.height}}) }
 function renderWorkingCanvas(maxSide=1024,centerBox=null){
-  if(!baseSource){ logEvt('error',{render:'no baseSource'}); return null; }
+  if(!baseSource){ logEvt('error',{render:'no baseSource'}); return null }
   const srcW0=baseSource.width, srcH0=baseSource.height;
   const angle=(parseInt(rotDeg.value,10)||0)%360; let z=parseFloat(zoom.value)||1.0;
   const br=parseFloat(bri.value)||1.0, cr=parseFloat(con.value)||1.0;
@@ -400,16 +333,35 @@ function renderWorkingCanvas(maxSide=1024,centerBox=null){
   return c;
 }
 
-/* draw */
+/* drawing */
 function drawBox(ctx,box,color,label){ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(box.x,box.y,box.width,box.height);ctx.fillStyle=color;ctx.font="12px ui-monospace,monospace";ctx.fillText(label,box.x,Math.max(12,box.y-4))}
 function drawCross(ctx,cx,cy,offX,offY){ctx.strokeStyle="#60a5fa";ctx.beginPath();ctx.moveTo(cx-8,cy);ctx.lineTo(cx+8,cy);ctx.moveTo(cx,cy-8);ctx.lineTo(cx,cy+8);ctx.stroke();ctx.fillStyle="#60a5fa";ctx.font="12px ui-monospace,monospace";const text=`(${Math.round(cx)},${Math.round(cy)}) | offX ${offX.toFixed(1)}% • offY ${offY.toFixed(1)}%`;const tx=Math.min(cx+10,cvOverlay.width-260),ty=Math.min(cy+14,cvOverlay.height-4);ctx.fillText(text,tx,ty)}
 function drawLandmarks(ctx,landmarks){ try{ const pts=landmarks.positions||landmarks; ctx.fillStyle="#f472b6"; for(const p of pts){ ctx.fillRect(p.x-1,p.y-1,2,2) } }catch(_){} }
 
-/* detection */
-let blazeModel=null;
-async function ensureBlaze(){ if(blazeModel) return; blazeModel=window.__blazeModel; }
+/* models */
+let blazeModel=null; async function ensureBlaze(){ if(blazeModel) return; blazeModel=window.__blazeModel; }
+async function headOK(url, max=2){ for(let i=0;i<max;i++){ try{ const r=await fetch(url,{method:'HEAD',cache:'no-store'}); return r.ok }catch(e){ await new Promise(r=>setTimeout(r,200)) } } return false }
+let faceApiReady=false, FA_BASE=null;
+async function ensureFaceApi(){
+  if(faceApiReady) return true;
+  if(!window.faceapi){ logEvt('error',{faceapi_presence:'missing'}); return false }
+  const base=(weightsSrc.value||"").replace(/\/$/,"");
+  FA_BASE=base;
+  const mani1 = base+"/tiny_face_detector_model-weights_manifest.json";
+  const mani2 = base+"/face_landmark_68_model-weights_manifest.json";
+  const ok1 = await headOK(mani1); const ok2 = await headOK(mani2);
+  logEvt('detect',{weightsHealth:{mani1:ok1,mani2:ok2,base}});
+  if(!ok1 || !ok2){ logEvt('error',{weightsBase:'health-check-failed',base}); return false }
+  await faceapi.nets.tinyFaceDetector.loadFromUri(base);
+  await faceapi.nets.faceLandmark68Net.loadFromUri(base);
+  faceApiReady=true; logEvt("detect",{faceapiReady:true,usingWeightsFrom:base});
+  return true;
+}
+
+/* util */
 function downsample(canvas,w,mirror=false){const h=Math.round(w*(canvas.height/canvas.width));const tmp=Object.assign(document.createElement("canvas"),{width:w,height:h});const ctx=tmp.getContext("2d");if(mirror){ctx.translate(w,0);ctx.scale(-1,1)}ctx.drawImage(canvas,0,0,w,h);return tmp}
 
+/* detection flow */
 async function detectFlow(){
   try{
     lastBox=null; lastCanvas=null; lastLandmarks=null; $("analysisCard").style.display="none"; researchCard.style.display="none";
@@ -456,24 +408,26 @@ async function detectFlow(){
     if(fixModeSel.value==="cdn"){
       try{
         setProgress(75,"Refining (face‑api)…");
-        await ensureFaceApi();
-        const opts=new faceapi.TinyFaceDetectorOptions({ inputSize:256, scoreThreshold:0.3 });
-        const tR=performance.now();
-        const result=await faceapi.detectSingleFace(lastCanvas, opts).withFaceLandmarks();
-        const msR=Math.round(performance.now()-tR);
-        if(result){
-          const b=result.detection.box;
-          lastBox={x:b.x,y:b.y,width:b.width,height:b.height};
-          lastLandmarks=result.landmarks;
-          octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
-          drawBox(octx,lastBox,"#f59e0b",`Refined • ${msR}ms`);
-          drawLandmarks(octx,lastLandmarks);
-          const cx2=lastBox.x+lastBox.width/2, cy2=lastBox.y+lastBox.height/2;
-          const offX2=((cx2-canvas.width/2)/(canvas.width/2))*100, offY2=((cy2-canvas.height/2)/(canvas.height/2))*100;
-          drawCross(octx,cx2,cy2,offX2,offY2);
-          logEvt("detect",{refine_ms:msR,faceapi:true,box:lastBox,landmarks:68});
-        }else{
-          logEvt("detect",{refine_ms:msR,faceapi:false,reason:"no detection"});
+        const ok = await ensureFaceApi();
+        if(ok){
+          const opts=new faceapi.TinyFaceDetectorOptions({ inputSize:256, scoreThreshold:0.3 });
+          const tR=performance.now();
+          const result=await faceapi.detectSingleFace(lastCanvas, opts).withFaceLandmarks();
+          const msR=Math.round(performance.now()-tR);
+          if(result){
+            const b=result.detection.box;
+            lastBox={x:b.x,y:b.y,width:b.width,height:b.height};
+            lastLandmarks=result.landmarks;
+            octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
+            drawBox(octx,lastBox,"#f59e0b",`Refined • ${msR}ms`);
+            drawLandmarks(octx,lastLandmarks);
+            const cx2=lastBox.x+lastBox.width/2, cy2=lastBox.y+lastBox.height/2;
+            const offX2=((cx2-canvas.width/2)/(canvas.width/2))*100, offY2=((cy2-canvas.height/2)/(canvas.height/2))*100;
+            drawCross(octx,cx2,cy2,offX2,offY2);
+            logEvt("detect",{refine_ms:msR,faceapi:true,box:lastBox,landmarks:68});
+          }else{
+            logEvt("detect",{refine_ms:msR,faceapi:false,reason:"no detection"});
+          }
         }
       }catch(e){ logEvt("error",{refine:e.message||String(e)}) }
     }
@@ -503,7 +457,8 @@ function runLightAnalysis(){
 
   $("analysisCard").style.display="";
   $("kv_area").textContent=areaPct.toFixed(2)+" %"; $("kv_ar").textContent=ar.toFixed(3); $("kv_orient").textContent=orient;
-  $("kv_bri").textContent=mean.toFixed(1); $("kv_contrast").textContent=stdev.toFixed(1); $("kv_sharp").textContent=lapVar.toFixed(1);
+  $("kv_bri").textContent=mean.toFixed(1); $("kv_contrast").textContent=stdev.toFixed(1);
+  $("kv_sharp").textContent=lapVar.toFixed(1);
   $("kv_offx").textContent=(offX>=0?"+":"")+offX.toFixed(1)+" %"; $("kv_offy").textContent=(offY>=0?"+":"")+offY.toFixed(1)+" %";
 
   function setBadge(el,ok,okTxt,badTxt){ el.textContent=ok?okTxt:badTxt; el.className="badge "+(ok?"ok":"warn") }
@@ -524,123 +479,59 @@ function runLightAnalysis(){
   try{ localStorage.setItem("yorn_last_analysis", JSON.stringify(lastAnalysis)) }catch(_){}
   $("analysisHints").textContent="Hints: "+(hints.length?hints.join(" • "):"Looks good!");
   logEvt("analysis",{analysis:lastAnalysis});
-
-  /* show research card once we have analysis */
   researchCard.style.display="";
   maybeEnableSave();
   $("copyJsonBtn").disabled=false; $("exportJsonBtn").disabled=false; $("sharePngBtn").disabled=false;
 }
 
-/* research-mode dataset (local) */
+/* research dataset (local) */
 const DS_KEY='yorn_dataset_v1';
 function loadDS(){ try{ return JSON.parse(localStorage.getItem(DS_KEY)||'[]') }catch(_){ return [] } }
 function saveDS(rows){ try{ localStorage.setItem(DS_KEY, JSON.stringify(rows)) }catch(_){} }
 function dsCount(){ const n=loadDS().length; dsCountEl.textContent=String(n); exportCSVBtn.disabled=n===0; exportDSJsonBtn.disabled=n===0; }
 function maybeEnableSave(){ saveRowBtn.disabled = !(lastAnalysis && consentSel.value==='yes' && ageGroupSel.value) }
-
-consentSel.addEventListener('change',maybeEnableSave);
-ageGroupSel.addEventListener('change',maybeEnableSave);
-
+consentSel.addEventListener('change',maybeEnableSave); ageGroupSel.addEventListener('change',maybeEnableSave);
 saveRowBtn.addEventListener('click', ()=>{
   if(!(lastAnalysis && consentSel.value==='yes' && ageGroupSel.value)){ logEvt('error',{research:'missing required fields'}); return }
-  const row = {
-    session_id: crypto.randomUUID ? crypto.randomUUID() : ('sess_'+Date.now()),
-    created_at: new Date().toISOString(),
-    rater: {
-      age_group: ageGroupSel.value,
-      gender: raterGenderSel.value || null,
-      confidence_pct: +confRange.value,
-    },
-    rating: +ratingRange.value,
-    notes: (notesArea.value||'').trim() || null,
-    analysis: lastAnalysis
-  };
-  const rows = loadDS(); rows.push(row); saveDS(rows); dsCount(); logEvt('analysis',{saved:true,row});
+  const row={ session_id: crypto.randomUUID ? crypto.randomUUID() : ('sess_'+Date.now()), created_at:new Date().toISOString(),
+    rater:{age_group:ageGroupSel.value, gender:raterGenderSel.value||null, confidence_pct:+confRange.value},
+    rating:+ratingRange.value, notes:(notesArea.value||'').trim()||null, analysis:lastAnalysis };
+  const rows=loadDS(); rows.push(row); saveDS(rows); dsCount(); logEvt('analysis',{saved:true,row});
 });
-
-function toCSV(rows){
-  const esc=v=> (v==null?'':String(v).replace(/"/g,'""'));
-  const hdr=[
-    'created_at','rater_age_group','rater_gender','confidence_pct','rating','notes',
-    'img_w','img_h','box_x','box_y','box_w','box_h','box_area_pct','box_aspect',
-    'center_x','center_y','off_x_pct','off_y_pct','brightness_mean','contrast_stdev','sharpness_var','orientation','landmarks','revision'
-  ];
+function toCSV(rows){ const esc=v=>(v==null?'':String(v).replace(/"/g,'""'));
+  const hdr=['created_at','rater_age_group','rater_gender','confidence_pct','rating','notes','img_w','img_h','box_x','box_y','box_w','box_h','box_area_pct','box_aspect','center_x','center_y','off_x_pct','off_y_pct','brightness_mean','contrast_stdev','sharpness_var','orientation','landmarks','revision'];
   const lines=[hdr.join(',')];
-  for(const r of rows){
-    const a=r.analysis||{};
-    const b=a.box||{center:{},center_offset_pct:{}};
-    const cells=[
-      r.created_at, r.rater?.age_group, r.rater?.gender, r.rater?.confidence_pct, r.rating, r.notes,
-      a.image?.width, a.image?.height,
-      b.x, b.y, b.width, b.height, a.box?.area_pct, a.box?.aspect,
-      b.center?.x, b.center?.y, b.center_offset_pct?.x, b.center_offset_pct?.y,
-      a.lighting?.brightness_mean, a.lighting?.contrast_stdev, a.sharpness?.laplacian_variance, a.orientation, a.refine?.landmarks, a.revision
-    ].map(esc);
-    lines.push(cells.map(v=>`"${v}"`).join(','));
-  }
+  for(const r of rows){ const a=r.analysis||{}; const b=a.box||{center:{},center_offset_pct:{}}; const cells=[r.created_at,r.rater?.age_group,r.rater?.gender,r.rater?.confidence_pct,r.rating,r.notes,a.image?.width,a.image?.height,b.x,b.y,b.width,b.height,a.box?.area_pct,a.box?.aspect,b.center?.x,b.center?.y,b.center_offset_pct?.x,b.center_offset_pct?.y,a.lighting?.brightness_mean,a.lighting?.contrast_stdev,a.sharpness?.laplacian_variance,a.orientation,a.refine?.landmarks,a.revision].map(esc); lines.push(cells.map(v=>`"${v}"`).join(',')); }
   return lines.join('\n');
 }
-
-exportCSVBtn.addEventListener('click', ()=>{
-  const rows=loadDS(); if(!rows.length) return;
-  const blob=new Blob([toCSV(rows)],{type:'text/csv'});
-  const url=URL.createObjectURL(blob); const a=document.createElement('a');
-  a.href=url; a.download=`yorn-dataset-${Date.now()}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  logEvt('config',{dataset:'csv_export',rows:rows.length});
-});
-exportDSJsonBtn.addEventListener('click', ()=>{
-  const rows=loadDS(); if(!rows.length) return;
-  const blob=new Blob([JSON.stringify(rows,null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob); const a=document.createElement('a');
-  a.href=url; a.download=`yorn-dataset-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  logEvt('config',{dataset:'json_export',rows:rows.length});
-});
+$("exportCSVBtn").addEventListener('click', ()=>{ const rows=loadDS(); if(!rows.length) return;
+  const blob=new Blob([toCSV(rows)],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download=`yorn-dataset-${Date.now()}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{dataset:'csv_export',rows:rows.length}) });
+$("exportDSJsonBtn").addEventListener('click', ()=>{ const rows=loadDS(); if(!rows.length) return;
+  const blob=new Blob([JSON.stringify(rows,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download=`yorn-dataset-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{dataset:'json_export',rows:rows.length}) });
 dsCount();
 
-/* copy/export existing analysis JSON + PNG snapshot (unchanged) */
-$("copyDiagBtn").addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(diagnostics.textContent); logEvt('config',{copiedDiagnostics:true}) }catch(e){ logEvt('error',{copyDiagnosticsError:e.message||String(e)}) }});
-$("copyAllBtn").addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(diagnostics.textContent); logEvt('config',{copiedAll:true}) }catch(e){ logEvt('error',{copyAll:e.message||String(e)}) }});
+/* copy/export & basic controls */
+copyDiagBtn.addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(diagnostics.textContent); logEvt('config',{copiedDiagnostics:true}) }catch(e){ logEvt('error',{copyDiagnosticsError:e.message||String(e)}) }});
+copyAllBtn.addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(diagnostics.textContent); logEvt('config',{copiedAll:true}) }catch(e){ logEvt('error',{copyAll:e.message||String(e)}) }});
 $("clearLogsBtn").addEventListener('click',()=>{ diagnostics.textContent='No diagnostics yet.'; toggleCopyBtns() });
 $("resetBtn").addEventListener('click',()=>{ ["base"].forEach(id=>$(id).classList.add('hidden')); baseSource=null; lastCanvas=null; lastBox=null; lastLandmarks=null; $("analysisCard").style.display="none"; researchCard.style.display="none"; logEvt('config',{reset:true}) });
-
 $("copyJsonBtn").addEventListener('click',async()=>{ try{ if(!lastAnalysis) return; await navigator.clipboard.writeText(JSON.stringify(lastAnalysis,null,2)); logEvt('config',{copiedJSON:true}); }catch(e){ logEvt('error',{copyJSON:e.message||String(e)}) }});
 $("exportJsonBtn").addEventListener('click',()=>{ try{ if(!lastAnalysis) return; const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:"application/json"}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{downloadJSON:true}); }catch(e){ logEvt('error',{downloadJSON:e.message||String(e)}) }});
-$("sharePngBtn").addEventListener('click',async()=>{
-  try{
-    if(!lastCanvas) return;
-    const out=document.createElement('canvas'); out.width=lastCanvas.width; out.height=lastCanvas.height;
-    const ctx=out.getContext('2d'); ctx.drawImage(lastCanvas,0,0); ctx.drawImage(cvOverlay,0,0);
-    ctx.globalAlpha=0.85; ctx.fillStyle="#000000A0"; ctx.fillRect(out.width-240-10, out.height-32-10, 240, 28);
-    ctx.globalAlpha=1; ctx.fillStyle="#E6EAF2"; ctx.font="12px ui-monospace,monospace";
-    ctx.fillText(`YorN ${REVISION} • ${new Date().toISOString().slice(0,19)}`, out.width-230-10, out.height-14-10);
-    const blob=await new Promise(r=>out.toBlob(r,'image/png',0.92));
-    const file=new File([blob],'yorn-snapshot.png',{type:'image/png'});
-    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:'YorN Snapshot', text:'Face detection preview'}); logEvt('config',{share:'webshare'}); }
-    else { const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-snapshot-${Date.now()}.png`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{share:'download'}); }
-  }catch(e){ logEvt('error',{sharePNG:e.message||String(e)}) }
-});
+$("sharePngBtn").addEventListener('click',async()=>{ try{ if(!lastCanvas) return; const out=document.createElement('canvas'); out.width=lastCanvas.width; out.height=lastCanvas.height; const ctx=out.getContext('2d'); ctx.drawImage(lastCanvas,0,0); ctx.drawImage(cvOverlay,0,0); ctx.globalAlpha=0.85; ctx.fillStyle="#000000A0"; ctx.fillRect(out.width-240-10, out.height-32-10, 240, 28); ctx.globalAlpha=1; ctx.fillStyle="#E6EAF2"; ctx.font="12px ui-monospace,monospace"; ctx.fillText(`YorN ${REVISION} • ${new Date().toISOString().slice(0,19)}`, out.width-230-10, out.height-14-10); const blob=await new Promise(r=>out.toBlob(r,'image/png',0.92)); const file=new File([blob],'yorn-snapshot.png',{type:'image/png'}); if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:'YorN Snapshot', text:'Face detection preview'}); logEvt('config',{share:'webshare'}); } else { const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-snapshot-${Date.now()}.png`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{share:'download'}) } }catch(e){ logEvt('error',{sharePNG:e.message||String(e)}) }});
+zoom.addEventListener("input",()=>{ zoomLabel.textContent=(+zoom.value).toFixed(2); if(baseSource){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c) }});
+bri.addEventListener("input",()=>{ briLabel.textContent=(+bri.value).toFixed(2); if(baseSource){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c) }});
+con.addEventListener("input",()=>{ conLabel.textContent=(+con.value).toFixed(2); if(baseSource){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c) }});
+$("rotDeg").addEventListener("change",()=>{ if(baseSource){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c) }});
 
-/* tweaks */
-function onTweak(){
-  if(baseSource){
-    const c = renderWorkingCanvas(1024);
-    lastCanvas = c;
-    paintBaseCanvas(c);
-    syncOverlaySize();
-  }
-}
-zoom.addEventListener("input",()=>{ zoomLabel.textContent=(+zoom.value).toFixed(2); onTweak()});
-bri.addEventListener("input",()=>{ briLabel.textContent=(+bri.value).toFixed(2); onTweak()});
-con.addEventListener("input",()=>{ conLabel.textContent=(+con.value).toFixed(2); onTweak()});
-rotDeg.addEventListener("change",onTweak);
+/* detect & analysis buttons */
+$("enhanceBtn").addEventListener("click",()=>{ zoom.value=Math.max(+zoom.value,1.5); zoomLabel.textContent=(+zoom.value).toFixed(2); bri.value=Math.max(+bri.value,1.18); briLabel.textContent=(+bri.value).toFixed(2); con.value=Math.max(+con.value,1.25); conLabel.textContent=(+con.value).toFixed(2); detectFlow() });
+$("detectBtn").addEventListener("click",()=>detectFlow());
+$("startAnalysisBtn").addEventListener("click",()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis() });
 
-/* buttons */
-enhanceBtn.addEventListener("click",()=>{ zoom.value=Math.max(+zoom.value,1.5); zoomLabel.textContent=(+zoom.value).toFixed(2); bri.value=Math.max(+bri.value,1.18); briLabel.textContent=(+bri.value).toFixed(2); con.value=Math.max(+con.value,1.25); conLabel.textContent=(+con.value).toFixed(2); detectFlow() });
-detectBtn.addEventListener("click",()=>detectFlow());
-startAnalysisBtn.addEventListener("click",()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis() });
-
-/* file/sample */
-fileInput.addEventListener('change', async ()=>{
+/* sample & file */
+$("fileInput").addEventListener('change', async ()=>{
   if(!fileInput.files.length) return;
   const f=fileInput.files[0]; setProgress(8,'Decoding photo…');
   try{ baseSource = await decodeOriginal(f); const canvas = renderWorkingCanvas(1024); if(canvas){ paintBaseCanvas(canvas); setProgress(12,'Photo ready'); detectBtn.disabled=false; enhanceBtn.disabled=false; } }catch(e){ logEvt('error',{decode_failed:e.message||String(e)}) }
@@ -658,23 +549,92 @@ $("sampleBtn").addEventListener('click', async ()=>{
   }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) }
 });
 
-/* precache */
+/* Auto Test */
+autoTestBtn.addEventListener('click', runAutoTest);
+async function runAutoTest(){
+  autoTestBtn.disabled=true; const oldFix=fixModeSel.value; const oldOver=$("showOverlays").checked;
+  const tStart=performance.now(); let passes=0, fails=0;
+  function tlog(step,extra){ logEvt('test',{step,...(extra||{})}) }
+  try{
+    setProgress(3,'Auto Test: loading sample');
+    // 1) Load sample
+    await $("sampleBtn").click();
+    await new Promise(r=>setTimeout(r,400));
+    if(!baseSource){ fails++; tlog('sample','no baseSource'); throw new Error('sample failed') }
+    passes++; tlog('sample',{ok:true,dim:{w:baseSource.width,h:baseSource.height}});
+
+    // 2) Blaze detect
+    setProgress(20,'Auto Test: blaze detect');
+    fixModeSel.value='blazeonly';
+    await detectFlow();
+    await new Promise(r=>setTimeout(r,300));
+    if(!lastBox){ fails++; tlog('blaze_detect','no box'); throw new Error('detect failed') }
+    passes++; tlog('blaze_detect',{ok:true,box:lastBox});
+
+    // 3) Optional refine (if weights healthy)
+    setProgress(55,'Auto Test: refine check');
+    const base=(weightsSrc.value||"").replace(/\/$/,"");
+    const ok = await headOK(base+"/tiny_face_detector_model-weights_manifest.json") && await headOK(base+"/face_landmark_68_model-weights_manifest.json");
+    tlog('weights_health',{base,ok});
+    if(ok){
+      fixModeSel.value='cdn';
+      await detectFlow();
+      await new Promise(r=>setTimeout(r,300));
+      passes += lastBox ? 1 : 0;
+      tlog('refine_attempt',{ok:!!lastBox,landmarks:!!lastLandmarks});
+    } else {
+      tlog('refine_skipped','weights unhealthy');
+    }
+
+    // 4) Analysis
+    setProgress(80,'Auto Test: analysis');
+    $("startAnalysisBtn").click();
+    await new Promise(r=>setTimeout(r,200));
+    if(!lastAnalysis){ fails++; tlog('analysis','no analysis'); throw new Error('analysis failed') }
+    passes++; tlog('analysis',{ok:true,summary:{
+      area_pct:lastAnalysis.box.area_pct,
+      brightness:lastAnalysis.lighting.brightness_mean,
+      contrast:lastAnalysis.lighting.contrast_stdev,
+      sharp:lastAnalysis.sharpness.laplacian_variance
+    }});
+
+    // Summary
+    const ms=Math.round(performance.now()-tStart);
+    setProgress(100,'Auto Test: complete');
+    tlog('summary',{passes, fails, ms, revision:REVISION});
+  }catch(e){
+    tlog('fail',{error:e.message||String(e)});
+  }finally{
+    // restore
+    fixModeSel.value=oldFix; $("showOverlays").checked=oldOver;
+    autoTestBtn.disabled=false;
+  }
+}
+
+/* Precache button behavior */
 precacheBtn.addEventListener('click', async ()=>{
+  setPrecacheLabel('Precaching…', true);
   const reg = await getSWReg();
   if(reg && !navigator.serviceWorker.controller){
     logEvt('config',{sw_notice:'Reload once so SW controls this page'});
   }
-  await precacheWeights();
+  // simple manifest prefetch (weights URIs)
+  const base=(weightsSrc.value||"").replace(/\/$/,"");
+  const list=[ 'tiny_face_detector_model-weights_manifest.json', 'face_landmark_68_model-weights_manifest.json' ].map(f=>`${base}/${f}`);
+  for(const u of list){ try{ await fetch(u,{cache:'reload'}); }catch(e){ logEvt('error',{precache_fetch:u,msg:e.message||String(e)}) } }
+  setPrecacheLabel('Cached ✓', false);
+  await refreshSWPill();
 });
 
 /* init */
 window.addEventListener('load', async ()=>{
   document.getElementById("revText").textContent=REVISION;
   logEvt('config',{boot:'ui-ready',rev:REVISION});
+  await refreshSWPill();
   try{
     await initFrameworks();
     try{
-      const saved = localStorage.getItem("yorn_last_analysis");
+      const saved=localStorage.getItem("yorn_last_analysis");
       if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}); researchCard.style.display=""; }
     }catch(_){}
     logEvt('config',{boot:'complete'});
