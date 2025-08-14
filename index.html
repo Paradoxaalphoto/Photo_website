@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN — 1.14.1-alpha</title>
+<title>YorN — 1.14.2-alpha</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:; img-src * data: blob:; connect-src * data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; upgrade-insecure-requests">
 
@@ -57,7 +57,7 @@
   #readinessBadge.ready{background:#052e1b; color:#a7f3d0; border-color:#0a5a33}
   #readinessBadge.blocked{background:#3a0b0b; color:#fecaca; border-color:#7f1d1d}
 
-  /* Loading veil */
+  /* Loading veil (fail-safe: hidden by default) */
   #veil{position:fixed;inset:0;background:#0b1220;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:10000}
   #veil .spin{width:28px;height:28px;border-radius:999px;border:3px solid #334155;border-top-color:#38bdf8;animation:sp 0.9s linear infinite}
   #veil .msg{color:#A9B4C8;font:13px ui-monospace,monospace}
@@ -82,11 +82,14 @@
 <div id="readyBadge"><span id="readyDot"></span><span id="readyText">Ready for Analysis</span></div>
 <div id="readinessBadge" title="Auto‑test readiness badge">READY</div>
 
-<!-- Veil with manual dismiss + watchdog -->
-<div id="veil">
+<!-- Veil: hidden by default; with Retry -->
+<div id="veil" class="hidden">
   <div class="spin"></div>
   <div class="msg" id="veilMsg">Frameworks loading…</div>
-  <button id="dismissVeilBtn" class="btn" style="margin-top:6px">Dismiss overlay</button>
+  <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center">
+    <button id="dismissVeilBtn" class="btn">Dismiss</button>
+    <button id="retryInitBtn" class="btn">Retry Init</button>
+  </div>
 </div>
 
 <div class="container">
@@ -100,7 +103,6 @@
       <button id="detectBtn" class="btn" disabled>Detect</button>
       <button id="startAnalysisBtn" class="btn btn-primary" disabled>Start Analysis</button>
       <button id="autoTestBtn" class="btn">Auto Test</button>
-      <!-- Single copy button -->
       <button id="copyTestBtn" class="btn" disabled>Copy Test Result</button>
       <button id="resetBtn" class="btn">Reset</button>
       <button id="clearLogsBtn" class="btn">Clear Logs</button>
@@ -110,7 +112,7 @@
       <div><label>Rotate (°)</label><input id="rotDeg" type="number" step="90" value="0" /></div>
       <div><label>Zoom (0.8–2.0): <span id="zoomLabel">1.20</span></label><input id="zoom" type="range" min="0.8" max="2.0" step="0.05" value="1.2" /></div>
       <div><label>Brightness: <span id="briLabel">1.10</span></label><input id="bri" type="range" min="0.8" max="1.4" step="0.02" value="1.10" /></div>
-      <div><label>Contrast: <span id="conLabel">1.15</span></label><input id="con" type="range" min="0.8" max="1.6" step="0.02" value="1.15" /></div>
+      <div><label>Contrast: <span id="conLabel">1.15</</label><input id="con" type="range" min="0.8" max="1.6" step="0.02" value="1.15" /></div>
 
       <div>
         <label>Fix mode</label>
@@ -165,7 +167,6 @@
           </div>
         </div>
         <div id="diagnostics">No diagnostics yet.</div>
-        <!-- Removed the old copy buttons; single copy lives in the top row now -->
       </div>
     </div>
   </div>
@@ -250,13 +251,13 @@
 </div>
 
 <script>
-const REVISION="1.14.1-alpha"; document.getElementById("revText").textContent=REVISION;
+const REVISION="1.14.2-alpha"; $("revText").textContent=REVISION;
 const $=id=>document.getElementById(id);
 const diagnostics=$("diagnostics");
 function appendTop(s){ diagnostics.textContent = s + diagnostics.textContent; }
 function logEvt(type,payload){ appendTop(`[${new Date().toISOString()}] ${JSON.stringify({type,...(payload||{})})}\n`) }
 
-/* Mirror Diagnostics → console */
+// Mirror logs to console
 (() => {
   const __orig = window.logEvt;
   window.logEvt = function(type, payload){
@@ -269,53 +270,41 @@ function logEvt(type,payload){ appendTop(`[${new Date().toISOString()}] ${JSON.s
   };
 })();
 
-/*** Robust copy helper ***/
-async function copyTextRobust(text){
-  if(text==null) text='';
-  try{
-    if(navigator.clipboard && window.isSecureContext){
-      await navigator.clipboard.writeText(text);
-      return {ok:true,via:'clipboard'};
-    }
-  }catch(_){}
-  try{
-    const ta=document.createElement('textarea');
-    ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px';
-    document.body.appendChild(ta); ta.select();
-    const ok=document.execCommand('copy');
-    document.body.removeChild(ta);
-    if(ok) return {ok:true,via:'execCommand'};
-  }catch(e){ return {ok:false,via:'fallback',err:e.message||String(e)} }
-  return {ok:false,via:'none',err:'No clipboard available'};
-}
-
-/*** Global error hooks ***/
+// Global errors
 window.addEventListener('error', e=>logEvt('error',{global:e.message,at:(e.filename||'')+':'+(e.lineno||'')}));
 window.addEventListener('unhandledrejection', e=>{ const r=e&&e.reason; logEvt('error',{unhandled:(r&&(r.message||r))||String(r)}) });
 
-/*** UI refs ***/
+// UI refs
 const progressBar=$("progressBar"), progressText=$("progressText");
 const imgBase=$("base"), cvRough=$("overlayRough"), cvOverlay=$("overlay");
 const fileInput=$("fileInput"), sampleBtn=$("sampleBtn"), detectBtn=$("detectBtn"), startAnalysisBtn=$("startAnalysisBtn");
 const enhanceBtn=$("enhanceBtn"), clearLogsBtn=$("clearLogsBtn"), resetBtn=$("resetBtn"), sharePngBtn=$("sharePngBtn");
 const rotDeg=$("rotDeg"), zoom=$("zoom"), zoomLabel=$("zoomLabel"), bri=$("bri"), briLabel=$("briLabel"), con=$("con"), conLabel=$("conLabel");
 const fixModeSel=$("fixMode"), weightsSrc=$("weightsSrc"), precacheBtn=$("precacheBtn"), autoTestBtn=$("autoTestBtn");
-const swPill=$("swPill"); const veil=$("veil"), veilMsg=$("veilMsg");
-const readinessBadge=$("readinessBadge");
-const copyTestBtn=$("copyTestBtn");
+const swPill=$("swPill"); const readinessBadge=$("readinessBadge"); const copyTestBtn=$("copyTestBtn");
 
-/*** Research refs ***/
+// Research refs
 const researchCard=$("researchCard"), consentSel=$("consent"), ageGroupSel=$("ageGroup"), raterGenderSel=$("raterGender");
 const ratingRange=$("rating"), confRange=$("confidence"), notesArea=$("notes");
 const saveRowBtn=$("saveRowBtn"), exportCSVBtn=$("exportCSVBtn"), exportDSJsonBtn=$("exportDSJsonBtn"), dsCountEl=$("dsCount");
 
-/*** Progress + badges ***/
+// Progress helpers
 function setProgress(p,t){progressBar.style.width=(p||0)+'%';progressText.textContent=t||''}
-function showVeil(msg){ veilMsg.textContent=msg||'Frameworks loading…'; veil.style.display='flex' }
-function hideVeil(){ veil.style.display='none' }
-const waitFor=(cond,label,timeout=8000,int=100)=>new Promise((res,rej)=>{const t0=performance.now();const iv=setInterval(()=>{try{if(cond()){clearInterval(iv);res(true)}else if(performance.now()-t0>timeout){clearInterval(iv);rej(new Error(label+' timeout'))}}catch(e){clearInterval(iv);rej(e)}},int)});
 
-/*** Session metrics ***/
+// ---- FAIL-SAFE VEIL (baked in) ----
+const veil = $("veil"), veilMsg = $("veilMsg");
+function showVeil(msg){ try{ veilMsg.textContent = msg || "Loading…"; }catch(_){}
+  veil.classList.remove("hidden");
+}
+function hideVeil(){ veil.classList.add("hidden"); logEvt("config", { veil: "hidden" }); }
+$("dismissVeilBtn").addEventListener("click", hideVeil);
+$("retryInitBtn").addEventListener("click", async ()=>{
+  hideVeil();
+  logEvt("config", { veil: "retry-click" });
+  await initFrameworks(true);
+});
+
+// ---- Readiness, session stats ----
 let detTimes=[], anaCount=0, detCount=0, hintCounts={};
 function updateFooter(){
   const avg = detTimes.length ? Math.round(detTimes.reduce((a,b)=>a+b,0)/detTimes.length) : '—';
@@ -323,43 +312,69 @@ function updateFooter(){
   $("sessDet").textContent=`${detCount} detects`; $("sessAna").textContent=`${anaCount} analyses`; $("sessAvg").textContent=avg; $("sessHint").textContent=common;
 }
 
-/*** TFJS/Models boot (veil always hides) ***/
-async function initFrameworks(){
-  showVeil('Loading TensorFlow…');
+// ---- Frameworks init (non-blocking, hard timeout) ----
+async function initFrameworks(userTriggered=false){
+  showVeil(userTriggered ? "Re-initializing…" : "Loading frameworks…");
+
+  const HARD_TIMEOUT_MS = 4500;
+  const hardTimeout = setTimeout(()=>{ logEvt("error",{veil:"hard-timeout-hide"}); hideVeil(); }, HARD_TIMEOUT_MS);
+  const safeDone = (label)=>{ try{ clearTimeout(hardTimeout); }catch(_){} hideVeil(); logEvt("config",{boot:label||"init-done"}); };
+
   try{
-    await waitFor(()=>window.tf,'tf presence',10000).catch(e=>{ logEvt('error',{tf_presence:e.message}); throw e });
+    // TF presence (time-boxed)
+    const tfOK = await Promise.race([
+      (async()=>{ let tries=0; while(!window.tf && tries<20){ await new Promise(r=>setTimeout(r,100)); tries++; } return !!window.tf; })(),
+      new Promise(res=>setTimeout(()=>res(false), 2000))
+    ]);
+    if(!tfOK){ logEvt("error",{tf_presence:"timeout"}); safeDone("tf-missing-continue"); return; }
+
+    // Backend select
     try{
       if (tf && tf.wasm) tf.wasm.setWasmPaths("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/");
-      await tf.setBackend('wasm'); await tf.ready();
-      logEvt('config',{tf:'ready',backend:tf.getBackend()});
+      await tf.setBackend('wasm'); await tf.ready(); logEvt("config",{tf:"ready",backend:tf.getBackend()});
     }catch(e){
-      logEvt('error',{tf_init:e.message||String(e)});
-      try{ await tf.setBackend('webgl'); await tf.ready(); logEvt('config',{tf:'ready',backend:tf.getBackend(),fallback:'webgl'});}catch(e2){ logEvt('error',{tf_fallback:e2.message||String(e2)}); throw e2; }
+      logEvt("error",{tf_init:e.message||String(e)});
+      try{ await tf.setBackend('webgl'); await tf.ready(); logEvt("config",{tf:"ready",backend:tf.getBackend(),fallback:"webgl"});}catch(e2){ logEvt("error",{tf_fallback:e2.message||String(e2)}); }
     }
-    showVeil('Loading BlazeFace…');
-    await waitFor(()=>window.blazeface,'blazeface presence',8000).catch(e=>{ logEvt('error',{blaze_presence:e.message}); throw e });
-    try{ window.__blazeModel=await window.blazeface.load(); logEvt("detect",{blazefaceReady:true}); }catch(e){ logEvt('error',{blazeface_load:e.message||String(e)}); throw e }
-    await waitFor(()=>window.faceapi,'faceapi presence',8000).catch(e=>logEvt('error',{faceapi_presence:e.message}));
-    logEvt('config',{boot:'frameworks-ready'});
-  } finally { hideVeil(); }
-}
 
-/*** SW helpers ***/
+    // BlazeFace presence/load (time-boxed)
+    const blazeOK = await Promise.race([
+      (async()=>{ let tries=0; while(!window.blazeface && tries<40){ await new Promise(r=>setTimeout(r,100)); tries++; } return !!window.blazeface; })(),
+      new Promise(res=>setTimeout(()=>res(false), 2000))
+    ]);
+    if(!blazeOK){ logEvt("error",{blazeface_presence:"timeout"}); safeDone("blaze-missing-continue"); return; }
+    try{
+      if(!window.__blazeModel){ const t0=performance.now(); window.__blazeModel=await window.blazeface.load(); logEvt("detect",{blazefaceReady:true,ms:Math.round(performance.now()-t0)}); }
+    }catch(e){ logEvt("error",{blazeface_load:e.message||String(e)}); }
+
+    // Face-API presence (non-blocking)
+    if(!window.faceapi){ logEvt("config",{faceapi:"not-present (non-blocking)"}); } else { logEvt("config",{faceapi:"present"}); }
+
+    safeDone("frameworks-ready");
+  }catch(e){
+    logEvt("error",{initFrameworks:e.message||String(e)});
+    safeDone("init-error-continue");
+  }
+}
+// Extra failsafes
+document.addEventListener("DOMContentLoaded", ()=>{ hideVeil(); logEvt("config",{veil:"domcontentloaded-hide"}); });
+window.addEventListener("load", ()=>{ hideVeil(); logEvt("config",{veil:"window-load-hide"}); });
+window.addEventListener("load", ()=>{ initFrameworks(false); });
+
+// ---- SW helpers (optional) ----
 async function getSWReg(){ if(!('serviceWorker' in navigator)){ logEvt('error',{sw:'unsupported'}); return null } try{ const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./'}); logEvt('config',{sw:'registered',scope:reg.scope||'n/a'}); return reg }catch(e){ logEvt('error',{sw_reg:String(e.message||e)}); return null } }
 function setPrecacheLabel(txt, disabled=false){ $("precacheBtn").textContent = txt; $("precacheBtn").disabled = !!disabled }
 async function getSWControllerStatus(){ try{ const reg=await navigator.serviceWorker.getRegistration(); return {supported:'serviceWorker' in navigator, registered:!!reg, controlling:!!navigator.serviceWorker.controller} }catch{ return {supported:false,registered:false,controlling:false} } }
 function updateSWPillText(st){ $("swPill").textContent = !st.supported ? 'SW: unsupported' : !st.registered ? 'SW: none' : !st.controlling ? 'SW: registered (reload needed)' : 'SW: controlling' }
 async function refreshSWPill(){ const st=await getSWControllerStatus(); updateSWPillText(st) }
 
-/*** Images ***/
+// ---- Image decode & preview ----
 async function blobToCanvasViaImg(blob){ const url=URL.createObjectURL(blob); try{ const img=new Image(); img.decoding="sync"; img.loading="eager"; await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url}); const c=document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext("2d").drawImage(img,0,0); return c } finally{ URL.revokeObjectURL(url) } }
 async function decodeOriginal(fileOrBlob){
   try{ if('createImageBitmap' in window){ const bmp=await createImageBitmap(fileOrBlob); logEvt('detect',{decode:'createImageBitmap',w:bmp.width,h:bmp.height}); return {bitmap:bmp,width:bmp.width,height:bmp.height}; } }
   catch(e){ logEvt('error',{decode_createImageBitmap:e.message||String(e)}) }
   const can=await blobToCanvasViaImg(fileOrBlob); logEvt('detect',{decode:'blob->img',size_bytes:fileOrBlob.size||0}); return {canvas:can,width:can.width,height:can.height};
 }
-
-/*** Preview & overlay ***/
 let baseSource=null, workCanvas=null, lastCanvas=null, lastBox=null, lastLandmarks=null, lastAnalysis=null;
 function ensureWork(){ if(!workCanvas) workCanvas=document.createElement('canvas'); return workCanvas }
 function syncOverlaySize(){ const w=imgBase.clientWidth,h=imgBase.clientHeight; if(!w||!h) return; [cvRough,cvOverlay].forEach(c=>{c.style.width=w+'px'; c.style.height=h+'px'}) }
@@ -377,7 +392,7 @@ function renderWorkingCanvas(maxSide=1024,centerBox=null){
   if(centerBox){
     cx=centerBox.x+centerBox.width/2; cy=centerBox.y+centerBox.height/2;
     const zx=(w0/(centerBox.width*scale0))*0.9, zy=(h0/(centerBox.height*scale0))*0.9; z=Math.max(z,Math.min(zx,zy,1.8));
-    logEvt("overlay",{autoZoomApplied:+z.toFixed(2)});
+    logEvt('overlay',{autoZoomApplied:+z.toFixed(2)});
   }
   const dstW=w0, dstH=h0, cropW=Math.round(dstW/(scale0*z)), cropH=Math.round(dstH/(scale0*z));
   const sx=Math.max(0,Math.round(cx-cropW/2)), sy=Math.max(0,Math.round(cy-cropH/2));
@@ -390,17 +405,15 @@ function renderWorkingCanvas(maxSide=1024,centerBox=null){
   ctx.restore();
   return c;
 }
-
-/*** Drawing ***/
 function drawBox(ctx,box,color,label){ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(box.x,box.y,box.width,box.height);ctx.fillStyle=color;ctx.font="12px ui-monospace,monospace";ctx.fillText(label,box.x,Math.max(12,box.y-4))}
 function drawCross(ctx,cx,cy,offX,offY){ctx.strokeStyle="#60a5fa";ctx.beginPath();ctx.moveTo(cx-8,cy);ctx.lineTo(cx+8,cy);ctx.moveTo(cx,cy-8);ctx.lineTo(cx,cy+8);ctx.stroke();ctx.fillStyle="#60a5fa";ctx.font="12px ui-monospace,monospace";const text=`(${Math.round(cx)},${Math.round(cy)}) | offX ${offX.toFixed(1)}% • offY ${offY.toFixed(1)}%`;const tx=Math.min(cx+10,cvOverlay.width-260),ty=Math.min(cy+14,cvOverlay.height-4);ctx.fillText(text,tx,ty)}
 function drawLandmarks(ctx,landmarks){ try{ const pts=landmarks.positions||landmarks; ctx.fillStyle="#f472b6"; for(const p of pts){ ctx.fillRect(p.x-1,p.y-1,2,2) } }catch(_){} }
 
-/*** Models ***/
+// Models
 let blazeModel=null; async function ensureBlaze(){ if(blazeModel) return; blazeModel=window.__blazeModel; }
 async function headOK(url, max=2){ for(let i=0;i<max;i++){ try{ const r=await fetch(url,{method:'HEAD',cache:'no-store'}); return r.ok }catch(e){ await new Promise(r=>setTimeout(r,200)) } } return false }
 
-/*** Face‑API loader with TF engine guard ***/
+// Face‑API loader (guard tf engine)
 let faceApiReady=false, FA_BASE=null;
 async function ensureFaceApi(){
   if(faceApiReady) return true;
@@ -427,10 +440,10 @@ async function ensureFaceApi(){
   }catch(e){ logEvt('error',{faceapi_load:e.message||String(e)}); return false; }
 }
 
-/*** Util ***/
+// Util
 function downsample(canvas,w,mirror=false){const h=Math.round(w*(canvas.height/canvas.width));const tmp=Object.assign(document.createElement("canvas"),{width:w,height:h});const ctx=tmp.getContext("2d");if(mirror){ctx.translate(w,0);ctx.scale(-1,1)}ctx.drawImage(canvas,0,0,w,h);return tmp}
 
-/*** Detection flow ***/
+// Detection
 async function detectFlow(){
   try{
     lastBox=null; lastCanvas=null; lastLandmarks=null; $("analysisCard").style.display="none"; researchCard.style.display="none";
@@ -507,7 +520,7 @@ async function detectFlow(){
               drawBox(octx,lastBox,"#f59e0b",`Refined • ${msR}ms`);
               if(lastLandmarks) drawLandmarks(octx,lastLandmarks);
               const cx2=lastBox.x+lastBox.width/2, cy2=lastBox.y+lastBox.height/2;
-              const offX2=((cx2+0 - lastCanvas.width/2)/(lastCanvas.width/2))*100, offY2=((cy2 - lastCanvas.height/2)/(lastCanvas.height/2))*100;
+              const offX2=((cx2 - lastCanvas.width/2)/(lastCanvas.width/2))*100, offY2=((cy2 - lastCanvas.height/2)/(lastCanvas.height/2))*100;
               drawCross(octx,cx2,cy2,offX2,offY2);
               logEvt("detect",{refine_ms:msR,faceapi:true,box:lastBox,landmarks:lastLandmarks?68:0});
             } else {
@@ -526,7 +539,7 @@ async function detectFlow(){
   }catch(e){ logEvt("error",{detectFlow:e.message||String(e)}) }
 }
 
-/*** Lightweight analysis ***/
+// Lightweight Analysis
 function runLightAnalysis(){
   if(!lastCanvas||!lastBox){ logEvt("error",{analysis:"no detection"}); return }
   const imgW=lastCanvas.width,imgH=lastCanvas.height,b=lastBox;
@@ -573,7 +586,7 @@ function runLightAnalysis(){
   $("copyJsonBtn").disabled=false; $("exportJsonBtn").disabled=false; $("sharePngBtn").disabled=false;
 }
 
-/*** Research dataset ***/
+// Research dataset
 const DS_KEY='yorn_dataset_v1';
 function loadDS(){ try{ return JSON.parse(localStorage.getItem(DS_KEY)||'[]') }catch(_){ return [] } }
 function saveDS(rows){ try{ localStorage.setItem(DS_KEY, JSON.stringify(rows)) }catch(_){} }
@@ -601,17 +614,27 @@ $("exportDSJsonBtn").addEventListener('click', ()=>{ const rows=loadDS(); if(!ro
   a.href=url; a.download=`yorn-dataset-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{dataset:'json_export',rows:rows.length}) });
 dsCount();
 
-/*** Copy/Export controls ***/
-$("clearLogsBtn").addEventListener('click',()=>{ diagnostics.textContent='No diagnostics yet.'; });
-$("resetBtn").addEventListener('click',()=>{ ["base"].forEach(id=>$(id).classList.add('hidden')); baseSource=null; lastCanvas=null; lastBox=null; lastLandmarks=null; $("analysisCard").style.display="none"; researchCard.style.display="none"; logEvt('config',{reset:true}) });
-$("copyJsonBtn").addEventListener('click',async()=>{ try{ if(!lastAnalysis) return; const res = await copyTextRobust(JSON.stringify(lastAnalysis,null,2)); if(res.ok){ logEvt('config',{copiedJSON:true,via:res.via}); } }catch(e){ logEvt('error',{copyJSON:e.message||String(e)}) }});
-$("exportJsonBtn").addEventListener('click',()=>{ try{ if(!lastAnalysis) return; const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:"application/json"}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{downloadJSON:true}); }catch(e){ logEvt('error',{downloadJSON:e.message||String(e)}) }});
-$("sharePngBtn").addEventListener('click',async()=>{ try{ if(!lastCanvas) return; const out=document.createElement('canvas'); out.width=lastCanvas.width; out.height=lastCanvas.height; const ctx=out.getContext('2d'); ctx.drawImage(lastCanvas,0,0); ctx.drawImage(cvOverlay,0,0); ctx.globalAlpha=0.85; ctx.fillStyle="#000000A0"; ctx.fillRect(out.width-240-10, out.height-32-10, 240, 28); ctx.globalAlpha=1; ctx.fillStyle="#E6EAF2"; ctx.font="12px ui-monospace,monospace"; ctx.fillText(`YorN ${REVISION} • ${new Date().toISOString().slice(0,19)}`, out.width-230-10, out.height-14-10); const blob=await new Promise(r=>out.toBlob(r,'image/png',0.92)); const file=new File([blob],'yorn-snapshot.png',{type:'image/png'}); if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:'YorN Snapshot', text:'Face detection preview'}); logEvt('config',{share:'webshare'}); } else { const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-snapshot-${Date.now()}.png`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{share:'download'}) } }catch(e){ logEvt('error',{sharePNG:e.message||String(e)}) }});
-
-/*** Build Auto‑Test report text ***/
-let __autoTestRunId = null;
-let __autoTestStartIdx = 0;
+// Copy helpers
+async function copyTextRobust(text){
+  if(text==null) text='';
+  try{
+    if(navigator.clipboard && window.isSecureContext){
+      await navigator.clipboard.writeText(text);
+      return {ok:true,via:'clipboard'};
+    }
+  }catch(_){}
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px';
+    document.body.appendChild(ta); ta.select();
+    const ok=document.execCommand('copy');
+    document.body.removeChild(ta);
+    if(ok) return {ok:true,via:'execCommand'};
+  }catch(e){ return {ok:false,via:'fallback',err:e.message||String(e)} }
+  return {ok:false,via:'none',err:'No clipboard available'};
+}
 function getAllLogsText(){ return diagnostics ? diagnostics.innerText || diagnostics.textContent || '' : '' }
+let __autoTestRunId=null, __autoTestStartIdx=0;
 function buildAutoTestReport(){
   const full = getAllLogsText();
   const chunk = full.slice(__autoTestStartIdx);
@@ -621,34 +644,29 @@ function buildAutoTestReport(){
   const refined = /"refine_ms":/.test(chunk) ? "yes" : /"refine_skipped"|"refine_guard"|"refine_exception"/.test(chunk) ? "attempted (fallback)" : "no";
   const passes = (chunk.match(/"test","step":"[^"]+","ok":true/g) || []).length;
   const fails  = (chunk.match(/"type":"error"/g) || []).length + (chunk.match(/"test","step":"fail"/g) || []).length;
-  const summaryLine = `YorN ${revMatch[1]||'—'} • TF backend: ${backendMatch[1]||'—'} • refine: ${refined} • passes: ${passes} • fails: ${fails}`;
+  const summaryLine = `YorN ${revMatch[1]||REVISION} • TF backend: ${backendMatch[1]||'—'} • refine: ${refined} • passes: ${passes} • fails: ${fails}`;
   const lines = chunk.split('\n').filter(l => /"type":"test"|"type":"detect"|"type":"analysis"|"type":"config"|"type":"error"/.test(l));
   return ['=== YorN Auto‑Test Report ===', summaryLine, weightsBase[1] ? `weights: ${weightsBase[1]}` : '', '', ...lines, '=== End Report ===', ''].filter(Boolean).join('\n');
 }
 
-/*** Single Copy button → copies Auto‑Test Report ***/
-copyTestBtn.addEventListener('click', async ()=>{
+// Single copy button
+$("copyTestBtn").addEventListener('click', async ()=>{
   try {
     const report = buildAutoTestReport();
     const res = await copyTextRobust(report);
-    if (res.ok) {
-      logEvt('config', { copiedAutoTestReport: true, via: res.via, length: report.length });
-      progressText.textContent = 'Test result copied';
-      setTimeout(()=>progressText.textContent='', 1200);
-    } else {
-      logEvt('error', { copyAutoTestReportError: res.err || 'unknown', via: res.via });
-    }
-  } catch (e) {
-    logEvt('error', { copyAutoTestReportException: e.message || String(e) });
-  }
+    if (res.ok) { logEvt('config', { copiedAutoTestReport: true, via: res.via, length: report.length }); progressText.textContent = 'Test result copied'; setTimeout(()=>progressText.textContent='', 1200); }
+    else { logEvt('error', { copyAutoTestReportError: res.err || 'unknown', via: res.via }); }
+  } catch (e) { logEvt('error', { copyAutoTestReportException: e.message || String(e) }); }
 });
 
-/*** Buttons: detect & analysis ***/
+// Buttons
 $("enhanceBtn").addEventListener("click",()=>{ zoom.value=Math.max(+zoom.value,1.5); zoomLabel.textContent=(+zoom.value).toFixed(2); bri.value=Math.max(+bri.value,1.18); briLabel.textContent=(+bri.value).toFixed(2); con.value=Math.max(+con.value,1.25); conLabel.textContent=(+con.value).toFixed(2); detectFlow() });
 $("detectBtn").addEventListener("click",()=>detectFlow());
 $("startAnalysisBtn").addEventListener("click",()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis() });
+$("clearLogsBtn").addEventListener('click',()=>{ diagnostics.textContent='No diagnostics yet.'; });
+$("resetBtn").addEventListener('click',()=>{ ["base"].forEach(id=>$(id).classList.add('hidden')); baseSource=null; lastCanvas=null; lastBox=null; lastLandmarks=null; $("analysisCard").style.display="none"; researchCard.style.display="none"; logEvt('config',{reset:true}) });
 
-/*** Sample & file ***/
+// Sample & file
 $("fileInput").addEventListener('change', async ()=>{
   if(!fileInput.files.length) return;
   const f=fileInput.files[0]; setProgress(8,'Decoding photo…');
@@ -667,8 +685,7 @@ $("sampleBtn").addEventListener('click', async ()=>{
   }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) }
 });
 
-/*** Readiness badge + Auto Test ***/
-const readinessBadge=$("readinessBadge");
+// Readiness badge + Auto Test
 function setReadinessBadge(state, tooltip){
   readinessBadge.style.display='inline-flex';
   readinessBadge.className = '';
@@ -747,12 +764,12 @@ async function runAutoTest(){
     fixModeSel.value = oldFix;
     $("showOverlays").checked = oldOver;
     $("autoTestBtn").disabled = false;
-    copyTestBtn.disabled = false;     // <-- enable single copy button after test
+    copyTestBtn.disabled = false;
     tlog('end', { run: __autoTestRunId });
   }
 }
 
-/*** Precache button ***/
+// Precache (optional SW)
 $("precacheBtn").addEventListener('click', async ()=>{
   setPrecacheLabel('Precaching…', true);
   const reg = await getSWReg();
@@ -770,27 +787,17 @@ $("precacheBtn").addEventListener('click', async ()=>{
   await refreshSWPill();
 });
 
-/*** Veil: manual dismiss + watchdog ***/
-$("dismissVeilBtn").addEventListener('click', ()=>{
-  hideVeil();
-  logEvt('config',{veil:'dismissed-manually'});
-});
-window.addEventListener('load', () => {
-  setTimeout(()=>{
-    if (veil && veil.style.display !== 'none') {
-      logEvt('error',{veil:'watchdog-hide'});
-      hideVeil();
-    }
-  }, 8000);
-});
+// Copy JSON & Share
+$("copyJsonBtn").addEventListener('click',async()=>{ try{ if(!lastAnalysis) return; const res = await copyTextRobust(JSON.stringify(lastAnalysis,null,2)); if(res.ok){ logEvt('config',{copiedJSON:true,via:res.via}); } }catch(e){ logEvt('error',{copyJSON:e.message||String(e)}) }});
+$("exportJsonBtn").addEventListener('click',()=>{ try{ if(!lastAnalysis) return; const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:"application/json"}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{downloadJSON:true}); }catch(e){ logEvt('error',{downloadJSON:e.message||String(e)}) }});
+$("sharePngBtn").addEventListener('click',async()=>{ try{ if(!lastCanvas) return; const out=document.createElement('canvas'); out.width=lastCanvas.width; out.height=lastCanvas.height; const ctx=out.getContext('2d'); ctx.drawImage(lastCanvas,0,0); ctx.drawImage(cvOverlay,0,0); ctx.globalAlpha=0.85; ctx.fillStyle="#000000A0"; ctx.fillRect(out.width-240-10, out.height-32-10, 240, 28); ctx.globalAlpha=1; ctx.fillStyle="#E6EAF2"; ctx.font="12px ui-monospace,monospace"; ctx.fillText(`YorN ${REVISION} • ${new Date().toISOString().slice(0,19)}`, out.width-230-10, out.height-14-10); const blob=await new Promise(r=>out.toBlob(r,'image/png',0.92)); const file=new File([blob],'yorn-snapshot.png',{type:'image/png'}); if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:'YorN Snapshot', text:'Face detection preview'}); logEvt('config',{share:'webshare'}); } else { const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-snapshot-${Date.now()}.png`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{share:'download'}) } }catch(e){ logEvt('error',{sharePNG:e.message||String(e)}) }});
 
-/*** Init ***/
+// Init boot
 window.addEventListener('load', async ()=>{
-  document.getElementById("revText").textContent=REVISION;
+  $("revText").textContent=REVISION;
   logEvt('config',{boot:'ui-ready',rev:REVISION});
   await refreshSWPill();
   try{
-    await initFrameworks();
     try{
       const saved=localStorage.getItem("yorn_last_analysis");
       if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}); researchCard.style.display=""; }
