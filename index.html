@@ -2,13 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN — 1.12.8-alpha</title>
+<title>YorN — 1.13.0-alpha</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:; img-src * data: blob:; connect-src * data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; upgrade-insecure-requests">
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-
 <script>
 (function(){
   window.__yornLogs = [];
@@ -20,7 +19,6 @@
   push('config',{boot:'starting', ua:navigator.userAgent});
 })();
 </script>
-
 <style>
   :root{color-scheme:light dark}
   *{box-sizing:border-box}
@@ -30,9 +28,10 @@
   .card{background:#0f172a;border:1px solid #233046;border-radius:12px;padding:12px;margin-top:12px}
   .row{display:grid;grid-template-columns:1fr auto auto auto auto auto auto auto;gap:8px;align-items:end}
   .controls{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-top:8px}
-  @media (max-width:720px){ .row{grid-template-columns:1fr;gap:10px} .controls{grid-template-columns:1fr 1fr;gap:10px} .two-col{grid-template-columns:1fr;gap:12px} }
+  @media (max-width:720px){ .row{grid-template-columns:1fr;gap:10px} .controls{grid-template-columns:1fr 1fr;gap:10px} .two-col{grid-template-columns:1fr;gap:12px} .research-grid{grid-template-columns:1fr} }
   label{font-size:12px;color:#A9B4C8}
-  input[type="range"],input[type="number"],select{width:100%;padding:6px;border:1px solid #233046;border-radius:8px;background:#0b1220;color:#E6EAF2}
+  input[type="range"],input[type="number"],select,textarea{width:100%;padding:6px;border:1px solid #233046;border-radius:8px;background:#0b1220;color:#E6EAF2}
+  textarea{min-height:72px;resize:vertical}
   .btn{padding:10px 14px;border-radius:8px;border:1px solid #233046;background:#1f2937;color:#E6EAF2;cursor:pointer}
   .btn[disabled]{opacity:.5;cursor:not-allowed}
   .btn-primary{background:#2563eb}
@@ -40,19 +39,21 @@
   #progressBar{height:100%;width:0;background:#38bdf8;transition:width .25s}
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 
-  /* >>> Mobile preview/overlay fix <<< */
+  /* preview/overlay mobile fix */
   .previewWrap{position:relative;overflow:hidden}
   .previewSurface{width:100%;height:auto;display:block}
 
   #diagnostics{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:12px ui-monospace,Menlo,Consolas,monospace;background:#0b1220;border:1px solid #233046;border-radius:8px;padding:8px;height:220px;max-height:40vh;overflow:auto}
   .diag-tools{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
   .filter-chip{display:inline-flex;gap:6px;align-items:center;padding:4px 8px;border:1px solid #233046;border-radius:999px;background:#0b1220;font-size:12px}
+
   .analysis-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .kv{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:6px 8px;background:#0b1220;border:1px solid #233046;border-radius:8px}
   .kv b{color:#c7d2fe}
   .badge{font:12px ui-monospace,monospace;padding:1px 6px;border-radius:999px;border:1px solid #233046;margin-left:6px}
   .ok{background:rgba(16,185,129,.15);color:#a7f3d0;border-color:rgba(16,185,129,.55)}
   .warn{background:rgba(245,158,11,.15);color:#fde68a;border-color:rgba(245,158,11,.55)}
+
   #revBadge{position:fixed;top:8px;right:10px;z-index:9999;background:#0008;color:#fff;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid #fff3;border-radius:999px}
   #readyBadge{position:fixed;top:36px;right:10px;z-index:9999;display:none;background:#10b98126;color:#a7f3d0;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid #10b9818c;border-radius:999px}
   #readyDot{display:inline-block;width:8px;height:8px;border-radius:999px;background:#10b981;margin-right:6px}
@@ -61,6 +62,10 @@
   #veil .msg{color:#A9B4C8;font:13px ui-monospace,monospace}
   @keyframes sp{to{transform:rotate(360deg)}}
   footer{opacity:.8;font:12px ui-monospace,monospace;margin-top:10px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+
+  /* research mode */
+  .research-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .hint{font-size:12px;color:#A9B4C8}
 </style>
 
 <!-- libs -->
@@ -75,7 +80,7 @@
 <div id="veil"><div class="spin"></div><div class="msg" id="veilMsg">Frameworks loading…</div></div>
 
 <div class="container">
-  <h2>YorN — Face Detection & Lightweight Analysis</h2>
+  <h2>YorN — Face Detection & Research Mode</h2>
 
   <div class="card">
     <div class="row">
@@ -173,6 +178,58 @@
     <div class="hints" id="analysisHints"></div>
   </div>
 
+  <!-- NEW: Research Mode -->
+  <div class="card" id="researchCard" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <strong>Research Mode</strong>
+      <span class="hint">Opt‑in; saved locally only</span>
+    </div>
+    <div class="research-grid" style="margin-top:8px">
+      <div>
+        <label>Consent <span style="color:#fb7185">*</span></label>
+        <select id="consent">
+          <option value="">— Select —</option>
+          <option value="yes">I consent to store this rating locally</option>
+          <option value="no">No (don’t store)</option>
+        </select>
+      </div>
+      <div>
+        <label>Rater age group <span style="color:#fb7185">*</span></label>
+        <select id="ageGroup">
+          <option value="">— Select —</option>
+          <option>20–24</option><option>25–29</option><option>30–34</option><option>35–39</option>
+          <option>40–44</option><option>45–49</option><option>50–54</option><option>55–59</option>
+          <option>60–64</option><option>65–69</option><option>70–74</option><option>75–80</option>
+        </select>
+      </div>
+      <div>
+        <label>Rater gender (optional)</label>
+        <select id="raterGender">
+          <option value="">Prefer not to say</option>
+          <option>Female</option><option>Male</option><option>Nonbinary/Other</option>
+        </select>
+      </div>
+      <div>
+        <label>Attractiveness (1–10)</label>
+        <input id="rating" type="range" min="1" max="10" step="1" value="5" />
+      </div>
+      <div>
+        <label>Confidence (0–100%)</label>
+        <input id="confidence" type="range" min="0" max="100" step="5" value="70" />
+      </div>
+      <div>
+        <label>Notes (optional)</label>
+        <textarea id="notes" placeholder="lighting, angle, makeup, beard, etc."></textarea>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button id="saveRowBtn" class="btn btn-primary" disabled>Save to Dataset</button>
+      <button id="exportCSVBtn" class="btn" disabled>Export CSV</button>
+      <button id="exportDSJsonBtn" class="btn" disabled>Export JSON</button>
+      <span class="hint">Rows: <span id="dsCount">0</span></span>
+    </div>
+  </div>
+
   <footer>
     <div>Session: <span id="sessDet">0 detects</span> • <span id="sessAna">0 analyses</span> • avg detect <span id="sessAvg">—</span> ms</div>
     <div>Common hint: <span id="sessHint">—</span></div>
@@ -180,7 +237,7 @@
 </div>
 
 <script>
-const REVISION="1.12.8-alpha"; document.getElementById("revText").textContent=REVISION;
+const REVISION="1.13.0-alpha"; document.getElementById("revText").textContent=REVISION;
 const $=id=>document.getElementById(id);
 const diagnostics=$("diagnostics");
 function appendTop(s){ diagnostics.textContent = s + diagnostics.textContent; toggleCopyBtns() }
@@ -199,6 +256,11 @@ const copyAllBtn=$("copyAllBtn");
 const rotDeg=$("rotDeg"), zoom=$("zoom"), zoomLabel=$("zoomLabel"), bri=$("bri"), briLabel=$("briLabel"), con=$("con"), conLabel=$("conLabel");
 const fixModeSel=$("fixMode"), weightsSrc=$("weightsSrc"), precacheBtn=$("precacheBtn");
 const veil=$("veil"), veilMsg=$("veilMsg");
+
+/* research refs */
+const researchCard=$("researchCard"), consentSel=$("consent"), ageGroupSel=$("ageGroup"), raterGenderSel=$("raterGender");
+const ratingRange=$("rating"), confRange=$("confidence"), notesArea=$("notes");
+const saveRowBtn=$("saveRowBtn"), exportCSVBtn=$("exportCSVBtn"), exportDSJsonBtn=$("exportDSJsonBtn"), dsCountEl=$("dsCount");
 
 /* helpers */
 function setProgress(p,t){progressBar.style.width=(p||0)+'%';progressText.textContent=t||''}
@@ -234,7 +296,7 @@ async function initFrameworks(){
   detectBtn.disabled=false; enhanceBtn.disabled=false;
 }
 
-/* robust fetch */
+/* fetch helpers */
 async function fetchJsonRetry(url, max=3){
   let err; for(let i=0;i<max;i++){ try{ const r=await fetch(url,{cache:"no-store"}); if(!r.ok) throw new Error('HTTP '+r.status); return await r.json() }catch(e){ err=e; logEvt('error',{fetch:url,attempt:i+1,msg:e.message}); await new Promise(r=>setTimeout(r, 300*Math.pow(2,i))) } }
   throw err;
@@ -260,17 +322,14 @@ async function ensureFaceApi(){
   faceApiReady=true; logEvt("detect",{faceapiReady:true,usingWeightsFrom:base});
 }
 
-/* Service Worker helpers (same-origin sw.js) */
+/* Service Worker */
 async function getSWReg(){
   if(!('serviceWorker' in navigator)){ logEvt('error',{sw:'unsupported'}); return null }
   try{
     const reg = await navigator.serviceWorker.register('./sw.js', {scope: './'});
     logEvt('config',{sw:'registered', scope: reg.scope || 'n/a'});
     return reg;
-  }catch(e){
-    logEvt('error',{sw_reg:String(e.message||e)});
-    return null;
-  }
+  }catch(e){ logEvt('error',{sw_reg:String(e.message||e)}); return null; }
 }
 async function precacheWeights(){
   try{
@@ -280,18 +339,15 @@ async function precacheWeights(){
     const m1 = await fetchJsonRetry(mani1); const m2 = await fetchJsonRetry(mani2);
     const urls=[mani1, mani2];
     for(const m of [m1,m2]) (m.weights||[]).forEach(w=> (w.paths||[]).forEach(p=> urls.push(base+'/'+p)));
-
     let reg = await navigator.serviceWorker.getRegistration();
     if(!reg) reg = await getSWReg();
     if(!reg){ logEvt('error',{sw:'no-registration'}); return }
     if(!navigator.serviceWorker.controller){
       logEvt('config',{sw_notice:'Reload once so SW controls this page'});
     }
-    const ch = new MessageChannel();
-    ch.port1.onmessage = ev => logEvt('config',ev.data||{});
+    const ch = new MessageChannel(); ch.port1.onmessage = ev => logEvt('config',ev.data||{});
     reg.active?.postMessage({type:'PRECACHE',urls}, [ch.port2]);
-    const ch2 = new MessageChannel();
-    ch2.port1.onmessage = ev => logEvt('config',ev.data||{});
+    const ch2 = new MessageChannel(); ch2.port1.onmessage = ev => logEvt('config',ev.data||{});
     reg.active?.postMessage({type:'MODE',mode:'cache-first'}, [ch2.port2]);
     logEvt('config',{sw_precache:'sent',count:urls.length,base});
   }catch(e){ logEvt('error',{precache:e.message||String(e)}) }
@@ -305,34 +361,18 @@ async function decodeOriginal(fileOrBlob){
   const can=await blobToCanvasViaImg(fileOrBlob); logEvt('detect',{decode:'img→canvas',w:can.width,h:can.height}); return {canvas:can,width:can.width,height:can.height};
 }
 
-/* working canvas + overlays */
+/* working canvas + overlays (mobile sync) */
 let baseSource=null, workCanvas=null, lastCanvas=null, lastBox=null, lastLandmarks=null, lastAnalysis=null;
 function ensureWork(){ if(!workCanvas) workCanvas=document.createElement('canvas'); return workCanvas }
-
-/* >>> Mobile overlay sync helpers <<< */
-function syncOverlaySize(){
-  const w = imgBase.clientWidth;
-  const h = imgBase.clientHeight;
-  if (!w || !h) return;
-  [cvRough, cvOverlay].forEach(c => {
-    c.style.width = w + 'px';
-    c.style.height = h + 'px';
-  });
-}
-// debounce resize/orientation
-let __rsTO=null;
-function onViewportResize(){
-  clearTimeout(__rsTO);
-  __rsTO = setTimeout(syncOverlaySize, 120);
-}
-window.addEventListener('resize', onViewportResize);
-window.addEventListener('orientationchange', onViewportResize);
+function syncOverlaySize(){ const w=imgBase.clientWidth,h=imgBase.clientHeight; if(!w||!h) return; [cvRough,cvOverlay].forEach(c=>{c.style.width=w+'px'; c.style.height=h+'px'}) }
+let __rsTO=null; function onViewportResize(){ clearTimeout(__rsTO); __rsTO=setTimeout(syncOverlaySize,120) }
+window.addEventListener('resize', onViewportResize); window.addEventListener('orientationchange', onViewportResize);
 
 function paintBaseCanvas(canvas){
   imgBase.src=canvas.toDataURL('image/png');
   imgBase.classList.remove('hidden');
   [cvRough,cvOverlay].forEach(c=>{c.width=canvas.width;c.height=canvas.height;c.classList.remove('hidden')});
-  syncOverlaySize(); /* <<< key fix */
+  syncOverlaySize();
   logEvt('overlay',{painted:{w:canvas.width,h:canvas.height}});
 }
 function renderWorkingCanvas(maxSide=1024,centerBox=null){
@@ -360,7 +400,7 @@ function renderWorkingCanvas(maxSide=1024,centerBox=null){
   return c;
 }
 
-/* overlays draw */
+/* draw */
 function drawBox(ctx,box,color,label){ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(box.x,box.y,box.width,box.height);ctx.fillStyle=color;ctx.font="12px ui-monospace,monospace";ctx.fillText(label,box.x,Math.max(12,box.y-4))}
 function drawCross(ctx,cx,cy,offX,offY){ctx.strokeStyle="#60a5fa";ctx.beginPath();ctx.moveTo(cx-8,cy);ctx.lineTo(cx+8,cy);ctx.moveTo(cx,cy-8);ctx.lineTo(cx,cy+8);ctx.stroke();ctx.fillStyle="#60a5fa";ctx.font="12px ui-monospace,monospace";const text=`(${Math.round(cx)},${Math.round(cy)}) | offX ${offX.toFixed(1)}% • offY ${offY.toFixed(1)}%`;const tx=Math.min(cx+10,cvOverlay.width-260),ty=Math.min(cy+14,cvOverlay.height-4);ctx.fillText(text,tx,ty)}
 function drawLandmarks(ctx,landmarks){ try{ const pts=landmarks.positions||landmarks; ctx.fillStyle="#f472b6"; for(const p of pts){ ctx.fillRect(p.x-1,p.y-1,2,2) } }catch(_){} }
@@ -372,7 +412,7 @@ function downsample(canvas,w,mirror=false){const h=Math.round(w*(canvas.height/c
 
 async function detectFlow(){
   try{
-    lastBox=null; lastCanvas=null; lastLandmarks=null; $("analysisCard").style.display="none";
+    lastBox=null; lastCanvas=null; lastLandmarks=null; $("analysisCard").style.display="none"; researchCard.style.display="none";
     setProgress(10,"Analyzing…"); await ensureBlaze();
     let canvas=renderWorkingCanvas(1024); if(!canvas){ logEvt("error",{render:"failed"}); return }
     lastCanvas=canvas; paintBaseCanvas(canvas);
@@ -484,14 +524,84 @@ function runLightAnalysis(){
   try{ localStorage.setItem("yorn_last_analysis", JSON.stringify(lastAnalysis)) }catch(_){}
   $("analysisHints").textContent="Hints: "+(hints.length?hints.join(" • "):"Looks good!");
   logEvt("analysis",{analysis:lastAnalysis});
+
+  /* show research card once we have analysis */
+  researchCard.style.display="";
+  maybeEnableSave();
   $("copyJsonBtn").disabled=false; $("exportJsonBtn").disabled=false; $("sharePngBtn").disabled=false;
 }
 
-/* copy/export */
+/* research-mode dataset (local) */
+const DS_KEY='yorn_dataset_v1';
+function loadDS(){ try{ return JSON.parse(localStorage.getItem(DS_KEY)||'[]') }catch(_){ return [] } }
+function saveDS(rows){ try{ localStorage.setItem(DS_KEY, JSON.stringify(rows)) }catch(_){} }
+function dsCount(){ const n=loadDS().length; dsCountEl.textContent=String(n); exportCSVBtn.disabled=n===0; exportDSJsonBtn.disabled=n===0; }
+function maybeEnableSave(){ saveRowBtn.disabled = !(lastAnalysis && consentSel.value==='yes' && ageGroupSel.value) }
+
+consentSel.addEventListener('change',maybeEnableSave);
+ageGroupSel.addEventListener('change',maybeEnableSave);
+
+saveRowBtn.addEventListener('click', ()=>{
+  if(!(lastAnalysis && consentSel.value==='yes' && ageGroupSel.value)){ logEvt('error',{research:'missing required fields'}); return }
+  const row = {
+    session_id: crypto.randomUUID ? crypto.randomUUID() : ('sess_'+Date.now()),
+    created_at: new Date().toISOString(),
+    rater: {
+      age_group: ageGroupSel.value,
+      gender: raterGenderSel.value || null,
+      confidence_pct: +confRange.value,
+    },
+    rating: +ratingRange.value,
+    notes: (notesArea.value||'').trim() || null,
+    analysis: lastAnalysis
+  };
+  const rows = loadDS(); rows.push(row); saveDS(rows); dsCount(); logEvt('analysis',{saved:true,row});
+});
+
+function toCSV(rows){
+  const esc=v=> (v==null?'':String(v).replace(/"/g,'""'));
+  const hdr=[
+    'created_at','rater_age_group','rater_gender','confidence_pct','rating','notes',
+    'img_w','img_h','box_x','box_y','box_w','box_h','box_area_pct','box_aspect',
+    'center_x','center_y','off_x_pct','off_y_pct','brightness_mean','contrast_stdev','sharpness_var','orientation','landmarks','revision'
+  ];
+  const lines=[hdr.join(',')];
+  for(const r of rows){
+    const a=r.analysis||{};
+    const b=a.box||{center:{},center_offset_pct:{}};
+    const cells=[
+      r.created_at, r.rater?.age_group, r.rater?.gender, r.rater?.confidence_pct, r.rating, r.notes,
+      a.image?.width, a.image?.height,
+      b.x, b.y, b.width, b.height, a.box?.area_pct, a.box?.aspect,
+      b.center?.x, b.center?.y, b.center_offset_pct?.x, b.center_offset_pct?.y,
+      a.lighting?.brightness_mean, a.lighting?.contrast_stdev, a.sharpness?.laplacian_variance, a.orientation, a.refine?.landmarks, a.revision
+    ].map(esc);
+    lines.push(cells.map(v=>`"${v}"`).join(','));
+  }
+  return lines.join('\n');
+}
+
+exportCSVBtn.addEventListener('click', ()=>{
+  const rows=loadDS(); if(!rows.length) return;
+  const blob=new Blob([toCSV(rows)],{type:'text/csv'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download=`yorn-dataset-${Date.now()}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  logEvt('config',{dataset:'csv_export',rows:rows.length});
+});
+exportDSJsonBtn.addEventListener('click', ()=>{
+  const rows=loadDS(); if(!rows.length) return;
+  const blob=new Blob([JSON.stringify(rows,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download=`yorn-dataset-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  logEvt('config',{dataset:'json_export',rows:rows.length});
+});
+dsCount();
+
+/* copy/export existing analysis JSON + PNG snapshot (unchanged) */
 $("copyDiagBtn").addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(diagnostics.textContent); logEvt('config',{copiedDiagnostics:true}) }catch(e){ logEvt('error',{copyDiagnosticsError:e.message||String(e)}) }});
 $("copyAllBtn").addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(diagnostics.textContent); logEvt('config',{copiedAll:true}) }catch(e){ logEvt('error',{copyAll:e.message||String(e)}) }});
 $("clearLogsBtn").addEventListener('click',()=>{ diagnostics.textContent='No diagnostics yet.'; toggleCopyBtns() });
-$("resetBtn").addEventListener('click',()=>{ ["base"].forEach(id=>$(id).classList.add('hidden')); baseSource=null; lastCanvas=null; lastBox=null; lastLandmarks=null; $("analysisCard").style.display="none"; logEvt('config',{reset:true}) });
+$("resetBtn").addEventListener('click',()=>{ ["base"].forEach(id=>$(id).classList.add('hidden')); baseSource=null; lastCanvas=null; lastBox=null; lastLandmarks=null; $("analysisCard").style.display="none"; researchCard.style.display="none"; logEvt('config',{reset:true}) });
 
 $("copyJsonBtn").addEventListener('click',async()=>{ try{ if(!lastAnalysis) return; await navigator.clipboard.writeText(JSON.stringify(lastAnalysis,null,2)); logEvt('config',{copiedJSON:true}); }catch(e){ logEvt('error',{copyJSON:e.message||String(e)}) }});
 $("exportJsonBtn").addEventListener('click',()=>{ try{ if(!lastAnalysis) return; const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:"application/json"}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{downloadJSON:true}); }catch(e){ logEvt('error',{downloadJSON:e.message||String(e)}) }});
@@ -510,13 +620,13 @@ $("sharePngBtn").addEventListener('click',async()=>{
   }catch(e){ logEvt('error',{sharePNG:e.message||String(e)}) }
 });
 
-/* tweaks: re-render & re-sync overlays */
+/* tweaks */
 function onTweak(){
   if(baseSource){
     const c = renderWorkingCanvas(1024);
     lastCanvas = c;
     paintBaseCanvas(c);
-    syncOverlaySize(); // ensure overlay dimensions track img on mobile
+    syncOverlaySize();
   }
 }
 zoom.addEventListener("input",()=>{ zoomLabel.textContent=(+zoom.value).toFixed(2); onTweak()});
@@ -565,7 +675,7 @@ window.addEventListener('load', async ()=>{
     await initFrameworks();
     try{
       const saved = localStorage.getItem("yorn_last_analysis");
-      if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}); }
+      if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}); researchCard.style.display=""; }
     }catch(_){}
     logEvt('config',{boot:'complete'});
   }catch(e){ document.getElementById('veil').style.display='flex'; document.getElementById('veilMsg').textContent='Framework init failed'; logEvt('error',{frameworks:e.message||String(e)}) }
