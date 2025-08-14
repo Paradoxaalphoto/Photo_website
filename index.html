@@ -13,7 +13,7 @@
   body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,sans-serif;background:#0b1220;color:#e6eaf2;overflow-x:hidden}
   .container{max-width:980px;margin:0 auto;padding:16px}
   .card{background:#0f172a;border:1px solid #233046;border-radius:12px;padding:12px;margin-top:12px}
-  .row{display:grid;grid-template-columns:1fr auto auto auto auto auto auto auto auto auto;gap:8px;align-items:end}
+  .row{display:grid;grid-template-columns:1fr auto auto auto auto auto auto auto;gap:8px;align-items:end}
   .controls{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-top:8px}
   @media (max-width:720px){
     .row{grid-template-columns:1fr;gap:10px}
@@ -33,6 +33,7 @@
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 
   .previewWrap{position:relative;overflow:hidden}
+  .previewWrap canvas{pointer-events:none}
   .previewSurface{width:100%;height:auto;display:block}
 
   #diagnostics{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:12px ui-monospace,Menlo,Consolas,monospace;background:#0b1220;border:1px solid #233046;border-radius:8px;padding:8px;height:220px;max-height:40vh;overflow:auto}
@@ -62,6 +63,7 @@
   #veil .msg{color:#A9B4C8;font:13px ui-monospace,monospace}
   @keyframes sp{to{transform:rotate(360deg)}}
 
+  .hidden{display:none !important}
   footer{opacity:.8;font:12px ui-monospace,monospace;margin-top:10px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 
   .research-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -80,7 +82,7 @@
 <div id="readyBadge"><span id="readyDot"></span><span id="readyText">Ready for Analysis</span></div>
 <div id="readinessBadge" title="Auto‑test readiness badge">READY</div>
 
-<!-- Updated veil: includes manual dismiss button -->
+<!-- Veil with manual dismiss + watchdog -->
 <div id="veil">
   <div class="spin"></div>
   <div class="msg" id="veilMsg">Frameworks loading…</div>
@@ -98,10 +100,10 @@
       <button id="detectBtn" class="btn" disabled>Detect</button>
       <button id="startAnalysisBtn" class="btn btn-primary" disabled>Start Analysis</button>
       <button id="autoTestBtn" class="btn">Auto Test</button>
-      <button id="autoTestReportBtn" class="btn" disabled>Copy Auto‑Test Report</button>
+      <!-- Single copy button -->
+      <button id="copyTestBtn" class="btn" disabled>Copy Test Result</button>
       <button id="resetBtn" class="btn">Reset</button>
       <button id="clearLogsBtn" class="btn">Clear Logs</button>
-      <button id="copyDiagBtn" class="btn" disabled>Copy Diagnostics</button>
     </div>
 
     <div class="controls">
@@ -163,9 +165,7 @@
           </div>
         </div>
         <div id="diagnostics">No diagnostics yet.</div>
-        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
-          <button id="copyAllBtn" class="btn">Copy All Logs</button>
-        </div>
+        <!-- Removed the old copy buttons; single copy lives in the top row now -->
       </div>
     </div>
   </div>
@@ -253,10 +253,10 @@
 const REVISION="1.14.1-alpha"; document.getElementById("revText").textContent=REVISION;
 const $=id=>document.getElementById(id);
 const diagnostics=$("diagnostics");
-function appendTop(s){ diagnostics.textContent = s + diagnostics.textContent; toggleCopyBtns() }
+function appendTop(s){ diagnostics.textContent = s + diagnostics.textContent; }
 function logEvt(type,payload){ appendTop(`[${new Date().toISOString()}] ${JSON.stringify({type,...(payload||{})})}\n`) }
 
-/* Mirror Diagnostics → console (dev convenience) */
+/* Mirror Diagnostics → console */
 (() => {
   const __orig = window.logEvt;
   window.logEvt = function(type, payload){
@@ -269,7 +269,7 @@ function logEvt(type,payload){ appendTop(`[${new Date().toISOString()}] ${JSON.s
   };
 })();
 
-/*** Robust copy helpers ***/
+/*** Robust copy helper ***/
 async function copyTextRobust(text){
   if(text==null) text='';
   try{
@@ -288,12 +288,6 @@ async function copyTextRobust(text){
   }catch(e){ return {ok:false,via:'fallback',err:e.message||String(e)} }
   return {ok:false,via:'none',err:'No clipboard available'};
 }
-function toggleCopyBtns(){
-  const has = diagnostics && diagnostics.textContent && diagnostics.textContent.trim().length>0 && !diagnostics.textContent.includes('No diagnostics yet.');
-  $("copyDiagBtn").disabled = !has;
-  $("copyAllBtn").disabled = !has;
-  $("autoTestReportBtn").disabled = !has || !__autoTestRunId;
-}
 
 /*** Global error hooks ***/
 window.addEventListener('error', e=>logEvt('error',{global:e.message,at:(e.filename||'')+':'+(e.lineno||'')}));
@@ -304,11 +298,11 @@ const progressBar=$("progressBar"), progressText=$("progressText");
 const imgBase=$("base"), cvRough=$("overlayRough"), cvOverlay=$("overlay");
 const fileInput=$("fileInput"), sampleBtn=$("sampleBtn"), detectBtn=$("detectBtn"), startAnalysisBtn=$("startAnalysisBtn");
 const enhanceBtn=$("enhanceBtn"), clearLogsBtn=$("clearLogsBtn"), resetBtn=$("resetBtn"), sharePngBtn=$("sharePngBtn");
-const copyAllBtn=$("copyAllBtn"), copyDiagBtn=$("copyDiagBtn");
 const rotDeg=$("rotDeg"), zoom=$("zoom"), zoomLabel=$("zoomLabel"), bri=$("bri"), briLabel=$("briLabel"), con=$("con"), conLabel=$("conLabel");
-const fixModeSel=$("fixMode"), weightsSrc=$("weightsSrc"), precacheBtn=$("precacheBtn"), autoTestBtn=$("autoTestBtn"), autoTestReportBtn=$("autoTestReportBtn");
+const fixModeSel=$("fixMode"), weightsSrc=$("weightsSrc"), precacheBtn=$("precacheBtn"), autoTestBtn=$("autoTestBtn");
 const swPill=$("swPill"); const veil=$("veil"), veilMsg=$("veilMsg");
 const readinessBadge=$("readinessBadge");
+const copyTestBtn=$("copyTestBtn");
 
 /*** Research refs ***/
 const researchCard=$("researchCard"), consentSel=$("consent"), ageGroupSel=$("ageGroup"), raterGenderSel=$("raterGender");
@@ -329,7 +323,7 @@ function updateFooter(){
   $("sessDet").textContent=`${detCount} detects`; $("sessAna").textContent=`${anaCount} analyses`; $("sessAvg").textContent=avg; $("sessHint").textContent=common;
 }
 
-/*** TFJS/Models boot (now with finally to ensure veil hides) ***/
+/*** TFJS/Models boot (veil always hides) ***/
 async function initFrameworks(){
   showVeil('Loading TensorFlow…');
   try{
@@ -345,15 +339,12 @@ async function initFrameworks(){
     showVeil('Loading BlazeFace…');
     await waitFor(()=>window.blazeface,'blazeface presence',8000).catch(e=>{ logEvt('error',{blaze_presence:e.message}); throw e });
     try{ window.__blazeModel=await window.blazeface.load(); logEvt("detect",{blazefaceReady:true}); }catch(e){ logEvt('error',{blazeface_load:e.message||String(e)}); throw e }
-    // face-api presence is optional
     await waitFor(()=>window.faceapi,'faceapi presence',8000).catch(e=>logEvt('error',{faceapi_presence:e.message}));
     logEvt('config',{boot:'frameworks-ready'});
-  } finally {
-    hideVeil(); // <- always hide overlay
-  }
+  } finally { hideVeil(); }
 }
 
-/*** SW helpers (precache UX) ***/
+/*** SW helpers ***/
 async function getSWReg(){ if(!('serviceWorker' in navigator)){ logEvt('error',{sw:'unsupported'}); return null } try{ const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./'}); logEvt('config',{sw:'registered',scope:reg.scope||'n/a'}); return reg }catch(e){ logEvt('error',{sw_reg:String(e.message||e)}); return null } }
 function setPrecacheLabel(txt, disabled=false){ $("precacheBtn").textContent = txt; $("precacheBtn").disabled = !!disabled }
 async function getSWControllerStatus(){ try{ const reg=await navigator.serviceWorker.getRegistration(); return {supported:'serviceWorker' in navigator, registered:!!reg, controlling:!!navigator.serviceWorker.controller} }catch{ return {supported:false,registered:false,controlling:false} } }
@@ -414,8 +405,6 @@ let faceApiReady=false, FA_BASE=null;
 async function ensureFaceApi(){
   if(faceApiReady) return true;
   if(!window.faceapi){ logEvt('error',{faceapi_presence:'missing'}); return false }
-
-  // Hard bind TF and verify engine availability
   try { faceapi.tf = tf } catch (_) {}
   let engineOk=false;
   try { engineOk = (faceapi.tf && typeof faceapi.tf.engine === "function" && !!faceapi.tf.engine()); }
@@ -435,10 +424,7 @@ async function ensureFaceApi(){
     await faceapi.nets.faceLandmark68Net.loadFromUri(base);
     faceApiReady=true; logEvt("detect",{faceapiReady:true,usingWeightsFrom:base});
     return true;
-  }catch(e){
-    logEvt('error',{faceapi_load:e.message||String(e)});
-    return false;
-  }
+  }catch(e){ logEvt('error',{faceapi_load:e.message||String(e)}); return false; }
 }
 
 /*** Util ***/
@@ -488,7 +474,6 @@ async function detectFlow(){
     drawCross(octx,cx,cy,offX,offY);
     logEvt("detect",{finalDetect_ms:det.elapsed_ms,scale:det.scale,mirror:det.mirror,box:lastBox});
 
-    /* Refine (safe, patched) */
     if (fixModeSel.value === "cdn") {
       try {
         setProgress(75, "Refining (face‑api)…");
@@ -496,14 +481,10 @@ async function detectFlow(){
         if (!ok) {
           logEvt("detect", { refine_skipped: "faceapi not ready" });
         } else {
-          // HARD BIND & ENGINE GUARD
           try { faceapi.tf = tf; } catch (_) {}
           let engineOk = false;
-          try {
-            engineOk = (faceapi.tf && typeof faceapi.tf.engine === "function" && !!faceapi.tf.engine());
-          } catch (e) {
-            logEvt("error", { refine_guard: "tf.engine() failed", msg: e.message || String(e) });
-          }
+          try { engineOk = (faceapi.tf && typeof faceapi.tf.engine === "function" && !!faceapi.tf.engine()); }
+          catch (e) { logEvt("error", { refine_guard: "tf.engine() failed", msg: e.message || String(e) }); }
           if (!engineOk) {
             logEvt("detect", { refine_guard: "tf binding missing/engine not available" });
           } else if (!lastCanvas) {
@@ -518,20 +499,16 @@ async function detectFlow(){
               logEvt("error", { refine_exception: (e && (e.stack || e.message)) || String(e) });
             }
             const msR = Math.round(performance.now() - tR);
-
             if (result && result.detection && result.detection.box) {
               const b = result.detection.box;
               lastBox = { x: b.x, y: b.y, width: b.width, height: b.height };
               lastLandmarks = result.landmarks || null;
-
               octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
               drawBox(octx,lastBox,"#f59e0b",`Refined • ${msR}ms`);
               if(lastLandmarks) drawLandmarks(octx,lastLandmarks);
-
               const cx2=lastBox.x+lastBox.width/2, cy2=lastBox.y+lastBox.height/2;
-              const offX2=((cx2-lastCanvas.width/2)/(lastCanvas.width/2))*100, offY2=((cy2-lastCanvas.height/2)/(lastCanvas.height/2))*100;
+              const offX2=((cx2+0 - lastCanvas.width/2)/(lastCanvas.width/2))*100, offY2=((cy2 - lastCanvas.height/2)/(lastCanvas.height/2))*100;
               drawCross(octx,cx2,cy2,offX2,offY2);
-
               logEvt("detect",{refine_ms:msR,faceapi:true,box:lastBox,landmarks:lastLandmarks?68:0});
             } else {
               logEvt("detect",{refine_ms:msR,faceapi:false,reason:"no detection"});
@@ -539,8 +516,7 @@ async function detectFlow(){
           }
         }
       } catch (e) {
-        const msg = (e && (e.stack || e.message)) || String(e);
-        logEvt("error", { refine_exception_top: msg });
+        logEvt("error", { refine_exception_top: (e && (e.stack || e.message)) || String(e) });
       }
     }
 
@@ -625,19 +601,47 @@ $("exportDSJsonBtn").addEventListener('click', ()=>{ const rows=loadDS(); if(!ro
   a.href=url; a.download=`yorn-dataset-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{dataset:'json_export',rows:rows.length}) });
 dsCount();
 
-/*** Copy/export & basic controls ***/
-$("copyDiagBtn").onclick = async ()=>{ try{ const visible = diagnostics ? diagnostics.innerText : ''; const res = await copyTextRobust(visible); if(res.ok){ logEvt('config',{copiedDiagnostics:true,via:res.via,length:visible.length}); progressText.textContent='Diagnostics copied'; setTimeout(()=>progressText.textContent='',1200);} else { logEvt('error',{copyDiagnosticsError:res.err||'unknown',via:res.via}); } }catch(e){ logEvt('error',{copyDiagnosticsException:e.message||String(e)}) } };
-$("copyAllBtn").onclick = async ()=>{ try{ const allLogs = diagnostics ? diagnostics.innerText : ''; const res = await copyTextRobust(allLogs); if(res.ok){ logEvt('config',{copiedAll:true,via:res.via,length:allLogs.length}); progressText.textContent='All logs copied'; setTimeout(()=>progressText.textContent='',1200);} else { logEvt('error',{copyAllError:res.err||'unknown',via:res.via}); } }catch(e){ logEvt('error',{copyAllException:e.message||String(e)}) } };
-
-$("clearLogsBtn").addEventListener('click',()=>{ diagnostics.textContent='No diagnostics yet.'; toggleCopyBtns() });
+/*** Copy/Export controls ***/
+$("clearLogsBtn").addEventListener('click',()=>{ diagnostics.textContent='No diagnostics yet.'; });
 $("resetBtn").addEventListener('click',()=>{ ["base"].forEach(id=>$(id).classList.add('hidden')); baseSource=null; lastCanvas=null; lastBox=null; lastLandmarks=null; $("analysisCard").style.display="none"; researchCard.style.display="none"; logEvt('config',{reset:true}) });
 $("copyJsonBtn").addEventListener('click',async()=>{ try{ if(!lastAnalysis) return; const res = await copyTextRobust(JSON.stringify(lastAnalysis,null,2)); if(res.ok){ logEvt('config',{copiedJSON:true,via:res.via}); } }catch(e){ logEvt('error',{copyJSON:e.message||String(e)}) }});
 $("exportJsonBtn").addEventListener('click',()=>{ try{ if(!lastAnalysis) return; const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:"application/json"}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{downloadJSON:true}); }catch(e){ logEvt('error',{downloadJSON:e.message||String(e)}) }});
 $("sharePngBtn").addEventListener('click',async()=>{ try{ if(!lastCanvas) return; const out=document.createElement('canvas'); out.width=lastCanvas.width; out.height=lastCanvas.height; const ctx=out.getContext('2d'); ctx.drawImage(lastCanvas,0,0); ctx.drawImage(cvOverlay,0,0); ctx.globalAlpha=0.85; ctx.fillStyle="#000000A0"; ctx.fillRect(out.width-240-10, out.height-32-10, 240, 28); ctx.globalAlpha=1; ctx.fillStyle="#E6EAF2"; ctx.font="12px ui-monospace,monospace"; ctx.fillText(`YorN ${REVISION} • ${new Date().toISOString().slice(0,19)}`, out.width-230-10, out.height-14-10); const blob=await new Promise(r=>out.toBlob(r,'image/png',0.92)); const file=new File([blob],'yorn-snapshot.png',{type:'image/png'}); if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:'YorN Snapshot', text:'Face detection preview'}); logEvt('config',{share:'webshare'}); } else { const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-snapshot-${Date.now()}.png`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); logEvt('config',{share:'download'}) } }catch(e){ logEvt('error',{sharePNG:e.message||String(e)}) }});
-zoom.addEventListener("input",()=>{ zoomLabel.textContent=(+zoom.value).toFixed(2); if(baseSource){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c) }});
-bri.addEventListener("input",()=>{ briLabel.textContent=(+bri.value).toFixed(2); if(baseSource){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c) }});
-con.addEventListener("input",()=>{ conLabel.textContent=(+con.value).toFixed(2); if(baseSource){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c) }});
-$("rotDeg").addEventListener("change",()=>{ if(baseSource){ const c=renderWorkingCanvas(1024); lastCanvas=c; paintBaseCanvas(c) }});
+
+/*** Build Auto‑Test report text ***/
+let __autoTestRunId = null;
+let __autoTestStartIdx = 0;
+function getAllLogsText(){ return diagnostics ? diagnostics.innerText || diagnostics.textContent || '' : '' }
+function buildAutoTestReport(){
+  const full = getAllLogsText();
+  const chunk = full.slice(__autoTestStartIdx);
+  const revMatch = full.match(/"rev":"([^"]+)"/) || [];
+  const backendMatch = full.match(/"backend":"([^"]+)"/) || [];
+  const weightsBase = chunk.match(/"weightsHealth":\{[^}]*"base":"([^"]+)"/) || [];
+  const refined = /"refine_ms":/.test(chunk) ? "yes" : /"refine_skipped"|"refine_guard"|"refine_exception"/.test(chunk) ? "attempted (fallback)" : "no";
+  const passes = (chunk.match(/"test","step":"[^"]+","ok":true/g) || []).length;
+  const fails  = (chunk.match(/"type":"error"/g) || []).length + (chunk.match(/"test","step":"fail"/g) || []).length;
+  const summaryLine = `YorN ${revMatch[1]||'—'} • TF backend: ${backendMatch[1]||'—'} • refine: ${refined} • passes: ${passes} • fails: ${fails}`;
+  const lines = chunk.split('\n').filter(l => /"type":"test"|"type":"detect"|"type":"analysis"|"type":"config"|"type":"error"/.test(l));
+  return ['=== YorN Auto‑Test Report ===', summaryLine, weightsBase[1] ? `weights: ${weightsBase[1]}` : '', '', ...lines, '=== End Report ===', ''].filter(Boolean).join('\n');
+}
+
+/*** Single Copy button → copies Auto‑Test Report ***/
+copyTestBtn.addEventListener('click', async ()=>{
+  try {
+    const report = buildAutoTestReport();
+    const res = await copyTextRobust(report);
+    if (res.ok) {
+      logEvt('config', { copiedAutoTestReport: true, via: res.via, length: report.length });
+      progressText.textContent = 'Test result copied';
+      setTimeout(()=>progressText.textContent='', 1200);
+    } else {
+      logEvt('error', { copyAutoTestReportError: res.err || 'unknown', via: res.via });
+    }
+  } catch (e) {
+    logEvt('error', { copyAutoTestReportException: e.message || String(e) });
+  }
+});
 
 /*** Buttons: detect & analysis ***/
 $("enhanceBtn").addEventListener("click",()=>{ zoom.value=Math.max(+zoom.value,1.5); zoomLabel.textContent=(+zoom.value).toFixed(2); bri.value=Math.max(+bri.value,1.18); briLabel.textContent=(+bri.value).toFixed(2); con.value=Math.max(+con.value,1.25); conLabel.textContent=(+con.value).toFixed(2); detectFlow() });
@@ -663,38 +667,8 @@ $("sampleBtn").addEventListener('click', async ()=>{
   }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) }
 });
 
-/*** Auto‑Test report + readiness ***/
-let __autoTestRunId = null;
-let __autoTestStartIdx = 0;
-function getAllLogsText(){ return diagnostics ? diagnostics.innerText || diagnostics.textContent || '' : '' }
-function buildAutoTestReport(){
-  const full = getAllLogsText();
-  const chunk = full.slice(__autoTestStartIdx);
-  const revMatch = full.match(/"rev":"([^"]+)"/) || [];
-  const backendMatch = full.match(/"backend":"([^"]+)"/) || [];
-  const weightsBase = chunk.match(/"weightsHealth":\{[^}]*"base":"([^"]+)"/) || [];
-  const refined = /"refine_ms":/.test(chunk) ? "yes" : /"refine_skipped"|"refine_guard"|"refine_exception"/.test(chunk) ? "attempted (fallback)" : "no";
-  const passes = (chunk.match(/"test","step":"[^"]+","ok":true/g) || []).length;
-  const fails  = (chunk.match(/"type":"error"/g) || []).length + (chunk.match(/"test","step":"fail"/g) || []).length;
-  const summaryLine = `YorN ${revMatch[1]||'—'} • TF backend: ${backendMatch[1]||'—'} • refine: ${refined} • passes: ${passes} • fails: ${fails}`;
-  const lines = chunk.split('\n').filter(l => /"type":"test"|"type":"detect"|"type":"analysis"|"type":"config"|"type":"error"/.test(l));
-  return ['=== YorN Auto‑Test Report ===', summaryLine, weightsBase[1] ? `weights: ${weightsBase[1]}` : '', '', ...lines, '=== End Report ===', ''].filter(Boolean).join('\n');
-}
-$("autoTestReportBtn").onclick = async () => {
-  try {
-    const report = buildAutoTestReport();
-    const res = await copyTextRobust(report);
-    if (res.ok) {
-      logEvt('config', { copiedAutoTestReport: true, via: res.via, length: report.length });
-      progressText.textContent = 'Auto‑Test report copied';
-      setTimeout(()=>progressText.textContent='', 1200);
-    } else {
-      logEvt('error', { copyAutoTestReportError: res.err || 'unknown', via: res.via });
-    }
-  } catch (e) {
-    logEvt('error', { copyAutoTestReportException: e.message || String(e) });
-  }
-};
+/*** Readiness badge + Auto Test ***/
+const readinessBadge=$("readinessBadge");
 function setReadinessBadge(state, tooltip){
   readinessBadge.style.display='inline-flex';
   readinessBadge.className = '';
@@ -702,11 +676,10 @@ function setReadinessBadge(state, tooltip){
   readinessBadge.textContent = state==='ready' ? 'READY' : 'BLOCKED';
   readinessBadge.title = tooltip || '';
 }
-
-/*** Auto Test (instrumented) ***/
 $("autoTestBtn").addEventListener('click', runAutoTest);
 async function runAutoTest(){
   $("autoTestBtn").disabled = true;
+  copyTestBtn.disabled = true;
   const oldFix = fixModeSel.value;
   const oldOver = $("showOverlays").checked;
 
@@ -774,9 +747,8 @@ async function runAutoTest(){
     fixModeSel.value = oldFix;
     $("showOverlays").checked = oldOver;
     $("autoTestBtn").disabled = false;
-    $("autoTestReportBtn").disabled = false;
+    copyTestBtn.disabled = false;     // <-- enable single copy button after test
     tlog('end', { run: __autoTestRunId });
-    toggleCopyBtns();
   }
 }
 
@@ -798,7 +770,7 @@ $("precacheBtn").addEventListener('click', async ()=>{
   await refreshSWPill();
 });
 
-/*** Watchdog & manual dismiss for the veil ***/
+/*** Veil: manual dismiss + watchdog ***/
 $("dismissVeilBtn").addEventListener('click', ()=>{
   hideVeil();
   logEvt('config',{veil:'dismissed-manually'});
@@ -818,7 +790,7 @@ window.addEventListener('load', async ()=>{
   logEvt('config',{boot:'ui-ready',rev:REVISION});
   await refreshSWPill();
   try{
-    await initFrameworks();  // veil hides in finally{}
+    await initFrameworks();
     try{
       const saved=localStorage.getItem("yorn_last_analysis");
       if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}); researchCard.style.display=""; }
@@ -826,7 +798,7 @@ window.addEventListener('load', async ()=>{
     logEvt('config',{boot:'complete'});
   }catch(e){
     logEvt('error',{frameworks:e.message||String(e)});
-    hideVeil(); // double‑guard
+    hideVeil();
   }
 });
 </script>
