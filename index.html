@@ -51,7 +51,7 @@
   #readyBadge{position:fixed;top:36px;right:10px;z-index:9999;display:none;background:#10b98126;color:#a7f3d0;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid #10b9818c;border-radius:999px}
   #readyDot{display:inline-block;width:8px;height:8px;border-radius:999px;background:#10b981;margin-right:6px}
 
-  /* NEW: Readiness badge */
+  /* Readiness badge */
   #readinessBadge{position:fixed;top:64px;right:10px;z-index:9999;display:none;font:12px ui-monospace,monospace;padding:3px 8px;border-radius:999px;border:1px solid #233046}
   #readinessBadge.ready{background:#052e1b; color:#a7f3d0; border-color:#0a5a33}
   #readinessBadge.blocked{background:#3a0b0b; color:#fecaca; border-color:#7f1d1d}
@@ -385,12 +385,18 @@ function drawLandmarks(ctx,landmarks){ try{ const pts=landmarks.positions||landm
 let blazeModel=null; async function ensureBlaze(){ if(blazeModel) return; blazeModel=window.__blazeModel; }
 async function headOK(url, max=2){ for(let i=0;i<max;i++){ try{ const r=await fetch(url,{method:'HEAD',cache:'no-store'}); return r.ok }catch(e){ await new Promise(r=>setTimeout(r,200)) } } return false }
 
-/*** PATCH: Bind tf into face-api and load nets safely ***/
+/*** Face‑API loader with TF engine guard ***/
 let faceApiReady=false, FA_BASE=null;
 async function ensureFaceApi(){
   if(faceApiReady) return true;
   if(!window.faceapi){ logEvt('error',{faceapi_presence:'missing'}); return false }
-  try { faceapi.tf = tf } catch(_) {} // bind TF
+
+  // Hard bind TF and verify engine availability
+  try { faceapi.tf = tf } catch (_) {}
+  let engineOk=false;
+  try { engineOk = (faceapi.tf && typeof faceapi.tf.engine === "function" && !!faceapi.tf.engine()); }
+  catch(e){ logEvt('error',{faceapi_engine:e.message||String(e)}) }
+  if(!engineOk){ logEvt('error',{weightsBase:'tf-engine-missing'}); return false }
 
   const base=(weightsSrc.value||"").replace(/\/$/,"");
   FA_BASE=base;
@@ -458,37 +464,59 @@ async function detectFlow(){
     drawCross(octx,cx,cy,offX,offY);
     logEvt("detect",{finalDetect_ms:det.elapsed_ms,scale:det.scale,mirror:det.mirror,box:lastBox});
 
-    /* Refine (safe) */
-    if(fixModeSel.value==="cdn"){
-      try{
-        setProgress(75,"Refining (face‑api)…");
-        const ok=await ensureFaceApi();
-        if(!ok){
-          logEvt("detect",{refine_skipped:"faceapi not ready"});
-        }else if(!faceapi.tf || typeof faceapi.tf.engine!=="function"){
-          logEvt("error",{refine_guard:"tf binding missing"});
-        }else{
-          const opts=new faceapi.TinyFaceDetectorOptions({inputSize:256,scoreThreshold:0.3});
-          const tR=performance.now();
-          const result=await faceapi.detectSingleFace(lastCanvas,opts).withFaceLandmarks();
-          const msR=Math.round(performance.now()-tR);
-          if(result){
-            const b=result.detection.box;
-            lastBox={x:b.x,y:b.y,width:b.width,height:b.height};
-            lastLandmarks=result.landmarks;
-            octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
-            drawBox(octx,lastBox,"#f59e0b",`Refined • ${msR}ms`); drawLandmarks(octx,lastLandmarks);
-            const cx2=lastBox.x+lastBox.width/2, cy2=lastBox.y+lastBox.height/2;
-            const offX2=((cx2-lastCanvas.width/2)/(lastCanvas.width/2))*100, offY2=((cy2-lastCanvas.height/2)/(lastCanvas.height/2))*100;
-            drawCross(octx,cx2,cy2,offX2,offY2);
-            logEvt("detect",{refine_ms:msR,faceapi:true,box:lastBox,landmarks:68});
-          }else{
-            logEvt("detect",{refine_ms:msR,faceapi:false,reason:"no detection"});
+    /* Refine (safe, patched) */
+    if (fixModeSel.value === "cdn") {
+      try {
+        setProgress(75, "Refining (face‑api)…");
+        const ok = await ensureFaceApi();
+        if (!ok) {
+          logEvt("detect", { refine_skipped: "faceapi not ready" });
+        } else {
+          // HARD BIND & ENGINE GUARD
+          try { faceapi.tf = tf; } catch (_) {}
+          let engineOk = false;
+          try {
+            engineOk = (faceapi.tf && typeof faceapi.tf.engine === "function" && !!faceapi.tf.engine());
+          } catch (e) {
+            logEvt("error", { refine_guard: "tf.engine() failed", msg: e.message || String(e) });
+          }
+          if (!engineOk) {
+            logEvt("detect", { refine_guard: "tf binding missing/engine not available" });
+          } else if (!lastCanvas) {
+            logEvt("detect", { refine_skipped: "no canvas to refine" });
+          } else {
+            const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.3 });
+            const tR = performance.now();
+            let result = null;
+            try {
+              result = await faceapi.detectSingleFace(lastCanvas, opts).withFaceLandmarks();
+            } catch (e) {
+              logEvt("error", { refine_exception: (e && (e.stack || e.message)) || String(e) });
+            }
+            const msR = Math.round(performance.now() - tR);
+
+            if (result && result.detection && result.detection.box) {
+              const b = result.detection.box;
+              lastBox = { x: b.x, y: b.y, width: b.width, height: b.height };
+              lastLandmarks = result.landmarks || null;
+
+              octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
+              drawBox(octx,lastBox,"#f59e0b",`Refined • ${msR}ms`);
+              if(lastLandmarks) drawLandmarks(octx,lastLandmarks);
+
+              const cx2=lastBox.x+lastBox.width/2, cy2=lastBox.y+lastBox.height/2;
+              const offX2=((cx2-lastCanvas.width/2)/(lastCanvas.width/2))*100, offY2=((cy2-lastCanvas.height/2)/(lastCanvas.height/2))*100;
+              drawCross(octx,cx2,cy2,offX2,offY2);
+
+              logEvt("detect",{refine_ms:msR,faceapi:true,box:lastBox,landmarks:lastLandmarks?68:0});
+            } else {
+              logEvt("detect",{refine_ms:msR,faceapi:false,reason:"no detection"});
+            }
           }
         }
-      }catch(e){
-        const msg=(e&&(e.message||e.stack))?(e.message+" | "+(e.stack||"")):String(e);
-        logEvt("error",{refine_exception:msg});
+      } catch (e) {
+        const msg = (e && (e.stack || e.message)) || String(e);
+        logEvt("error", { refine_exception_top: msg });
       }
     }
 
@@ -611,12 +639,10 @@ $("sampleBtn").addEventListener('click', async ()=>{
   }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) }
 });
 
-/*** Auto‑Test: report + readiness ***/
+/*** Auto‑Test report + readiness ***/
 let __autoTestRunId = null;
 let __autoTestStartIdx = 0;
-
 function getAllLogsText(){ return diagnostics ? diagnostics.innerText || diagnostics.textContent || '' : '' }
-
 function buildAutoTestReport(){
   const full = getAllLogsText();
   const chunk = full.slice(__autoTestStartIdx);
@@ -626,18 +652,10 @@ function buildAutoTestReport(){
   const refined = /"refine_ms":/.test(chunk) ? "yes" : /"refine_skipped"|"refine_guard"|"refine_exception"/.test(chunk) ? "attempted (fallback)" : "no";
   const passes = (chunk.match(/"test","step":"[^"]+","ok":true/g) || []).length;
   const fails  = (chunk.match(/"type":"error"/g) || []).length + (chunk.match(/"test","step":"fail"/g) || []).length;
-
   const summaryLine = `YorN ${revMatch[1]||'—'} • TF backend: ${backendMatch[1]||'—'} • refine: ${refined} • passes: ${passes} • fails: ${fails}`;
-  const header = [
-    '=== YorN Auto‑Test Report ===',
-    summaryLine,
-    weightsBase[1] ? `weights: ${weightsBase[1]}` : ''
-  ].filter(Boolean).join('\n');
-
   const lines = chunk.split('\n').filter(l => /"type":"test"|"type":"detect"|"type":"analysis"|"type":"config"|"type":"error"/.test(l));
-  return header + '\n\n' + lines.join('\n') + '\n=== End Report ===\n';
+  return ['=== YorN Auto‑Test Report ===', summaryLine, weightsBase[1] ? `weights: ${weightsBase[1]}` : '', '', ...lines, '=== End Report ===', ''].filter(Boolean).join('\n');
 }
-
 $("autoTestReportBtn").onclick = async () => {
   try {
     const report = buildAutoTestReport();
@@ -653,7 +671,6 @@ $("autoTestReportBtn").onclick = async () => {
     logEvt('error', { copyAutoTestReportException: e.message || String(e) });
   }
 };
-
 function setReadinessBadge(state, tooltip){
   readinessBadge.style.display='inline-flex';
   readinessBadge.className = '';
@@ -724,10 +741,7 @@ async function runAutoTest(){
     const ms = Math.round(performance.now()-tStart);
     setProgress(100,'Auto Test: complete');
     tlog('summary', { passes, fails, ms, revision: REVISION, backend: (tf && tf.getBackend && tf.getBackend()) || 'unknown' });
-
-    // NEW: readiness badge logic
-    const ready = (fails===0 && passes>=3);
-    setReadinessBadge(ready ? 'ready' : 'blocked', `passes=${passes} fails=${fails} • ${ms}ms`);
+    setReadinessBadge((fails===0 && passes>=3) ? 'ready' : 'blocked', `passes=${passes} fails=${fails} • ${ms}ms`);
 
   } catch(e){
     tlog('fail', { error: e.message || String(e) });
