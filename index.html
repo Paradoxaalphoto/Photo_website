@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN — 1.14.2-alpha</title>
+<title>YorN — 1.14.3-alpha</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:; img-src * data: blob:; connect-src * data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; upgrade-insecure-requests">
 
@@ -112,7 +112,8 @@
       <div><label>Rotate (°)</label><input id="rotDeg" type="number" step="90" value="0" /></div>
       <div><label>Zoom (0.8–2.0): <span id="zoomLabel">1.20</span></label><input id="zoom" type="range" min="0.8" max="2.0" step="0.05" value="1.2" /></div>
       <div><label>Brightness: <span id="briLabel">1.10</span></label><input id="bri" type="range" min="0.8" max="1.4" step="0.02" value="1.10" /></div>
-      <div><label>Contrast: <span id="conLabel">1.15</</label><input id="con" type="range" min="0.8" max="1.6" step="0.02" value="1.15" /></div>
+      <!-- FIXED: missing </span> caused DOM break -->
+      <div><label>Contrast: <span id="conLabel">1.15</span></label><input id="con" type="range" min="0.8" max="1.6" step="0.02" value="1.15" /></div>
 
       <div>
         <label>Fix mode</label>
@@ -251,7 +252,7 @@
 </div>
 
 <script>
-const REVISION="1.14.2-alpha"; $("revText").textContent=REVISION;
+const REVISION="1.14.3-alpha"; $("revText").textContent=REVISION;
 const $=id=>document.getElementById(id);
 const diagnostics=$("diagnostics");
 function appendTop(s){ diagnostics.textContent = s + diagnostics.textContent; }
