@@ -2,9 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN — 1.16.0-alpha</title>
+<title>YorN — 1.16.1-alpha</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<!-- CSP wide enough for TFJS/webgl/wasm/CDNs and local file:// usage -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self' https: data: blob:;
   script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;
@@ -29,6 +28,7 @@
     .row{grid-template-columns:1fr;gap:10px}
     .controls{grid-template-columns:1fr 1fr;gap:10px}
     .two-col{grid-template-columns:1fr;gap:12px}
+    .research-grid{grid-template-columns:1fr}
   }
   label{font-size:12px;color:#A9B4C8}
   input[type="range"],input[type="number"],select,textarea{width:100%;padding:6px;border:1px solid #233046;border-radius:8px;background:#0b1220;color:#E6EAF2}
@@ -70,6 +70,9 @@
 
   .hidden{display:none !important}
   footer{opacity:.8;font:12px ui-monospace,monospace;margin-top:10px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+
+  .research-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .hint{font-size:12px;color:#A9B4C8}
 </style>
 
 <!-- libs -->
@@ -173,6 +176,7 @@
       <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap">
         <button id="copyJsonBtn" class="btn" disabled>Copy JSON</button>
         <button id="exportJsonBtn" class="btn" disabled>Download JSON</button>
+        <button id="exportPdfBtn" class="btn" disabled>Download PDF Report</button>
       </div>
     </div>
     <div class="analysis-grid" style="margin-top:8px">
@@ -188,6 +192,57 @@
     <div class="hints" id="analysisHints"></div>
   </div>
 
+  <div class="card" id="researchCard" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <strong>Research Mode</strong>
+      <span class="hint">Opt‑in; saved locally only</span>
+    </div>
+    <div class="research-grid" style="margin-top:8px">
+      <div>
+        <label>Consent <span style="color:#fb7185">*</span></label>
+        <select id="consent">
+          <option value="">— Select —</option>
+          <option value="yes">I consent to store this rating locally</option>
+          <option value="no">No (don’t store)</option>
+        </select>
+      </div>
+      <div>
+        <label>Rater age group <span style="color:#fb7185">*</span></label>
+        <select id="ageGroup">
+          <option value="">— Select —</option>
+          <option>20–24</option><option>25–29</option><option>30–34</option><option>35–39</option>
+          <option>40–44</option><option>45–49</option><option>50–54</option><option>55–59</option>
+          <option>60–64</option><option>65–69</option><option>70–74</option><option>75–80</option>
+        </select>
+      </div>
+      <div>
+        <label>Rater gender (optional)</label>
+        <select id="raterGender">
+          <option value="">Prefer not to say</option>
+          <option>Female</option><option>Male</option><option>Nonbinary/Other</option>
+        </select>
+      </div>
+      <div>
+        <label>Attractiveness (1–10)</label>
+        <input id="rating" type="range" min="1" max="10" step="1" value="5" />
+      </div>
+      <div>
+        <label>Confidence (0–100%)</label>
+        <input id="confidence" type="range" min="0" max="100" step="5" value="70" />
+      </div>
+      <div>
+        <label>Notes (optional)</label>
+        <textarea id="notes" placeholder="lighting, angle, makeup, beard, etc."></textarea>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button id="saveRowBtn" class="btn btn-primary" disabled>Save to Dataset</button>
+      <button id="exportCSVBtn" class="btn" disabled>Export CSV</button>
+      <button id="exportDSJsonBtn" class="btn" disabled>Export JSON</button>
+      <span class="hint">Rows: <span id="dsCount">0</span></span>
+    </div>
+  </div>
+
   <footer>
     <div>Session: <span id="sessDet">0 detects</span> • <span id="sessAna">0 analyses</span> • avg detect <span id="sessAvg">—</span> ms</div>
     <div>Common hint: <span id="sessHint">—</span></div>
@@ -195,8 +250,8 @@
 </div>
 
 <script>
-/* ========= core ========= */
-const REVISION = "1.16.0-alpha";
+/* ===== Core helpers ===== */
+const REVISION = "1.16.1-alpha";
 const $ = (id)=>document.getElementById(id);
 const diagnostics = { el: null };
 function _appendTop(s){ if(!diagnostics.el) return; diagnostics.el.textContent = s + (diagnostics.el.textContent || ""); }
@@ -213,16 +268,16 @@ document.addEventListener("DOMContentLoaded", ()=>{
   hideVeil(); logEvt('config',{boot:'dom-ready',rev:REVISION});
 });
 
-/* ========= veil (never blocks) ========= */
+/* ===== Veil (fail-safe, non-blocking) ===== */
 function showVeil(msg){ const v=$("veil"); if(!v) return; $("veilMsg").textContent=msg||"Loading…"; v.classList.remove("hidden"); }
 function hideVeil(){ const v=$("veil"); if(v) v.classList.add("hidden"); }
 window.addEventListener("load", hideVeil);
 document.addEventListener("click",(e)=>{ if(e.target && (e.target.id==="dismissVeilBtn")) hideVeil(); if(e.target && e.target.id==="retryInitBtn") { hideVeil(); initFrameworks(true); } });
 
-/* ========= progress ========= */
+/* ===== Progress ===== */
 function setProgress(p,t){ if(progressBar) progressBar.style.width=(p||0)+'%'; if(progressText) progressText.textContent=t||'' }
 
-/* ========= session stats ========= */
+/* ===== Session stats ===== */
 let detTimes=[], anaCount=0, detCount=0, hintCounts={};
 function updateFooter(){
   const avg = detTimes.length ? Math.round(detTimes.reduce((a,b)=>a+b,0)/detTimes.length) : '—';
@@ -230,7 +285,7 @@ function updateFooter(){
   $("sessDet").textContent=`${detCount} detects`; $("sessAna").textContent=`${anaCount} analyses`; $("sessAvg").textContent=avg; $("sessHint").textContent=common;
 }
 
-/* ========= frameworks ========= */
+/* ===== Frameworks init ===== */
 async function initFrameworks(userTriggered=false){
   showVeil(userTriggered ? "Re-initializing…" : "Loading frameworks…");
   const HARD_TIMEOUT_MS = 4000;
@@ -257,7 +312,7 @@ async function initFrameworks(userTriggered=false){
 }
 window.addEventListener("load", ()=>initFrameworks(false));
 
-/* ========= image decode & preview ========= */
+/* ===== Image decoding & preview ===== */
 async function blobToCanvasViaImg(blob){ const url=URL.createObjectURL(blob); try{ const img=new Image(); img.decoding="sync"; img.loading="eager"; await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url}); const c=document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext("2d").drawImage(img,0,0); return c } finally{ URL.revokeObjectURL(url) } }
 async function decodeOriginal(fileOrBlob){
   try{ if('createImageBitmap' in window){ const bmp=await createImageBitmap(fileOrBlob); logEvt('detect',{decode:'createImageBitmap',w:bmp.width,h:bmp.height}); return {bitmap:bmp,width:bmp.width,height:bmp.height}; } }
@@ -297,7 +352,7 @@ function renderWorkingCanvas(maxSide=1024,centerBox=null){
 function drawBox(ctx,box,color,label){ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(box.x,box.y,box.width,box.height);ctx.fillStyle=color;ctx.font="12px ui-monospace,monospace";ctx.fillText(label,box.x,Math.max(12,box.y-4))}
 function drawCross(ctx,cx,cy,offX,offY){ctx.strokeStyle="#60a5fa";ctx.beginPath();ctx.moveTo(cx-8,cy);ctx.lineTo(cx+8,cy);ctx.moveTo(cx,cy-8);ctx.lineTo(cx,cy+8);ctx.stroke();ctx.fillStyle="#60a5fa";ctx.font="12px ui-monospace,monospace";const text=`(${Math.round(cx)},${Math.round(cy)}) | offX ${offX.toFixed(1)}% • offY ${offY.toFixed(1)}%`;const tx=Math.min(cx+10,cvOverlay.width-260),ty=Math.min(cy+14,cvOverlay.height-4);ctx.fillText(text,tx,ty)}
 
-/* ========= models & refine ========= */
+/* ===== Models & refine ===== */
 let blazeModel=null; async function ensureBlaze(){ if(blazeModel) return; blazeModel=window.__blazeModel; }
 async function headOK(url, max=2){ for(let i=0;i<max;i++){ try{ const r=await fetch(url,{method:'HEAD',cache:'no-store'}); return r.ok }catch(e){ await new Promise(r=>setTimeout(r,200)) } } return false }
 
@@ -315,11 +370,11 @@ async function ensureFaceApi(){
   try{ await faceapi.nets.tinyFaceDetector.loadFromUri(base); await faceapi.nets.faceLandmark68Net.loadFromUri(base); faceApiReady=true; logEvt('detect',{faceapiReady:true,usingWeightsFrom:base}); return true }catch(e){ logEvt('error',{faceapi_load:e.message||String(e)}); return false }
 }
 
-/* ========= detect ========= */
+/* ===== Detection ===== */
 function downsample(canvas,w,mirror=false){const h=Math.round(w*(canvas.height/canvas.width));const tmp=Object.assign(document.createElement("canvas"),{width:w,height:h});const ctx=tmp.getContext("2d");if(mirror){ctx.translate(w,0);ctx.scale(-1,1)}ctx.drawImage(canvas,0,0,w,h);return tmp}
 async function detectFlow(){
   try{
-    lastBox=null; lastCanvas=null; lastLandmarks=null; $("analysisCard").style.display="none";
+    lastBox=null; lastCanvas=null; lastLandmarks=null; $("analysisCard").style.display="none"; $("researchCard").style.display="none";
     setProgress(10,"Analyzing…"); await ensureBlaze();
     let canvas=renderWorkingCanvas(1024); if(!canvas){ logEvt("error",{render:"failed"}); return }
     lastCanvas=canvas; paintBaseCanvas(canvas);
@@ -398,7 +453,7 @@ async function detectFlow(){
   }catch(e){ logEvt("error",{detectFlow:e.message||String(e)}) }
 }
 
-/* ========= analysis ========= */
+/* ===== Lightweight Analysis ===== */
 function runLightAnalysis(){
   if(!lastCanvas||!lastBox){ logEvt("error",{analysis:"no detection"}); return }
   const imgW=lastCanvas.width,imgH=lastCanvas.height,b=lastBox;
@@ -440,9 +495,90 @@ function runLightAnalysis(){
   try{ localStorage.setItem("yorn_last_analysis", JSON.stringify(lastAnalysis)) }catch(_){}
   $("analysisHints").textContent="Hints: "+(hints.length?hints.join(" • "):"Looks good!");
   logEvt("analysis",{analysis:lastAnalysis});
+
+  // Enable report/dataset bits
+  $("copyJsonBtn").disabled=false; $("exportJsonBtn").disabled=false; $("exportPdfBtn").disabled=false;
+  $("researchCard").style.display=""; maybeEnableSave();
 }
 
-/* ========= copy helpers ========= */
+/* ===== Research dataset ===== */
+const DS_KEY='yorn_dataset_v1';
+function loadDS(){ try{ return JSON.parse(localStorage.getItem(DS_KEY)||'[]') }catch(_){ return [] } }
+function saveDS(rows){ try{ localStorage.setItem(DS_KEY, JSON.stringify(rows)) }catch(_){} }
+function dsCount(){ const n=loadDS().length; $("dsCount").textContent=String(n); $("exportCSVBtn").disabled=n===0; $("exportDSJsonBtn").disabled=n===0; }
+function maybeEnableSave(){ $("saveRowBtn").disabled = !(lastAnalysis && $("consent").value==='yes' && $("ageGroup").value) }
+$("consent").addEventListener('change',maybeEnableSave); $("ageGroup").addEventListener('change',maybeEnableSave);
+$("saveRowBtn").addEventListener('click', ()=>{
+  if(!(lastAnalysis && $("consent").value==='yes' && $("ageGroup").value)){ logEvt('error',{research:'missing required fields'}); return }
+  const row={ session_id: (crypto.randomUUID?crypto.randomUUID():('sess_'+Date.now())), created_at:new Date().toISOString(),
+    rater:{age_group:$("ageGroup").value, gender:$("raterGender").value||null, confidence_pct:+$("confidence").value},
+    rating:+$("rating").value, notes:($("notes").value||'').trim()||null, analysis:lastAnalysis };
+  const rows=loadDS(); rows.push(row); saveDS(rows); dsCount(); logEvt('analysis',{saved:true,row});
+});
+function toCSV(rows){
+  const esc=v=>v==null?'':String(v).replace(/"/g,'""');
+  const hdr=['created_at','rater_age_group','rater_gender','confidence_pct','rating','notes','img_w','img_h','box_x','box_y','box_w','box_h','box_area_pct','box_aspect','center_x','center_y','off_x_pct','off_y_pct','brightness_mean','contrast_stdev','sharpness_var','orientation','landmarks','revision'];
+  const lines=[hdr.join(',')];
+  for(const r of rows){
+    const a=r.analysis||{}; const b=a.box||{center:{},center_offset_pct:{}};
+    const cells=[r.created_at,r.rater?.age_group,r.rater?.gender,r.rater?.confidence_pct,r.rating,r.notes,a.image?.width,a.image?.height,b.x,b.y,b.width,b.height,a.box?.area_pct,a.box?.aspect,b.center?.x,b.center?.y,b.center_offset_pct?.x,b.center_offset_pct?.y,a.lighting?.brightness_mean,a.lighting?.contrast_stdev,a.sharpness?.laplacian_variance,a.orientation,a.refine?.landmarks,a.revision];
+    lines.push(cells.map(v=>`"${esc(v)}"`).join(','));
+  }
+  return lines.join('\n');
+}
+$("exportCSVBtn").addEventListener('click', ()=>{
+  const rows=loadDS(); if(!rows.length) return;
+  const blob=new Blob([toCSV(rows)],{type:'text/csv'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-dataset-${Date.now()}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  logEvt('config',{dataset:'csv_export',rows:rows.length});
+});
+$("exportDSJsonBtn").addEventListener('click', ()=>{
+  const rows=loadDS(); if(!rows.length) return;
+  const blob=new Blob([JSON.stringify(rows,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-dataset-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  logEvt('config',{dataset:'json_export',rows:rows.length});
+});
+dsCount();
+
+/* ===== PDF report (print‑to‑PDF) ===== */
+$("exportPdfBtn").addEventListener('click', ()=>{
+  if(!lastAnalysis || !lastCanvas) return;
+  const imgData = lastCanvas.toDataURL('image/png');
+  const a = lastAnalysis, b = a.box, l = a.lighting, s = a.sharpness;
+  const html = `
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>YorN Report</title>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,sans-serif;margin:24px;color:#111}
+  h1,h2{margin:0 0 12px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .kv{padding:8px;border:1px solid #ddd;border-radius:8px;display:flex;justify-content:space-between}
+  img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:8px}
+  footer{margin-top:16px;font-size:12px;color:#555}
+  @media print { body{margin:0.5in} }
+</style></head><body>
+<h1>YorN Analysis Report</h1>
+<p><b>Revision:</b> ${a.revision} &nbsp; <b>Timestamp:</b> ${a.timestamp}</p>
+<img src="${imgData}" alt="Analyzed image">
+<h2>Metrics</h2>
+<div class="grid">
+  <div class="kv"><span>Face area</span><b>${b.area_pct}%</b></div>
+  <div class="kv"><span>Aspect ratio</span><b>${b.aspect}</b></div>
+  <div class="kv"><span>Orientation</span><b>${a.orientation}</b></div>
+  <div class="kv"><span>Brightness (mean)</span><b>${l.brightness_mean}</b></div>
+  <div class="kv"><span>Contrast (stdev)</span><b>${l.contrast_stdev}</b></div>
+  <div class="kv"><span>Sharpness (Laplacian var)</span><b>${s.laplacian_variance}</b></div>
+  <div class="kv"><span>Center offset X</span><b>${b.center_offset_pct.x}%</b></div>
+  <div class="kv"><span>Center offset Y</span><b>${b.center_offset_pct.y}%</b></div>
+</div>
+<footer>Generated by YorN • ${new Date().toLocaleString()}</footer>
+<script>setTimeout(()=>window.print(),100);</script>
+</body></html>`;
+  const w = window.open('', '_blank');
+  if(w){ w.document.open(); w.document.write(html); w.document.close(); }
+  logEvt('config',{report:'pdf_print_opened'});
+});
+
+/* ===== Copy helpers ===== */
 async function copyTextRobust(text){
   if(text==null) text='';
   try{ if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(text); return {ok:true,via:'clipboard'} } }catch(_){}
@@ -451,14 +587,14 @@ async function copyTextRobust(text){
 }
 function getAllLogsText(){ const el=$("diagnostics"); return el ? (el.innerText || el.textContent || '') : '' }
 
-/* ========= UI binds ========= */
+/* ===== UI binds ===== */
 $("enhanceBtn").addEventListener("click",()=>{ const z=$("zoom"); z.value=Math.max(+z.value,1.5); $("zoomLabel").textContent=(+z.value).toFixed(2); const b=$("bri"); b.value=Math.max(+b.value,1.18); $("briLabel").textContent=(+b.value).toFixed(2); const c=$("con"); c.value=Math.max(+c.value,1.25); $("conLabel").textContent=(+c.value).toFixed(2); detectFlow() });
 $("detectBtn").addEventListener("click",()=>detectFlow());
 $("startAnalysisBtn").addEventListener("click",()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis() });
 $("clearLogsBtn").addEventListener('click',()=>{ const d=$("diagnostics"); if(d) d.textContent='No diagnostics yet.'; });
-$("resetBtn").addEventListener('click',()=>{ ["base"].forEach(id=>$(id).classList.add('hidden')); baseSource=null; lastCanvas=null; lastBox=null; lastLandmarks=null; $("analysisCard").style.display="none"; logEvt('config',{reset:true}) });
+$("resetBtn").addEventListener('click',()=>{ ["base"].forEach(id=>$(id).classList.add('hidden')); baseSource=null; lastCanvas=null; lastBox=null; lastLandmarks=null; $("analysisCard").style.display="none"; $("researchCard").style.display="none"; logEvt('config',{reset:true}) });
 
-/* sample + file */
+/* Sample & file */
 $("fileInput").addEventListener('change', async ()=>{
   if(!$("fileInput").files.length) return;
   const f=$("fileInput").files[0]; setProgress(8,'Decoding photo…');
@@ -477,7 +613,7 @@ $("sampleBtn").addEventListener('click', async ()=>{
   }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) }
 });
 
-/* ========= Auto Test ========= */
+/* ===== Auto Test ===== */
 let __autoTestStartIdx=0;
 function buildAutoTestReport(){
   const full = getAllLogsText();
@@ -492,34 +628,28 @@ function buildAutoTestReport(){
   const lines = chunk.split('\n').filter(l => /"type":"test"|"type":"detect"|"type":"analysis"|"type":"config"|"type":"error"/.test(l));
   return ['=== YorN Auto‑Test Report ===', summaryLine, '', ...lines, '=== End Report ===', ''].join('\n');
 }
-
 $("copyTestBtn").addEventListener('click', async ()=>{
   try{ const report = buildAutoTestReport(); const res = await copyTextRobust(report); if (res.ok) { logEvt('config', { copiedAutoTestReport: true, via: res.via, length: report.length }); $("progressText").textContent = 'Test result copied'; setTimeout(()=>$("progressText").textContent='', 1200); } else { logEvt('error', { copyAutoTestReportError: res.err || 'unknown', via: res.via }); } }catch(e){ logEvt('error', { copyAutoTestReportException: e.message || String(e) }); }
 });
-
 $("autoTestBtn").addEventListener('click', runAutoTest);
 async function runAutoTest(){
   $("autoTestBtn").disabled = true; $("copyTestBtn").disabled = true;
   const fullBefore = getAllLogsText(); __autoTestStartIdx = fullBefore.length;
   logEvt('test', { step:'begin', rev: REVISION });
   try{
-    // Frameworks
     const tfPresent = !!window.tf;
     logEvt('test',{step:'tf_present',ok:tfPresent});
     if(!tfPresent) throw new Error('tf missing');
 
-    // Sample load
     await $("sampleBtn").click(); await new Promise(r=>setTimeout(r,400));
     logEvt('test',{step:'sample',ok:!!baseSource});
 
-    // Blaze detect
     const t0=performance.now();
     await detectFlow();
     await new Promise(r=>setTimeout(r,350));
     const tDetect = Math.round(performance.now()-t0);
     logEvt('test',{step:'detect',ok:!!lastBox, ms:tDetect});
 
-    // Optional refine probe if selected
     if($("fixMode").value === "cdn"){
       const hadRefine = /"refine_ms":/.test(getAllLogsText().slice(__autoTestStartIdx));
       logEvt('test',{step:'refine',ok:hadRefine});
@@ -527,24 +657,36 @@ async function runAutoTest(){
       logEvt('test',{step:'refine_guard',ok:true});
     }
 
-    // Analysis
     $("startAnalysisBtn").click(); await new Promise(r=>setTimeout(r,300));
     logEvt('test',{step:'analysis',ok:!!lastAnalysis});
 
-    // Ready badge
     const ok = !!(baseSource && lastBox && lastAnalysis);
     const badge = $("readinessBadge"); if(badge){ badge.style.display='inline-block'; badge.className = ok ? 'ready' : 'blocked'; badge.textContent = ok ? 'READY' : 'BLOCKED'; }
     logEvt('test',{step:'summary',ok});
     $("copyTestBtn").disabled = false;
-  }catch(e){ logEvt('error',{autoTest:e.message||String(e)}); }
+  }catch(e){ logEvt('error',{autoTest:e.message||String(e)}) }
   $("autoTestBtn").disabled = false;
 }
 
-/* ========= boot ========= */
+/* ===== Analysis JSON export/copy ===== */
+$("copyJsonBtn").addEventListener('click', async ()=>{
+  if(!lastAnalysis) return;
+  const res = await copyTextRobust(JSON.stringify(lastAnalysis,null,2));
+  if(res.ok){ $("progressText").textContent = 'Analysis JSON copied'; setTimeout(()=>$("progressText").textContent='', 1200); }
+});
+$("exportJsonBtn").addEventListener('click', ()=>{
+  if(!lastAnalysis) return;
+  const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+});
+
+/* ===== Buttons & filters already wired above ===== */
+
+/* ===== Boot ===== */
 window.addEventListener('load', ()=>{
   try{
     const saved=localStorage.getItem("yorn_last_analysis");
-    if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}); }
+    if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}); $("researchCard").style.display=""; }
   }catch(_){}
   logEvt('config',{boot:'complete'});
 });
