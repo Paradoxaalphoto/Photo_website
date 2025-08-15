@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN — 1.16.4-alpha</title>
+<title>YorN — 1.16.5-alpha</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self' https: data: blob:;
@@ -162,6 +162,7 @@
             <label class="filter-chip"><input type="checkbox" class="diagType" value="config" checked> config</label>
             <label class="filter-chip"><input type="checkbox" class="diagType" value="error" checked> error</label>
             <label class="filter-chip"><input type="checkbox" class="diagType" value="test" checked> test</label>
+            <button id="copyDiagBtn" class="btn" style="margin-left:6px">Copy Diagnostics</button>
           </div>
         </div>
         <div id="diagnostics">No diagnostics yet.</div>
@@ -249,7 +250,7 @@
 </div>
 
 <script>
-const REVISION = "1.16.4-alpha";
+const REVISION = "1.16.5-alpha";
 const $ = (id)=>document.getElementById(id);
 const diagnostics = { el: null };
 function _appendTop(s){ if(!diagnostics.el) return; diagnostics.el.textContent = s + (diagnostics.el.textContent || ""); }
@@ -544,7 +545,7 @@ function toCSV(rows){
   const lines=[hdr.join(',')];
   for(const r of rows){
     const a=r.analysis||{}; const b=a.box||{center:{},center_offset_pct:{}};
-    const cells=[r.created_at,r.rater?.age_group,r.rater?.gender,r.rater?.confidence_pct,r.rating,r.notes,a.image?.width,a.image?.height,b.x,b.y,b.width,b.height,a.box?.area_pct,a.box?.aspect,b.center?.x,b.center?.y,b.center_offset_pct?.x,b.center_offset_pct?.y,a.lighting?.brightness_mean,a.lighting?.contrast_stdev,a.sharpness?.laplacian_variance,a.orientation,a.refine?.landmarks,a.revision];
+    const cells=[r.created_at,r.rater?.age_group,r.rater?.gender,r.rater?.confidence_pct,r.rating,r.notes,a.image?.width?a.image.width:'',a.image?.height?a.image.height:'',b.x,b.y,b.width,b.height,a.box?.area_pct,a.box?.aspect,b.center?.x,b.center?.y,b.center_offset_pct?.x,b.center_offset_pct?.y,a.lighting?.brightness_mean,a.lighting?.contrast_stdev,a.sharpness?.laplacian_variance,a.orientation,a.refine?.landmarks,a.revision];
     lines.push(cells.map(v=>`"${esc(v)}"`).join(','));
   }
   return lines.join('\n');
@@ -640,7 +641,12 @@ async function copyTextRobust(text){
   try{ const ta=document.createElement('textarea'); ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px'; document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy'); document.body.removeChild(ta); if(ok) return {ok:true,via:'execCommand'} }catch(e){ return {ok:false,via:'fallback',err:e.message||String(e)} }
   return {ok:false,via:'none',err:'No clipboard available'};
 }
-function getAllLogsText(){ const el=$("diagnostics"); return el ? (el.innerText || el.textContent || '') : '' }
+function getAllLogsText(){
+  const el = $("diagnostics");
+  if(!el) return '';
+  const raw = (el.innerText || el.textContent || '');
+  return raw.replace(/\r\n/g, '\n'); // normalize
+}
 
 /* UI binds */
 $("enhanceBtn").addEventListener("click",()=>{ const z=$("zoom"); z.value=Math.max(+z.value,1.5); $("zoomLabel").textContent=(+z.value).toFixed(2); const b=$("bri"); b.value=Math.max(+b.value,1.18); $("briLabel").textContent=(+b.value).toFixed(2); const c=$("con"); c.value=Math.max(+c.value,1.25); $("conLabel").textContent=(+c.value).toFixed(2); detectFlow() });
@@ -699,7 +705,19 @@ function buildAutoTestReport(){
   return ['=== YorN Auto‑Test Report ===', summaryLine, '', ...lines, '=== End Report ===', ''].join('\n');
 }
 $("copyTestBtn").addEventListener('click', async ()=>{
-  try{ const report = buildAutoTestReport(); const res = await copyTextRobust(report); if (res.ok) { logEvt('config', { copiedAutoTestReport: true, via: res.via, length: report.length }); $("progressText").textContent = 'Test result copied'; setTimeout(()=>$("progressText").textContent='', 1200); } else { logEvt('error', { copyAutoTestReportError: res.err || 'unknown', via: res.via }); } }catch(e){ logEvt('error', { copyAutoTestReportException: e.message || String(e) }); }
+  try{
+    const report = buildAutoTestReport();
+    const res = await copyTextRobust(report);
+    if (res.ok) {
+      $("progressText").textContent = 'Test result copied';
+      setTimeout(()=>$("progressText").textContent='', 1200);
+      logEvt('config', { copiedAutoTestReport: true, via: res.via, length: report.length });
+    } else {
+      logEvt('error', { copyAutoTestReportError: res.err || 'unknown', via: res.via });
+    }
+  }catch(e){
+    logEvt('error', { copyAutoTestReportException: e.message || String(e) });
+  }
 });
 $("autoTestBtn").addEventListener('click', runAutoTest);
 async function runAutoTest(){
@@ -771,6 +789,23 @@ $("exportJsonBtn").addEventListener('click', ()=>{
   if(!lastAnalysis) return;
   const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+});
+
+/* Diagnostics Copy button */
+$("copyDiagBtn").addEventListener("click", async ()=>{
+  try{
+    const text = getAllLogsText();
+    const res = await copyTextRobust(text);
+    if(res.ok){
+      $("progressText").textContent = 'Diagnostics copied to clipboard';
+      setTimeout(()=>$("progressText").textContent='', 1400);
+      logEvt("config",{copiedDiagnostics:true, via:res.via, length:text.length});
+    }else{
+      logEvt("error",{copyDiagnosticsError:res.err||'unknown', via:res.via});
+    }
+  }catch(e){
+    logEvt("error",{copyDiagnosticsException:e.message||String(e)});
+  }
 });
 
 /* Boot */
