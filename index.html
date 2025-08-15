@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN — 1.16.5-alpha</title>
+<title>YorN — 1.16.6-alpha</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self' https: data: blob:;
@@ -120,7 +120,7 @@
         <label>Fix mode</label>
         <select id="fixMode">
           <option value="blazeonly" selected>BlazeFace only</option>
-          <option value="cdn">face‑api refine</option>
+          <option value="cdn">face‑api refine (box)</option>
           <option value="native">Native → Blaze fallback</option>
         </select>
       </div>
@@ -134,9 +134,11 @@
           <option value="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights">jsDelivr (npm)</option>
         </select>
       </div>
+
       <label style="display:flex;gap:8px;align-items:center"><input id="showOverlays" type="checkbox" /> Show overlays</label>
       <label style="display:flex;gap:8px;align-items:center"><input id="showHUD" type="checkbox" /> Show HUD</label>
       <label style="display:flex;gap:8px;align-items:center"><input id="autoAnalyze" type="checkbox" /> Auto‑analyze</label>
+      <label style="display:flex;gap:8px;align-items:center"><input id="refineLandmarks" type="checkbox" /> Refine landmarks (68 pts)</label>
     </div>
 
     <div id="progressContainer"><div id="progressBar"></div></div>
@@ -250,7 +252,7 @@
 </div>
 
 <script>
-const REVISION = "1.16.5-alpha";
+const REVISION = "1.16.6-alpha";
 const $ = (id)=>document.getElementById(id);
 const diagnostics = { el: null };
 function _appendTop(s){ if(!diagnostics.el) return; diagnostics.el.textContent = s + (diagnostics.el.textContent || ""); }
@@ -355,7 +357,7 @@ function drawCross(ctx,cx,cy,offX,offY){ctx.strokeStyle="#60a5fa";ctx.beginPath(
 let blazeModel=null; async function ensureBlaze(){ if(blazeModel) return; blazeModel=window.__blazeModel; }
 async function headOK(url, max=2){ for(let i=0;i<max;i++){ try{ const r=await fetch(url,{method:'HEAD',cache:'no-store'}); return r.ok }catch(e){ await new Promise(r=>setTimeout(r,200)) } } return false }
 
-let faceApiReady=false, FA_BASE=null;
+let faceApiReady=false, FA_BASE=null, landmarksLoaded=false;
 async function ensureFaceApi(){
   if(faceApiReady) return true;
   if(!window.faceapi){ logEvt('config',{faceapi:'missing'}); return false }
@@ -363,15 +365,28 @@ async function ensureFaceApi(){
   let engineOk=false; try{ engineOk = (faceapi.tf && typeof faceapi.tf.engine === "function" && !!faceapi.tf.engine()); }catch(e){}
   if(!engineOk){ logEvt('error',{faceapi_engine:'unavailable'}); return false }
   const base=($("weightsSrc").value||"").replace(/\/$/,""); FA_BASE=base;
-  const m1=base+"/tiny_face_detector_model-weights_manifest.json"; const m2=base+"/face_landmark_68_model-weights_manifest.json";
-  const ok1=await headOK(m1), ok2=await headOK(m2); logEvt('detect',{weightsHealth:{mani1:ok1,mani2:ok2,base}});
-  if(!(ok1&&ok2)) return false;
+  const m1=base+"/tiny_face_detector_model-weights_manifest.json";
+  const ok1=await headOK(m1);
+  logEvt('detect',{weightsHealth:{mani1:ok1,base}});
+  if(!ok1) return false;
   try{
     await faceapi.nets.tinyFaceDetector.loadFromUri(base);
-    await faceapi.nets.faceLandmark68Net.loadFromUri(base);
     faceApiReady=true; logEvt('detect',{faceapiReady:true,usingWeightsFrom:base}); return true
   }catch(e){
     logEvt('error',{faceapi_load:e.message||String(e)}); return false
+  }
+}
+async function ensureLandmarks(){
+  if(landmarksLoaded) return true;
+  if(!FA_BASE) return false;
+  try{
+    await faceapi.nets.faceLandmark68Net.loadFromUri(FA_BASE);
+    landmarksLoaded = true;
+    logEvt('detect',{landmarksNet:'loaded'});
+    return true;
+  }catch(e){
+    logEvt('error',{landmarks_load:e.message||String(e)});
+    return false;
   }
 }
 
@@ -422,7 +437,7 @@ async function detectFlow(){
     drawCross(octx,cx,cy,offX,offY);
     logEvt("detect",{finalDetect_ms:det.elapsed_ms,scale:det.scale,mirror:det.mirror,box:lastBox});
 
-    // Optional refine (hardened)
+    // Optional refine (box; landmarks behind a toggle) — fully guarded
     if ($("fixMode").value === "cdn") {
       try {
         setProgress(75, "Refining (face‑api)…");
@@ -430,39 +445,53 @@ async function detectFlow(){
         if (ok && lastCanvas) {
           const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.3 });
           const tR = performance.now();
-          let result = null;
+          let detOnly = null;
           try {
-            result = await faceapi
-              .detectSingleFace(lastCanvas, opts)
-              .withFaceLandmarks();
+            detOnly = await faceapi.detectSingleFace(lastCanvas, opts);
           } catch (e) {
-            logEvt("error", { refine_exception: (e && (e.stack || e.message)) || String(e) });
+            logEvt("error", { refine_detect_err: (e && (e.stack || e.message)) || String(e) });
           }
           const msR = Math.round(performance.now() - tR);
 
-          const boxObj = result && result.detection && result.detection.box;
-          const validBox = boxObj && Number.isFinite(boxObj.x) && Number.isFinite(boxObj.y)
-                        && Number.isFinite(boxObj.width) && Number.isFinite(boxObj.height);
-
-          if (validBox) {
-            const b = boxObj;
+          if (detOnly && detOnly.box) {
+            const b = detOnly.box;
             lastBox = { x: b.x, y: b.y, width: b.width, height: b.height };
-            lastLandmarks = (result && result.landmarks) || null;
-
             octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
             drawBox(octx,lastBox,"#f59e0b",`Refined • ${msR}ms`);
-            if(lastLandmarks){
-              try{
-                const pts=lastLandmarks.positions||lastLandmarks;
-                octx.fillStyle="#f472b6"; for(const p of pts){ octx.fillRect(p.x-1,p.y-1,2,2) }
-              }catch(_){}
-            }
             const cx2=lastBox.x+lastBox.width/2, cy2=lastBox.y+lastBox.height/2;
             const offX2=((cx2 - lastCanvas.width/2)/(lastCanvas.width/2))*100, offY2=((cy2 - lastCanvas.height/2)/(lastCanvas.height/2))*100;
             drawCross(octx,cx2,cy2,offX2,offY2);
-            logEvt("detect",{refine_ms:msR,faceapi:true,box:lastBox,landmarks:lastLandmarks?68:0});
+            logEvt("detect",{refine_ms:msR,faceapi:true,refine_detect_ok:true,box:lastBox});
           } else {
-            logEvt("detect",{refine_ms:msR,faceapi:false,reason:"no detection/invalid"});
+            logEvt("detect",{refine_ms:msR,faceapi:false,reason:"no detection"});
+          }
+
+          // Landmarks only if toggled on
+          if ($("refineLandmarks").checked && lastBox) {
+            let lmOK=false, lmMs=0;
+            try{
+              const lmReady = await ensureLandmarks();
+              if(lmReady){
+                const tLm = performance.now();
+                const withLm = await faceapi.detectSingleFace(lastCanvas, opts).withFaceLandmarks();
+                lmMs = Math.round(performance.now()-tLm);
+                if(withLm && withLm.landmarks){
+                  lastLandmarks = withLm.landmarks;
+                  try{
+                    const pts=lastLandmarks.positions||lastLandmarks;
+                    octx.fillStyle="#f472b6"; for(const p of pts){ octx.fillRect(p.x-1,p.y-1,2,2) }
+                  }catch(_){}
+                  lmOK=true;
+                }
+              }
+            }catch(e){
+              logEvt("error",{refine_landmarks_err:(e && (e.stack || e.message)) || String(e)});
+            }
+            if(lmOK){
+              logEvt("detect",{refine_landmarks_ok:true, lm_ms:lmMs, landmarks:lastLandmarks?68:0});
+            }else{
+              logEvt("detect",{refine_landmarks_fail:true});
+            }
           }
         } else {
           logEvt("detect", { refine_skipped: "faceapi not ready" });
@@ -674,7 +703,7 @@ $("sampleBtn").addEventListener('click', async ()=>{
   }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) }
 });
 
-/* Auto Test (always dual) */
+/* Auto Test (dual) */
 let __autoTestStartIdx=0;
 function buildAutoTestReport(){
   const full = getAllLogsText();
@@ -688,14 +717,15 @@ function buildAutoTestReport(){
   const finalBlaze = (chunk.match(/"step":"detect_blazeonly".*?"ms":(\d+)/) || [])[1] || (chunk.match(/"finalDetect_ms":(\d+)/)||[])[1];
   const finalCdn   = (chunk.match(/"step":"detect_cdn".*?"ms":(\d+)/) || [])[1];
 
-  const refineOK   = /"step":"refine","ok":true/.test(chunk);
+  const refineOK   = /"refine_detect_ok":true/.test(chunk);
+  const lmOK       = /"refine_landmarks_ok":true/.test(chunk);
   const anaBlazeOK = /"step":"analysis_blazeonly","ok":true/.test(chunk);
   const anaCdnOK   = /"step":"analysis_cdn","ok":true/.test(chunk);
 
   const passes = (chunk.match(/"ok":true/g) || []).length;
 
   const summaryLine =
-    `YorN ${REVISION} • TF backend: ${backend} • refine path: ${refineOK?'ok':'fail'} • `+
+    `YorN ${REVISION} • TF backend: ${backend} • refine(box): ${refineOK?'ok':'fail'} • landmarks: ${lmOK?'ok':'off/fail'} • `+
     `rough: ${rough||'—'} ms • final(blaze): ${finalBlaze||'—'} ms • final(cdn): ${finalCdn||'—'} ms • `+
     `analysis(blaze/cdn): ${anaBlazeOK?'ok':'fail'}/${anaCdnOK?'ok':'fail'} • errors: ${errors} • passes: ${passes}`;
 
@@ -749,7 +779,7 @@ async function runAutoTest(){
       logEvt('test',{step:`detect_${mode}`,ok:!!lastBox, ms:tDetect});
 
       if(mode === "cdn"){
-        const refined = /"refine_ms":/.test(getAllLogsText().slice(__autoTestStartIdx));
+        const refined = /"refine_detect_ok":true/.test(getAllLogsText().slice(__autoTestStartIdx));
         logEvt('test',{step:'refine',ok:refined});
       } else {
         logEvt('test',{step:'refine_guard',ok:true});
