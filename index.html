@@ -2,9 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>YorN — 1.16.3-alpha</title>
+<title>YorN — 1.16.4-alpha</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<!-- CSP tuned for local file + TFJS usage -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self' https: data: blob:;
   script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;
@@ -250,8 +249,7 @@
 </div>
 
 <script>
-/* ===== Core helpers ===== */
-const REVISION = "1.16.3-alpha";
+const REVISION = "1.16.4-alpha";
 const $ = (id)=>document.getElementById(id);
 const diagnostics = { el: null };
 function _appendTop(s){ if(!diagnostics.el) return; diagnostics.el.textContent = s + (diagnostics.el.textContent || ""); }
@@ -268,16 +266,16 @@ document.addEventListener("DOMContentLoaded", ()=>{
   hideVeil(); logEvt('config',{boot:'dom-ready',rev:REVISION});
 });
 
-/* ===== Veil (fail-safe, non-blocking) ===== */
+/* Veil */
 function showVeil(msg){ const v=$("veil"); if(!v) return; $("veilMsg").textContent=msg||"Loading…"; v.classList.remove("hidden"); v.setAttribute("aria-hidden","false"); }
 function hideVeil(){ const v=$("veil"); if(v){ v.classList.add("hidden"); v.setAttribute("aria-hidden","true"); } }
 window.addEventListener("load", hideVeil);
 document.addEventListener("click",(e)=>{ if(e.target && (e.target.id==="dismissVeilBtn")) hideVeil(); if(e.target && e.target.id==="retryInitBtn") { hideVeil(); initFrameworks(true); } });
 
-/* ===== Progress ===== */
+/* Progress */
 function setProgress(p,t){ if(progressBar) progressBar.style.width=(p||0)+'%'; if(progressText) progressText.textContent=t||'' }
 
-/* ===== Session stats ===== */
+/* Session stats */
 let detTimes=[], anaCount=0, detCount=0, hintCounts={};
 function updateFooter(){
   const avg = detTimes.length ? Math.round(detTimes.reduce((a,b)=>a+b,0)/detTimes.length) : '—';
@@ -285,13 +283,13 @@ function updateFooter(){
   $("sessDet").textContent=`${detCount} detects`; $("sessAna").textContent=`${anaCount} analyses`; $("sessAvg").textContent=avg; $("sessHint").textContent=common;
 }
 
-/* ===== Frameworks init ===== */
+/* Frameworks init */
 async function initFrameworks(userTriggered=false){
   showVeil(userTriggered ? "Re-initializing…" : "Loading frameworks…");
   const HARD_TIMEOUT_MS = 4000;
   const tm = setTimeout(()=>{ hideVeil(); logEvt("config",{veil:"hard-timeout-hide"}) }, HARD_TIMEOUT_MS);
   try{
-    // TFJS presence
+    // TFJS
     let tfOK=false;
     for(let i=0;i<20;i++){ if(window.tf){ tfOK=true; break } await new Promise(r=>setTimeout(r,100)); }
     if(!tfOK){ logEvt("error",{tf_presence:"timeout"}); hideVeil(); return; }
@@ -312,7 +310,7 @@ async function initFrameworks(userTriggered=false){
 }
 window.addEventListener("load", ()=>initFrameworks(false));
 
-/* ===== Image decoding & preview ===== */
+/* Image decode & preview */
 async function blobToCanvasViaImg(blob){ const url=URL.createObjectURL(blob); try{ const img=new Image(); img.decoding="sync"; img.loading="eager"; await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url}); const c=document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext("2d").drawImage(img,0,0); return c } finally{ URL.revokeObjectURL(url) } }
 async function decodeOriginal(fileOrBlob){
   try{ if('createImageBitmap' in window){ const bmp=await createImageBitmap(fileOrBlob); logEvt('detect',{decode:'createImageBitmap',w:bmp.width,h:bmp.height}); return {bitmap:bmp,width:bmp.width,height:bmp.height}; } }
@@ -352,7 +350,7 @@ function renderWorkingCanvas(maxSide=1024,centerBox=null){
 function drawBox(ctx,box,color,label){ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(box.x,box.y,box.width,box.height);ctx.fillStyle=color;ctx.font="12px ui-monospace,monospace";ctx.fillText(label,box.x,Math.max(12,box.y-4))}
 function drawCross(ctx,cx,cy,offX,offY){ctx.strokeStyle="#60a5fa";ctx.beginPath();ctx.moveTo(cx-8,cy);ctx.lineTo(cx+8,cy);ctx.moveTo(cx,cy-8);ctx.lineTo(cx,cy+8);ctx.stroke();ctx.fillStyle="#60a5fa";ctx.font="12px ui-monospace,monospace";const text=`(${Math.round(cx)},${Math.round(cy)}) | offX ${offX.toFixed(1)}% • offY ${offY.toFixed(1)}%`;const tx=Math.min(cx+10,cvOverlay.width-260),ty=Math.min(cy+14,cvOverlay.height-4);ctx.fillText(text,tx,ty)}
 
-/* ===== Models & refine ===== */
+/* Models & refine */
 let blazeModel=null; async function ensureBlaze(){ if(blazeModel) return; blazeModel=window.__blazeModel; }
 async function headOK(url, max=2){ for(let i=0;i<max;i++){ try{ const r=await fetch(url,{method:'HEAD',cache:'no-store'}); return r.ok }catch(e){ await new Promise(r=>setTimeout(r,200)) } } return false }
 
@@ -367,10 +365,16 @@ async function ensureFaceApi(){
   const m1=base+"/tiny_face_detector_model-weights_manifest.json"; const m2=base+"/face_landmark_68_model-weights_manifest.json";
   const ok1=await headOK(m1), ok2=await headOK(m2); logEvt('detect',{weightsHealth:{mani1:ok1,mani2:ok2,base}});
   if(!(ok1&&ok2)) return false;
-  try{ await faceapi.nets.tinyFaceDetector.loadFromUri(base); await faceapi.nets.faceLandmark68Net.loadFromUri(base); faceApiReady=true; logEvt('detect',{faceapiReady:true,usingWeightsFrom:base}); return true }catch(e){ logEvt('error',{faceapi_load:e.message||String(e)}); return false }
+  try{
+    await faceapi.nets.tinyFaceDetector.loadFromUri(base);
+    await faceapi.nets.faceLandmark68Net.loadFromUri(base);
+    faceApiReady=true; logEvt('detect',{faceapiReady:true,usingWeightsFrom:base}); return true
+  }catch(e){
+    logEvt('error',{faceapi_load:e.message||String(e)}); return false
+  }
 }
 
-/* ===== Detection ===== */
+/* Detection */
 function downsample(canvas,w,mirror=false){const h=Math.round(w*(canvas.height/canvas.width));const tmp=Object.assign(document.createElement("canvas"),{width:w,height:h});const ctx=tmp.getContext("2d");if(mirror){ctx.translate(w,0);ctx.scale(-1,1)}ctx.drawImage(canvas,0,0,w,h);return tmp}
 async function detectFlow(){
   try{
@@ -379,7 +383,7 @@ async function detectFlow(){
     let canvas=renderWorkingCanvas(1024); if(!canvas){ logEvt("error",{render:"failed"}); return }
     lastCanvas=canvas; paintBaseCanvas(canvas);
 
-    // Rough locate to auto-zoom
+    // Rough locate
     const tinyW=160,tinyH=Math.round(tinyW*(canvas.height/canvas.width));
     const tmp=Object.assign(document.createElement("canvas"),{width:tinyW,height:tinyH});
     tmp.getContext("2d").drawImage(canvas,0,0,tinyW,tinyH);
@@ -417,7 +421,7 @@ async function detectFlow(){
     drawCross(octx,cx,cy,offX,offY);
     logEvt("detect",{finalDetect_ms:det.elapsed_ms,scale:det.scale,mirror:det.mirror,box:lastBox});
 
-    // Optional refine
+    // Optional refine (hardened)
     if ($("fixMode").value === "cdn") {
       try {
         setProgress(75, "Refining (face‑api)…");
@@ -426,21 +430,38 @@ async function detectFlow(){
           const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.3 });
           const tR = performance.now();
           let result = null;
-          try { result = await faceapi.detectSingleFace(lastCanvas, opts).withFaceLandmarks(); } catch (e) { logEvt("error", { refine_exception: (e && (e.stack || e.message)) || String(e) }); }
+          try {
+            result = await faceapi
+              .detectSingleFace(lastCanvas, opts)
+              .withFaceLandmarks();
+          } catch (e) {
+            logEvt("error", { refine_exception: (e && (e.stack || e.message)) || String(e) });
+          }
           const msR = Math.round(performance.now() - tR);
-          if (result && result.detection && result.detection.box) {
-            const b = result.detection.box;
+
+          const boxObj = result && result.detection && result.detection.box;
+          const validBox = boxObj && Number.isFinite(boxObj.x) && Number.isFinite(boxObj.y)
+                        && Number.isFinite(boxObj.width) && Number.isFinite(boxObj.height);
+
+          if (validBox) {
+            const b = boxObj;
             lastBox = { x: b.x, y: b.y, width: b.width, height: b.height };
-            lastLandmarks = result.landmarks || null;
+            lastLandmarks = (result && result.landmarks) || null;
+
             octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
             drawBox(octx,lastBox,"#f59e0b",`Refined • ${msR}ms`);
-            if(lastLandmarks) try{ const pts=lastLandmarks.positions||lastLandmarks; octx.fillStyle="#f472b6"; for(const p of pts){ octx.fillRect(p.x-1,p.y-1,2,2) } }catch(_){}
+            if(lastLandmarks){
+              try{
+                const pts=lastLandmarks.positions||lastLandmarks;
+                octx.fillStyle="#f472b6"; for(const p of pts){ octx.fillRect(p.x-1,p.y-1,2,2) }
+              }catch(_){}
+            }
             const cx2=lastBox.x+lastBox.width/2, cy2=lastBox.y+lastBox.height/2;
             const offX2=((cx2 - lastCanvas.width/2)/(lastCanvas.width/2))*100, offY2=((cy2 - lastCanvas.height/2)/(lastCanvas.height/2))*100;
             drawCross(octx,cx2,cy2,offX2,offY2);
             logEvt("detect",{refine_ms:msR,faceapi:true,box:lastBox,landmarks:lastLandmarks?68:0});
           } else {
-            logEvt("detect",{refine_ms:msR,faceapi:false,reason:"no detection"});
+            logEvt("detect",{refine_ms:msR,faceapi:false,reason:"no detection/invalid"});
           }
         } else {
           logEvt("detect", { refine_skipped: "faceapi not ready" });
@@ -456,7 +477,7 @@ async function detectFlow(){
   }catch(e){ logEvt("error",{detectFlow:e.message||String(e)}) }
 }
 
-/* ===== Lightweight Analysis ===== */
+/* Lightweight Analysis */
 function runLightAnalysis(){
   if(!lastCanvas||!lastBox){ logEvt("error",{analysis:"no detection"}); return }
   const imgW=lastCanvas.width,imgH=lastCanvas.height,b=lastBox;
@@ -499,12 +520,11 @@ function runLightAnalysis(){
   $("analysisHints").textContent="Hints: "+(hints.length?hints.join(" • "):"Looks good!");
   logEvt("analysis",{analysis:lastAnalysis});
 
-  // Enable report/dataset bits
   $("copyJsonBtn").disabled=false; $("exportJsonBtn").disabled=false; $("exportPdfBtn").disabled=false;
   $("researchCard").style.display=""; maybeEnableSave();
 }
 
-/* ===== Research dataset ===== */
+/* Research dataset */
 const DS_KEY='yorn_dataset_v1';
 function loadDS(){ try{ return JSON.parse(localStorage.getItem(DS_KEY)||'[]') }catch(_){ return [] } }
 function saveDS(rows){ try{ localStorage.setItem(DS_KEY, JSON.stringify(rows)) }catch(_){} }
@@ -543,7 +563,7 @@ $("exportDSJsonBtn").addEventListener('click', ()=>{
 });
 dsCount();
 
-/* ===== PDF/HTML report (popup-safe) ===== */
+/* PDF/HTML report */
 $("exportPdfBtn").addEventListener('click', ()=>{
   if(!lastAnalysis || !lastCanvas){
     logEvt('error',{report:'no_analysis_or_canvas'});
@@ -613,7 +633,7 @@ $("exportPdfBtn").addEventListener('click', ()=>{
   }
 });
 
-/* ===== Copy helpers ===== */
+/* Copy helpers */
 async function copyTextRobust(text){
   if(text==null) text='';
   try{ if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(text); return {ok:true,via:'clipboard'} } }catch(_){}
@@ -622,7 +642,7 @@ async function copyTextRobust(text){
 }
 function getAllLogsText(){ const el=$("diagnostics"); return el ? (el.innerText || el.textContent || '') : '' }
 
-/* ===== UI binds ===== */
+/* UI binds */
 $("enhanceBtn").addEventListener("click",()=>{ const z=$("zoom"); z.value=Math.max(+z.value,1.5); $("zoomLabel").textContent=(+z.value).toFixed(2); const b=$("bri"); b.value=Math.max(+b.value,1.18); $("briLabel").textContent=(+b.value).toFixed(2); const c=$("con"); c.value=Math.max(+c.value,1.25); $("conLabel").textContent=(+c.value).toFixed(2); detectFlow() });
 $("detectBtn").addEventListener("click",()=>detectFlow());
 $("startAnalysisBtn").addEventListener("click",()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis() });
@@ -648,7 +668,7 @@ $("sampleBtn").addEventListener('click', async ()=>{
   }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) }
 });
 
-/* ===== Auto Test (dual path) ===== */
+/* Auto Test (always dual) */
 let __autoTestStartIdx=0;
 function buildAutoTestReport(){
   const full = getAllLogsText();
@@ -686,8 +706,8 @@ async function runAutoTest(){
   $("autoTestBtn").disabled = true;
   $("copyTestBtn").disabled = true;
 
-  const fullBefore = getAllLogsText();
-  __autoTestStartIdx = fullBefore.length;
+  const before = getAllLogsText();
+  __autoTestStartIdx = before.length;
   logEvt('test', { step:'begin', rev: REVISION });
 
   try{
@@ -695,51 +715,45 @@ async function runAutoTest(){
     logEvt('test',{step:'tf_present',ok:tfPresent});
     if(!tfPresent) throw new Error('tf missing');
 
-    // Ensure sample is loaded once
+    // Load sample once
     await $("sampleBtn").click();
-    await new Promise(r=>setTimeout(r,400));
+    await new Promise(r=>setTimeout(r,350));
     logEvt('test',{step:'sample',ok:!!baseSource});
 
-    // Helper to run one scenario (mode = 'blazeonly' or 'cdn')
-    const runScenario = async (modeLabel)=>{
-      const original = $("fixMode").value;
-      $("fixMode").value = modeLabel;
+    const runScenario = async (mode)=>{
+      const prev = $("fixMode").value;
+      $("fixMode").value = mode;
 
       const t0 = performance.now();
       await detectFlow();
-      await new Promise(r=>setTimeout(r,350));
+      await new Promise(r=>setTimeout(r,300));
       const tDetect = Math.round(performance.now()-t0);
-      logEvt('test',{step:`detect_${modeLabel}`,ok:!!lastBox, ms:tDetect});
+      logEvt('test',{step:`detect_${mode}`,ok:!!lastBox, ms:tDetect});
 
-      if(modeLabel === "cdn"){
-        const hadRefine = /"refine_ms":/.test(getAllLogsText().slice(__autoTestStartIdx));
-        logEvt('test',{step:'refine',ok:hadRefine});
+      if(mode === "cdn"){
+        const refined = /"refine_ms":/.test(getAllLogsText().slice(__autoTestStartIdx));
+        logEvt('test',{step:'refine',ok:refined});
       } else {
         logEvt('test',{step:'refine_guard',ok:true});
       }
 
       $("startAnalysisBtn").click();
-      await new Promise(r=>setTimeout(r,300));
-      const okAnalysis = !!lastAnalysis;
-      logEvt('test',{step:`analysis_${modeLabel}`,ok:okAnalysis});
+      await new Promise(r=>setTimeout(r,250));
+      logEvt('test',{step:`analysis_${mode}`,ok:!!lastAnalysis});
 
-      $("fixMode").value = original;
-      return { ok: !!(baseSource && lastBox && okAnalysis) };
+      $("fixMode").value = prev;
     };
 
-    // Run BlazeFace‑only then face‑api refine
-    const r1 = await runScenario('blazeonly');
-    const r2 = await runScenario('cdn');
+    await runScenario('blazeonly');
+    await runScenario('cdn');
 
-    const ok = r1.ok && r2.ok;
+    const ok = /"step":"analysis_blazeonly","ok":true/.test(getAllLogsText().slice(__autoTestStartIdx))
+           && /"step":"analysis_cdn","ok":true/.test(getAllLogsText().slice(__autoTestStartIdx));
+
     const badge = $("readinessBadge");
-    if(badge){
-      badge.style.display='inline-block';
-      badge.className = ok ? 'ready' : 'blocked';
-      badge.textContent = ok ? 'READY' : 'BLOCKED';
-    }
+    if(badge){ badge.style.display='inline-block'; badge.className = ok ? 'ready' : 'blocked'; badge.textContent = ok ? 'READY' : 'BLOCKED'; }
     logEvt('test',{step:'summary_dual',ok});
-    setTimeout(()=>{ $("copyTestBtn").disabled = false; }, 150);
+    setTimeout(()=>{ $("copyTestBtn").disabled = false; }, 120);
   }catch(e){
     logEvt('error',{autoTest:e.message||String(e)});
   }
@@ -747,7 +761,7 @@ async function runAutoTest(){
   $("autoTestBtn").disabled = false;
 }
 
-/* ===== Analysis JSON export/copy ===== */
+/* Analysis JSON export/copy */
 $("copyJsonBtn").addEventListener('click', async ()=>{
   if(!lastAnalysis) return;
   const res = await copyTextRobust(JSON.stringify(lastAnalysis,null,2));
@@ -759,7 +773,7 @@ $("exportJsonBtn").addEventListener('click', ()=>{
   const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 });
 
-/* ===== Boot ===== */
+/* Boot */
 window.addEventListener('load', ()=>{
   try{
     const saved=localStorage.getItem("yorn_last_analysis");
