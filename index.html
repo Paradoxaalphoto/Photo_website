@@ -1,734 +1,554 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>YorN — 1.16.8-alpha</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta http-equiv="Content-Security-Policy" content="
-  default-src 'self' https: data: blob:;
-  script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;
-  style-src 'self' 'unsafe-inline';
-  img-src * data: blob:;
-  connect-src * data: blob:;
-  object-src 'none';
-  base-uri 'self';
-  frame-ancestors 'self';
-  upgrade-insecure-requests
-">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<title>YorN • 1.16.9-alpha</title>
 <style>
-  :root{color-scheme:light dark}
+  :root{
+    --bg:#0b0e12; --panel:#121720; --ink:#e7edf6; --muted:#9fb0c6; --accent:#68d391; --warn:#ffb020; --bad:#ff6b6b; --line:#243043;
+    --pad:12px; --radius:14px; --radius-sm:10px;
+  }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,sans-serif;background:#0b1220;color:#e6eaf2;overflow-x:hidden}
-  .container{max-width:980px;margin:0 auto;padding:16px}
-  .card{background:#0f172a;border:1px solid #233046;border-radius:12px;padding:12px;margin-top:12px}
-  .row{display:grid;grid-template-columns:1fr auto auto auto auto auto auto auto;gap:8px;align-items:end}
-  .controls{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-top:8px}
-  @media (max-width:720px){
-    .row{grid-template-columns:1fr;gap:10px}
-    .controls{grid-template-columns:1fr 1fr;gap:10px}
-    .two-col{grid-template-columns:1fr;gap:12px}
-    .research-grid{grid-template-columns:1fr}
-  }
-  label{font-size:12px;color:#A9B4C8}
-  input[type="range"],input[type="number"],select,textarea{width:100%;padding:6px;border:1px solid #233046;border-radius:8px;background:#0b1220;color:#E6EAF2}
-  textarea{min-height:72px;resize:vertical}
-  .btn{padding:10px 14px;border-radius:8px;border:1px solid #233046;background:#1f2937;color:#E6EAF2;cursor:pointer}
-  .btn[disabled]{opacity:.5;cursor:not-allowed}
-  .btn-primary{background:#2563eb}
-
-  #progressContainer{height:8px;background:#1e293b;border-radius:6px;overflow:hidden;margin-top:8px}
-  #progressBar{height:100%;width:0;background:#38bdf8;transition:width .25s}
-  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-
-  .previewWrap{position:relative;overflow:hidden}
-  .previewWrap canvas{pointer-events:none}
-  .previewSurface{width:100%;height:auto;display:block}
-
-  #diagnostics{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:12px ui-monospace,Menlo,Consolas,monospace;background:#0b1220;border:1px solid #233046;border-radius:8px;padding:8px;height:240px;max-height:42vh;overflow:auto}
-  .diag-tools{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
-  .filter-chip{display:inline-flex;gap:6px;align-items:center;padding:4px 8px;border:1px solid #233046;border-radius:999px;background:#0b1220;font-size:12px}
-
-  .analysis-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .kv{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:6px 8px;background:#0b1220;border:1px solid #233046;border-radius:8px}
-  .kv b{color:#c7d2fe}
-  .badge{font:12px ui-monospace,monospace;padding:1px 6px;border-radius:999px;border:1px solid #233046;margin-left:6px}
-  .ok{background:rgba(16,185,129,.15);color:#a7f3d0;border-color:rgba(16,185,129,.55)}
-  .warn{background:rgba(245,158,11,.15);color:#fde68a;border-color:rgba(245,158,11,.55)}
-
-  #revBadge{position:fixed;top:8px;right:10px;z-index:9999;background:#0008;color:#fff;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid #fff3;border-radius:999px}
-  #readyBadge{position:fixed;top:36px;right:10px;z-index:9999;display:none;background:#10b98126;color:#a7f3d0;font:12px ui-monospace,monospace;padding:3px 8px;border:1px solid #10b9818c;border-radius:999px}
-  #readinessBadge{position:fixed;top:64px;right:10px;z-index:9999;display:none;font:12px ui-monospace,monospace;padding:3px 8px;border-radius:999px;border:1px solid #233046}
-  #readinessBadge.ready{background:#052e1b; color:#a7f3d0; border-color:#0a5a33}
-  #readinessBadge.blocked{background:#3a0b0b; color:#fecaca; border-color:#7f1d1d}
-
-  #veil{position:fixed;inset:0;background:#0b1220;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:10000}
-  #veil .spin{width:28px;height:28px;border-radius:999px;border:3px solid #334155;border-top-color:#38bdf8;animation:sp 0.9s linear infinite}
-  #veil .msg{color:#A9B4C8;font:13px ui-monospace,monospace}
-  @keyframes sp{to{transform:rotate(360deg)}}
-
-  .hidden{display:none !important}
-  footer{opacity:.8;font:12px ui-monospace,monospace;margin-top:10px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
-
-  .research-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .hint{font-size:12px;color:#A9B4C8}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+  .wrap{max-width:980px;margin:0 auto;padding:18px}
+  h1{font-size:18px;margin:0 0 12px 0;display:flex;align-items:center;gap:10px}
+  .rev{font:600 12px/1 ui-monospace,Menlo,Consolas;background:#0f1420;border:1px solid var(--line);padding:4px 8px;border-radius:999px;color:#9ad;display:flex;align-items:center;gap:6px}
+  .badge{font:600 11px/1 ui-monospace,Menlo,Consolas;padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
+  .ok{background:#0f1a14;color:#aef2c0;border-color:#163a27}
+  .bad{background:#1f1313;color:#ffc7c7;border-color:#3e1b1b}
+  .row{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:860px){.row{grid-template-columns:1.2fr .8fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:var(--pad);}
+  .card h3{margin:0 0 8px 0;font-size:14px;color:#cfe0fb}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+  button,.btn{background:#162030;border:1px solid var(--line);color:var(--ink);padding:8px 12px;border-radius:10px;font-weight:600}
+  button:disabled{opacity:.5}
+  input[type="range"]{width:160px}
+  label.small{font-size:12px;color:var(--muted);margin-right:6px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  canvas, img{max-width:100%;border-radius:12px;display:block}
+  .hud{position:relative}
+  .hud canvas{position:absolute;inset:0;pointer-events:none}
+  #diagnostics{height:240px;overflow:auto;background:#0c1119;border:1px solid var(--line);border-radius:10px;padding:10px;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+  .muted{color:var(--muted)}
+  .pill{display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid var(--line);font:12px ui-monospace,Menlo,Consolas}
+  .inline{display:inline-flex;gap:8px;align-items:center}
+  .spacer{flex:1}
+  .toast{min-height:18px;color:#cce9d8}
 </style>
-
-<!-- Pinned libs (TFJS 2.8.6 for face-api.js 0.22.2 compatibility) -->
-<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.8.6/dist/tf.min.js" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@2.8.6/dist/tf-backend-wasm.min.js" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
-<div id="revBadge">YorN Rev <span id="revText"></span></div>
-<div id="readyBadge"><span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:#10b981;margin-right:6px"></span><span id="readyText">Ready for Analysis</span></div>
-<div id="readinessBadge" title="Auto‑test readiness badge">READY</div>
+  <div class="wrap">
+    <h1>
+      YorN
+      <span class="rev">rev <span id="rev">1.16.9-alpha</span></span>
+      <span id="autoBadge" class="badge bad" title="Auto Test hasn’t run yet">AUTO TEST • —</span>
+      <span class="spacer"></span>
+      <span class="muted">Lightweight face analysis prototype</span>
+    </h1>
 
-<div id="veil" class="hidden" aria-hidden="true">
-  <div class="spin" aria-label="Loading"></div>
-  <div class="msg" id="veilMsg">Frameworks loading…</div>
-  <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center">
-    <button id="dismissVeilBtn" class="btn">Dismiss</button>
-    <button id="retryInitBtn" class="btn">Retry Init</button>
-  </div>
-</div>
-
-<div class="container">
-  <h2>YorN — Face Detection & Research Mode</h2>
-
-  <div class="card">
     <div class="row">
-      <input id="fileInput" type="file" accept="image/*" />
-      <button id="sampleBtn" class="btn">Load Sample</button>
-      <button id="enhanceBtn" class="btn" disabled>Enhance & Retry</button>
-      <button id="detectBtn" class="btn" disabled>Detect</button>
-      <button id="startAnalysisBtn" class="btn btn-primary" disabled>Start Analysis</button>
-      <button id="autoTestBtn" class="btn">Auto Test</button>
-      <button id="copyTestBtn" class="btn" disabled>Copy Test Result</button>
-      <button id="resetBtn" class="btn">Reset</button>
-      <button id="clearLogsBtn" class="btn">Clear Logs</button>
-    </div>
-
-    <div class="controls">
-      <div><label>Rotate (°)</label><input id="rotDeg" type="number" step="90" value="0" /></div>
-      <div><label>Zoom (0.8–2.0): <span id="zoomLabel">1.20</span></label><input id="zoom" type="range" min="0.8" max="2.0" step="0.05" value="1.2" /></div>
-      <div><label>Brightness: <span id="briLabel">1.10</span></label><input id="bri" type="range" min="0.8" max="1.4" step="0.02" value="1.10" /></div>
-      <div><label>Contrast: <span id="conLabel">1.15</span></label><input id="con" type="range" min="0.8" max="1.6" step="0.02" value="1.15" /></div>
-
-      <div>
-        <label>Fix mode</label>
-        <select id="fixMode">
-          <option value="blazeonly" selected>BlazeFace only</option>
-          <option value="cdn">face‑api refine (box)</option>
-          <option value="native">Native → Blaze fallback</option>
-        </select>
-      </div>
-      <div>
-        <label>Weights Source</label>
-        <select id="weightsSrc">
-          <option value="https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights" selected>jsDelivr (justadude)</option>
-          <option value="https://rawcdn.githack.com/justadudewhohacks/face-api.js/0.22.2/weights">githack mirror</option>
-          <option value="https://cdn.jsdelivr.net/gh/vladmandic/face-api/model">jsDelivr (vladmandic)</option>
-          <option value="https://unpkg.com/face-api.js@0.22.2/weights">unpkg</option>
-          <option value="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights">jsDelivr (npm)</option>
-        </select>
-      </div>
-
-      <label style="display:flex;gap:8px;align-items:center"><input id="showOverlays" type="checkbox" /> Show overlays</label>
-      <label style="display:flex;gap:8px;align-items:center"><input id="showHUD" type="checkbox" /> Show HUD</label>
-      <label style="display:flex;gap:8px;align-items:center"><input id="autoAnalyze" type="checkbox" /> Auto‑analyze</label>
-      <label style="display:flex;gap:8px;align-items:center"><input id="refineLandmarks" type="checkbox" /> Refine landmarks (68 pts)</label>
-    </div>
-
-    <div id="progressContainer"><div id="progressBar"></div></div>
-    <p id="progressText" style="font-size:12px;color:#A9B4C8;margin:6px 2px 0"></p>
-  </div>
-
-  <div class="card">
-    <div class="two-col">
-      <div class="previewWrap">
-        <strong style="font-size:13px">Preview</strong>
-        <img id="base" class="hidden previewSurface" alt="Preview base"/>
-        <canvas id="overlayRough" class="hidden previewSurface"></canvas>
-        <canvas id="overlay" class="hidden previewSurface"></canvas>
-      </div>
-      <div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-          <strong style="font-size:13px">Diagnostics</strong>
-          <div class="diag-tools">
-            <input id="diagSearch" placeholder="filter…" style="padding:6px;border:1px solid #233046;border-radius:8px;background:#0b1220;color:#E6EAF2" />
-            <label class="filter-chip"><input type="checkbox" class="diagType" value="detect" checked> detect</label>
-            <label class="filter-chip"><input type="checkbox" class="diagType" value="overlay" checked> overlay</label>
-            <label class="filter-chip"><input type="checkbox" class="diagType" value="analysis" checked> analysis</label>
-            <label class="filter-chip"><input type="checkbox" class="diagType" value="config" checked> config</label>
-            <label class="filter-chip"><input type="checkbox" class="diagType" value="error" checked> error</label>
-            <label class="filter-chip"><input type="checkbox" class="diagType" value="test" checked> test</label>
-            <button id="copyDiagBtn" class="btn" style="margin-left:6px">Copy Diagnostics</button>
+      <div class="card">
+        <h3>Image</h3>
+        <div class="controls">
+          <label class="small">Choose</label>
+          <input id="fileInput" type="file" accept="image/*" />
+          <button id="sampleBtn" type="button">Load Sample</button>
+          <span class="spacer"></span>
+          <span id="progressText" class="pill muted">Idle</span>
+        </div>
+        <div class="grid2">
+          <div>
+            <div class="hud">
+              <canvas id="base" width="0" height="0"></canvas>
+              <canvas id="overlay" width="0" height="0"></canvas>
+            </div>
+          </div>
+          <div class="card" style="background:#0e141f">
+            <h3>Controls</h3>
+            <div class="controls">
+              <button id="enhanceBtn" type="button" disabled>Enhance & Retry</button>
+              <button id="detectBtn" type="button" disabled>Detect</button>
+              <button id="startAnalysisBtn" type="button" disabled>Start Analysis</button>
+            </div>
+            <div class="controls">
+              <label class="small">Rotate (°)</label><input id="rot" type="range" min="-20" max="20" step="1" value="0">
+              <label class="small">Zoom</label><input id="zoom" type="range" min="0.8" max="2.0" step="0.05" value="1.20"><span id="zoomLabel" class="small">1.20</span>
+            </div>
+            <div class="controls">
+              <label class="small">Brightness</label><input id="bri" type="range" min="0.6" max="1.6" step="0.02" value="1.10"><span id="briLabel" class="small">1.10</span>
+              <label class="small">Contrast</label><input id="con" type="range" min="0.7" max="1.7" step="0.02" value="1.15"><span id="conLabel" class="small">1.15</span>
+            </div>
+            <div class="controls">
+              <button id="autoTestBtn" type="button">Auto Test</button>
+              <button id="copyTestBtn" type="button" disabled>Copy Auto Test</button>
+              <button id="copyDiagBtn" type="button">Copy Diagnostics</button>
+              <button id="clearLogsBtn" type="button">Clear Logs</button>
+              <button id="resetBtn" type="button">Reset</button>
+            </div>
+            <div class="toast" id="toast"></div>
           </div>
         </div>
+      </div>
+
+      <div class="card">
+        <h3 class="inline">
+          Diagnostics
+          <span class="pill muted">backend: <span id="backend">—</span></span>
+          <span class="pill muted">mem: <span id="mem">—</span></span>
+        </h3>
         <div id="diagnostics">No diagnostics yet.</div>
+
+        <div id="analysisCard" class="card" style="margin-top:12px; display:none;">
+          <h3>Analysis</h3>
+          <div id="analysisSummary" class="muted">—</div>
+          <div class="controls">
+            <button id="copyJsonBtn" type="button" disabled>Copy Analysis JSON</button>
+            <button id="exportJsonBtn" type="button" disabled>Download JSON</button>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
 
-  <div class="card" id="analysisCard" style="display:none">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-      <strong>Analysis <span id="tsBadge" class="badge" title="timestamp"></span></strong>
-      <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap">
-        <button id="copyJsonBtn" class="btn" disabled>Copy JSON</button>
-        <button id="exportJsonBtn" class="btn" disabled>Download JSON</button>
-        <button id="exportPdfBtn" class="btn" disabled>Download PDF Report</button>
-      </div>
-    </div>
-    <div class="analysis-grid" style="margin-top:8px">
-      <div class="kv"><span>Face area</span><span><b id="kv_area">—</b><span id="bdg_area" class="badge"></span></span></div>
-      <div class="kv"><span>Aspect ratio</span><span><b id="kv_ar">—</b><span id="bdg_ar" class="badge"></span></span></div>
-      <div class="kv"><span>Orientation</span><span><b id="kv_orient">—</b></span></div>
-      <div class="kv"><span>Brightness (mean)</span><span><b id="kv_bri">—</b><span id="bdg_bri" class="badge"></span></span></div>
-      <div class="kv"><span>Contrast (stdev)</span><span><b id="kv_contrast">—</b><span id="bdg_con" class="badge"></span></span></div>
-      <div class="kv"><span>Sharpness (Laplacian var)</span><span><b id="kv_sharp">—</b><span id="bdg_sharp" class="badge"></span></span></div>
-      <div class="kv"><span>Center offset X</span><span><b id="kv_offx">—</b><span id="bdg_offx" class="badge"></span></span></div>
-      <div class="kv"><span>Center offset Y</span><span><b id="kv_offy">—</b><span id="bdg_offy" class="badge"></span></span></div>
-    </div>
-    <div class="hints" id="analysisHints"></div>
-  </div>
-
-  <div class="card" id="researchCard" style="display:none">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-      <strong>Research Mode</strong>
-      <span class="hint">Opt‑in; saved locally only</span>
-    </div>
-    <div class="research-grid" style="margin-top:8px">
-      <div>
-        <label>Consent <span style="color:#fb7185">*</span></label>
-        <select id="consent">
-          <option value="">— Select —</option>
-          <option value="yes">I consent to store this rating locally</option>
-          <option value="no">No (don’t store)</option>
-        </select>
-      </div>
-      <div>
-        <label>Rater age group <span style="color:#fb7185">*</span></label>
-        <select id="ageGroup">
-          <option value="">— Select —</option>
-          <option>20–24</option><option>25–29</option><option>30–34</option><option>35–39</option>
-          <option>40–44</option><option>45–49</option><option>50–54</option><option>55–59</option>
-          <option>60–64</option><option>65–69</option><option>70–74</option><option>75–80</option>
-        </select>
-      </div>
-      <div>
-        <label>Rater gender (optional)</label>
-        <select id="raterGender">
-          <option value="">Prefer not to say</option>
-          <option>Female</option><option>Male</option><option>Nonbinary/Other</option>
-        </select>
-      </div>
-      <div>
-        <label>Attractiveness (1–10)</label>
-        <input id="rating" type="range" min="1" max="10" step="1" value="5" />
-      </div>
-      <div>
-        <label>Confidence (0–100%)</label>
-        <input id="confidence" type="range" min="0" max="100" step="5" value="70" />
-      </div>
-      <div>
-        <label>Notes (optional)</label>
-        <textarea id="notes" placeholder="lighting, angle, makeup, beard, etc."></textarea>
-      </div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-      <button id="saveRowBtn" class="btn btn-primary" disabled>Save to Dataset</button>
-      <button id="exportCSVBtn" class="btn" disabled>Export CSV</button>
-      <button id="exportDSJsonBtn" class="btn" disabled>Export JSON</button>
-      <span class="hint">Rows: <span id="dsCount">0</span></span>
-    </div>
-  </div>
-
-  <footer>
-    <div>Session: <span id="sessDet">0 detects</span> • <span id="sessAna">0 analyses</span> • avg detect <span id="sessAvg">—</span> ms</div>
-    <div>Common hint: <span id="sessHint">—</span></div>
-  </footer>
-</div>
+<!-- libs (BlazeFace UMD & minimal helpers) -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@3.21.0/dist/tf-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@3.21.0/dist/tf-converter.min.js"></script>
+<script>tf.env().set('WEBGL_CPU_FORWARD', true);</script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
 
 <script>
-const REVISION = "1.16.8-alpha";
-const $ = (id)=>document.getElementById(id);
-const diagnostics = { el: null };
-function _appendTop(s){ if(!diagnostics.el) return; diagnostics.el.textContent = s + (diagnostics.el.textContent || ""); }
-function logEvt(type,payload){ _appendTop(`[${new Date().toISOString()}] ${JSON.stringify({type,...(payload||{})})}\n`) }
-window.addEventListener('error', e=>logEvt('error',{global:e.message,at:(e.filename||'')+':'+(e.lineno||'')}));
-window.addEventListener('unhandledrejection', e=>{ const r=e&&e.reason; logEvt('error',{unhandled:(r&&(r.message||r))||String(r)}) });
+/* ========= constants / state ========= */
+const REVISION = "1.16.9-alpha";
+const $ = id => document.getElementById(id);
+const diagEl = $("diagnostics");
+let baseSource = null;        // ImageBitmap
+let lastCanvas = null;        // HTMLCanvasElement
+let lastBox = null;           // {x,y,width,height}
+let lastRefineBox = null;     // optional refine box for IoU
+let blazeModel = null;
+let lastAnalysis = null;
 
-let progressBar, progressText, imgBase, cvRough, cvOverlay;
-document.addEventListener("DOMContentLoaded", ()=>{
-  diagnostics.el = $("diagnostics");
-  progressBar = $("progressBar"); progressText = $("progressText");
-  imgBase = $("base"); cvRough = $("overlayRough"); cvOverlay = $("overlay");
-  $("revText").textContent = REVISION;
-  hideVeil(); logEvt('config',{boot:'dom-ready',rev:REVISION});
-
-  // NEW: working Copy Diagnostics button wiring
-  $("copyDiagBtn").addEventListener("click", async ()=>{
-    const text = diagnostics.el ? (diagnostics.el.innerText || diagnostics.el.textContent || '') : '';
-    try{
-      if(navigator.clipboard && window.isSecureContext){
-        await navigator.clipboard.writeText(text);
-        setToast('Diagnostics copied');
-        logEvt('config',{copyDiag:'clipboard',chars:text.length});
-      }else{
-        const ta=document.createElement('textarea');
-        ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px';
-        document.body.appendChild(ta); ta.select();
-        const ok=document.execCommand('copy'); document.body.removeChild(ta);
-        if(ok){ setToast('Diagnostics copied'); logEvt('config',{copyDiag:'execCommand',chars:text.length}); }
-        else{ throw new Error('execCommand failed') }
-      }
-    }catch(e){
-      logEvt('error',{copyDiag:e.message||String(e)});
-      setToast('Copy failed');
-    }
-  });
-});
-
-/* Veil */
-function showVeil(msg){ const v=$("veil"); if(!v) return; $("veilMsg").textContent=msg||"Loading…"; v.classList.remove("hidden"); v.setAttribute("aria-hidden","false"); }
-function hideVeil(){ const v=$("veil"); if(v){ v.classList.add("hidden"); v.setAttribute("aria-hidden","true"); } }
-window.addEventListener("load", hideVeil);
-document.addEventListener("click",(e)=>{ if(e.target && (e.target.id==="dismissVeilBtn")) hideVeil(); if(e.target && e.target.id==="retryInitBtn") { hideVeil(); initFrameworks(true); } });
-
-/* Progress + small toast */
-function setProgress(p,t){ if(progressBar) progressBar.style.width=(p||0)+'%'; if(progressText) progressText.textContent=t||'' }
-function setToast(t){ if(!progressText) return; const old=progressText.textContent; progressText.textContent=t; setTimeout(()=>{progressText.textContent=old},1200) }
-
-/* Session stats */
-let detTimes=[], anaCount=0, detCount=0, hintCounts={};
-function updateFooter(){
-  const avg = detTimes.length ? Math.round(detTimes.reduce((a,b)=>a+b,0)/detTimes.length) : '—';
-  const common = Object.entries(hintCounts).sort((a,b)=>b[1]-a[1])[0]?.[0] || '—';
-  $("sessDet").textContent=`${detCount} detects`; $("sessAna").textContent=`${anaCount} analyses`; $("sessAvg").textContent=avg; $("sessHint").textContent=common;
+/* ========= utils / logging ========= */
+function logLine(obj){
+  const now = new Date().toISOString();
+  diagEl.textContent += (diagEl.textContent ? "\n" : "") + `[${now}] ${JSON.stringify(obj)}`;
+  diagEl.scrollTop = diagEl.scrollHeight;
 }
+function logEvt(type, obj){ logLine({type, ...(obj||{})}); }
+function setToast(msg){ $("toast").textContent = msg || ""; if(msg){ setTimeout(()=>$("toast").textContent="", 1600); } }
+function setProgress(pct,msg){ $("progressText").textContent = msg || ""; }
 
-/* Frameworks init */
-async function initFrameworks(userTriggered=false){
-  showVeil(userTriggered ? "Re-initializing…" : "Loading frameworks…");
-  const HARD_TIMEOUT_MS = 4000;
-  const tm = setTimeout(()=>{ hideVeil(); logEvt("config",{veil:"hard-timeout-hide"}) }, HARD_TIMEOUT_MS);
+/* ========= memory/env probe ========= */
+function envProbe(){
+  let dm = (navigator.deviceMemory ? navigator.deviceMemory + " GB" : "—");
+  let heap = "—";
   try{
-    // TFJS 2.8.6
-    let tfOK=false;
-    for(let i=0;i<20;i++){ if(window.tf){ tfOK=true; break } await new Promise(r=>setTimeout(r,100)); }
-    if(!tfOK){ logEvt("error",{tf_presence:"timeout"}); hideVeil(); return; }
-    try{
-      if(tf.wasm) tf.wasm.setWasmPaths("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@2.8.6/dist/");
-      await tf.setBackend('wasm'); await tf.ready();
-      logEvt("config",{tf:"ready",backend:tf.getBackend(),tf_version:tf?.version_core||'unknown'});
-    }catch(e){
-      logEvt("error",{tf_init:e.message||String(e)});
-      try{ await tf.setBackend('webgl'); await tf.ready(); logEvt("config",{tf:"ready",backend:tf.getBackend(),fallback:"webgl",tf_version:tf?.version_core||'unknown'});}catch(e2){ logEvt("error",{tf_fallback:e2.message||String(e2)}); }
+    if (performance && performance.memory) {
+      const { usedJSHeapSize, jsHeapSizeLimit } = performance.memory;
+      heap = (usedJSHeapSize/1048576).toFixed(0)+" / "+(jsHeapSizeLimit/1048576).toFixed(0)+" MB";
     }
-    // BlazeFace
-    let blazeOK=false;
-    for(let i=0;i<40;i++){ if(window.blazeface){ blazeOK=true; break } await new Promise(r=>setTimeout(r,100)); }
-    if(!blazeOK){ logEvt("error",{blazeface_presence:"timeout"}); hideVeil(); return; }
-    if(!window.__blazeModel){ const t0=performance.now(); window.__blazeModel=await blazeface.load(); logEvt("detect",{blazefaceReady:true,ms:Math.round(performance.now()-t0)}) }
-  }catch(e){ logEvt("error",{initFrameworks:e.message||String(e)}) }
-  clearTimeout(tm); hideVeil(); logEvt("config",{boot:"frameworks-ready"});
+  }catch(_){}
+  $("mem").textContent = `${dm}${heap!=="—" ? (" • " + heap) : ""}`;
 }
-window.addEventListener("load", ()=>initFrameworks(false));
+envProbe();
 
-/* Image handling */
-async function blobToCanvasViaImg(blob){ const url=URL.createObjectURL(blob); try{ const img=new Image(); img.decoding="sync"; img.loading="eager"; await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url}); const c=document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext("2d").drawImage(img,0,0); return c } finally{ URL.revokeObjectURL(url) } }
-async function decodeOriginal(fileOrBlob){
-  try{ if('createImageBitmap' in window){ const bmp=await createImageBitmap(fileOrBlob); logEvt('detect',{decode:'createImageBitmap',w:bmp.width,h:bmp.height}); return {bitmap:bmp,width:bmp.width,height:bmp.height}; } }
-  catch(e){ logEvt('error',{decode_createImageBitmap:e.message||String(e)}) }
-  const can=await blobToCanvasViaImg(fileOrBlob); logEvt('detect',{decode:'blob->img',size_bytes:fileOrBlob.size||0}); return {canvas:can,width:can.width,height:can.height};
-}
-let baseSource=null, workCanvas=null, lastCanvas=null, lastBox=null, lastLandmarks=null, lastAnalysis=null;
-function ensureWork(){ if(!workCanvas) workCanvas=document.createElement('canvas'); return workCanvas }
-function syncOverlaySize(){ const w=imgBase.clientWidth,h=imgBase.clientHeight; if(!w||!h) return; [cvRough,cvOverlay].forEach(c=>{c.style.width=w+'px'; c.style.height=h+'px'}) }
-let __rsTO=null; function onViewportResize(){ clearTimeout(__rsTO); __rsTO=setTimeout(syncOverlaySize,120) }
-window.addEventListener('resize', onViewportResize); window.addEventListener('orientationchange', onViewportResize);
-function paintBaseCanvas(canvas){ $("base").src=canvas.toDataURL('image/png'); $("base").classList.remove('hidden'); [cvRough,cvOverlay].forEach(c=>{c.width=canvas.width;c.height=canvas.height;c.classList.remove('hidden')}); syncOverlaySize(); logEvt('overlay',{painted:{w:canvas.width,h:canvas.height}}) }
-function renderWorkingCanvas(maxSide=1024,centerBox=null){
-  if(!baseSource){ logEvt('error',{render:'no baseSource'}); setToast('Tap “Load Sample” or choose a photo'); return null }
-  const srcW0=baseSource.width, srcH0=baseSource.height;
-  const angle=(parseInt($("rotDeg").value,10)||0)%360; let z=parseFloat($("zoom").value)||1.0;
-  const br=parseFloat($("bri").value)||1.0, cr=parseFloat($("con").value)||1.0;
-  const scale0=Math.min(1, maxSide/Math.max(srcW0,srcH0));
-  const w0=Math.max(1,Math.round(srcW0*scale0)), h0=Math.max(1,Math.round(srcH0*scale0));
-  let cx=srcW0/2, cy=srcH0/2;
-  if(centerBox){
-    cx=centerBox.x+centerBox.width/2; cy=centerBox.y+centerBox.height/2;
-    const zx=(w0/(centerBox.width*scale0))*0.9, zy=(h0/(centerBox.height*scale0))*0.9; z=Math.max(z,Math.min(zx,zy,1.8));
-    logEvt('overlay',{autoZoomApplied:+z.toFixed(2)});
+/* ========= canvas helpers ========= */
+function paintBaseCanvas(canvas){
+  const ctx = canvas.getContext("2d");
+  ctx.filter = `brightness(${+$("bri").value}) contrast(${+$("con").value})`;
+  ctx.save();
+  const deg = +$("rot").value;
+  if (deg !== 0) {
+    ctx.translate(canvas.width/2, canvas.height/2);
+    ctx.rotate(deg * Math.PI/180);
+    ctx.translate(-canvas.width/2, -canvas.height/2);
   }
-  const dstW=w0, dstH=h0, cropW=Math.round(dstW/(scale0*z)), cropH=Math.round(dstH/(scale0*z));
-  const sx=Math.max(0,Math.round(cx-cropW/2)), sy=Math.max(0,Math.round(cy-cropH/2));
-  const c=ensureWork(); if((angle%180)===0){c.width=dstW;c.height=dstH}else{c.width=dstH;c.height=dstW}
-  const ctx=c.getContext('2d'); ctx.save(); ctx.clearRect(0,0,c.width,c.height);
-  ctx.translate(c.width/2,c.height/2); ctx.rotate(angle*Math.PI/180);
-  ctx.filter=`brightness(${br}) contrast(${cr})`;
-  const src = baseSource.bitmap || baseSource.canvas;
-  ctx.drawImage(src, sx,sy, Math.max(1,cropW),Math.max(1,cropH), -dstW/2,-dstH/2, dstW,dstH);
+  ctx.drawImage(baseSource, 0, 0, canvas.width, canvas.height);
   ctx.restore();
+  const o = $("overlay");
+  o.width = canvas.width; o.height = canvas.height;
+  $("base").replaceWith(canvas); canvas.id="base"; lastCanvas = canvas;
+  logEvt("overlay",{painted:{w:canvas.width,h:canvas.height}});
+}
+function renderWorkingCanvas(targetMax=1024){
+  if(!baseSource) return null;
+  const z = +$("zoom").value || 1.0;
+  const w = Math.round(Math.min(targetMax, baseSource.width * z));
+  const h = Math.round(w * (baseSource.height / baseSource.width));
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
   return c;
 }
-function drawBox(ctx,box,color,label){ctx.strokeStyle=color;ctx.lineWidth=3;ctx.strokeRect(box.x,box.y,box.width,box.height);ctx.fillStyle=color;ctx.font="12px ui-monospace,monospace";ctx.fillText(label,box.x,Math.max(12,box.y-4))}
-function drawCross(ctx,cx,cy,offX,offY){ctx.strokeStyle="#60a5fa";ctx.beginPath();ctx.moveTo(cx-8,cy);ctx.lineTo(cx+8,cy);ctx.moveTo(cx,cy-8);ctx.lineTo(cx,cy+8);ctx.stroke();ctx.fillStyle="#60a5fa";ctx.font="12px ui-monospace,monospace";const text=`(${Math.round(cx)},${Math.round(cy)}) | offX ${offX.toFixed(1)}% • offY ${offY.toFixed(1)}%`;const tx=Math.min(cx+10,cvOverlay.width-260),ty=Math.min(cy+14,cvOverlay.height-4);ctx.fillText(text,tx,ty)}
-
-/* Models & refine */
-let blazeModel=null; async function ensureBlaze(){ if(blazeModel) return; blazeModel=window.__blazeModel; }
-async function headOK(url, max=2){ for(let i=0;i<max;i++){ try{ const r=await fetch(url,{method:'HEAD',cache:'no-store'}); return r.ok }catch(e){ await new Promise(r=>setTimeout(r,200)) } } return false }
-
-let faceApiReady=false, FA_BASE=null, landmarksLoaded=false;
-async function ensureFaceApi(){
-  if(faceApiReady) return true;
-  if(!window.faceapi){ logEvt('config',{faceapi:'missing'}); return false }
-  try{ faceapi.tf = tf }catch(_){}
-  let engineOk=false; try{ engineOk = (faceapi.tf && typeof faceapi.tf.engine === "function" && !!faceapi.tf.engine()); }catch(e){}
-  if(!engineOk){ logEvt('error',{faceapi_engine:'unavailable'}); return false }
-  const base=($("weightsSrc").value||"").replace(/\/$/,""); FA_BASE=base;
-  const ok1=await headOK(base+"/tiny_face_detector_model-weights_manifest.json");
-  logEvt('detect',{weightsHealth:{mani1:ok1,base}});
-  if(!ok1) return false;
-  try{
-    await faceapi.nets.tinyFaceDetector.loadFromUri(base);
-    faceApiReady=true; logEvt('detect',{faceapiReady:true,usingWeightsFrom:base}); return true
-  }catch(e){
-    logEvt('error',{faceapi_load:e.message||String(e)}); return false
-  }
-}
-async function ensureLandmarks(){
-  if(landmarksLoaded) return true;
-  if(!FA_BASE) return false;
-  try{
-    await faceapi.nets.faceLandmark68Net.loadFromUri(FA_BASE);
-    landmarksLoaded = true;
-    logEvt('detect',{landmarksNet:'loaded'});
-    return true;
-  }catch(e){
-    logEvt('error',{landmarks_load:e.message||String(e)});
-    return false;
-  }
+function drawBox(box, color="#68d391", label="face"){
+  const c = $("overlay");
+  const g = c.getContext("2d");
+  g.clearRect(0,0,c.width,c.height);
+  g.strokeStyle = color; g.lineWidth = 3;
+  g.strokeRect(box.x, box.y, box.width, box.height);
+  g.fillStyle = color;
+  g.font = "12px ui-monospace, Menlo, Consolas";
+  g.fillText(`${label}`, box.x+6, Math.max(12, box.y-6));
 }
 
-/* Detection flow */
-function downsample(canvas,w,mirror=false){const h=Math.round(w*(canvas.height/canvas.width));const tmp=Object.assign(document.createElement("canvas"),{width:w,height:h});const ctx=tmp.getContext("2d");if(mirror){ctx.translate(w,0);ctx.scale(-1,1)}ctx.drawImage(canvas,0,0,w,h);return tmp}
+/* ========= detection ========= */
+async function ensureBlaze(){
+  if (blazeModel) return blazeModel;
+  try{
+    // prefer WASM to avoid CSP issues
+    if (tf && tf.setBackend) {
+      await tf.setBackend('wasm');
+      await tf.ready();
+      $("backend").textContent = "wasm";
+      logEvt("config",{tf:"ready", backend:"wasm"});
+    }
+  }catch(e){
+    $("backend").textContent = "—";
+    logEvt("error",{tf_init: e.message||String(e)});
+  }
+  blazeModel = await blazeface.load();
+  logEvt("detect",{blazefaceReady:true});
+  return blazeModel;
+}
+
+async function decodeOriginal(fileOrBlob){
+  const blob = fileOrBlob instanceof Blob ? fileOrBlob : new Blob([fileOrBlob]);
+  const bmp = await createImageBitmap(blob);
+  logEvt("detect",{decode:"createImageBitmap", w:bmp.width, h:bmp.height});
+  return bmp;
+}
+
 async function detectFlow(){
-  try{
-    lastBox=null; lastCanvas=null; lastLandmarks=null; $("analysisCard").style.display="none"; $("researchCard").style.display="none";
-    setProgress(10,"Analyzing…"); await ensureBlaze();
-    let canvas=renderWorkingCanvas(1024); if(!canvas){ logEvt("error",{render:"failed"}); return }
-    lastCanvas=canvas; paintBaseCanvas(canvas);
-
-    const tinyW=160,tinyH=Math.round(tinyW*(canvas.height/canvas.width));
-    const tmp=Object.assign(document.createElement("canvas"),{width:tinyW,height:tinyH});
-    tmp.getContext("2d").drawImage(canvas,0,0,tinyW,tinyH);
-    const t0=performance.now(); const faces=await blazeModel.estimateFaces(tmp,false); const ms=Math.round(performance.now()-t0);
-    let rough=null;
-    if(faces&&faces.length){
-      const f=faces[0]; const tl=Array.isArray(f.topLeft)?f.topLeft:await f.topLeft.array(); const br=Array.isArray(f.bottomRight)?f.bottomRight:await f.bottomRight.array();
-      const sx=canvas.width/tinyW, sy=canvas.height/tinyH; rough={x:tl[0]*sx,y:tl[1]*sy,width:(br[0]-tl[0])*sx,height:(br[1]-tl[1])*sy}; logEvt("detect",{roughLocate_ms:ms,box:rough});
-      canvas=renderWorkingCanvas(1024,rough); lastCanvas=canvas; paintBaseCanvas(canvas);
-    } else { logEvt("detect",{roughLocate_ms:ms,box:null}) }
-
-    const cfgs=[{w:256,mirror:false},{w:384,mirror:false},{w:512,mirror:false},{w:384,mirror:true},{w:512,mirror:true}];
-    let det=null;
-    for(const cfg of cfgs){
-      const tmp=downsample(canvas,cfg.w,cfg.mirror);
-      const t0=performance.now(); const faces=await blazeModel.estimateFaces(tmp,false); const ms2=Math.round(performance.now()-t0);
-      if(faces&&faces.length){
-        const f=faces[0];
-        const tl=Array.isArray(f.topLeft)?f.topLeft:await f.topLeft.array();
-        const br=Array.isArray(f.bottomRight)?f.bottomRight:await f.bottomRight.array();
-        const sx=canvas.width/tmp.width, sy=canvas.height/tmp.height;
-        let x=tl[0]*sx, y=tl[1]*sy, w=(br[0]-tl[0])*sx, h=(br[1]-tl[1])*sy;
-        if(cfg.mirror){ x=canvas.width-(x+w) }
-        det={elapsed_ms:ms2,box:{x,y,width:w,height:h},scale:cfg.w,mirror:cfg.mirror};
-        detTimes.push(ms2); detCount++; updateFooter();
-        break;
-      }
-    }
-
-    const octx=cvOverlay.getContext("2d"); octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
-    if(!det){ logEvt("error",{msg:"BlazeFace found no face"}); setProgress(0,""); return }
-    lastBox=det.box; drawBox(octx,lastBox,"#22c55e",`BlazeFace • ${det.elapsed_ms}ms`);
-    const cx=lastBox.x+lastBox.width/2, cy=lastBox.y+lastBox.height/2; const offX=((cx-canvas.width/2)/(canvas.width/2))*100, offY=((cy-canvas.height/2)/(canvas.height/2))*100;
-    drawCross(octx,cx,cy,offX,offY);
-    logEvt("detect",{finalDetect_ms:det.elapsed_ms,scale:det.scale,mirror:det.mirror,box:lastBox});
-
-    if ($("fixMode").value === "cdn") {
-      try {
-        setProgress(75, "Refining (face‑api)…");
-        const ok = await ensureFaceApi();
-        if (ok && lastCanvas) {
-          const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.3 });
-          const tR = performance.now();
-          let detOnly = null;
-          try { detOnly = await faceapi.detectSingleFace(lastCanvas, opts); }
-          catch (e) { logEvt("error", { refine_detect_err: (e && (e.stack || e.message)) || String(e) }); }
-          const msR = Math.round(performance.now() - tR);
-
-          if (detOnly && detOnly.box) {
-            const b = detOnly.box;
-            lastBox = { x: b.x, y: b.y, width: b.width, height: b.height };
-            octx.clearRect(0,0,cvOverlay.width,cvOverlay.height);
-            drawBox(octx,lastBox,"#f59e0b",`Refined • ${msR}ms`);
-            const cx2=lastBox.x+lastBox.width/2, cy2=lastBox.y+lastBox.height/2;
-            const offX2=((cx2 - lastCanvas.width/2)/(lastCanvas.width/2))*100, offY2=((cy2 - lastCanvas.height/2)/(lastCanvas.height/2))*100;
-            drawCross(octx,cx2,cy2,offX2,offY2);
-            logEvt("detect",{refine_ms:msR,faceapi:true,refine_detect_ok:true,box:lastBox});
-          } else {
-            logEvt("detect",{refine_ms:msR,faceapi:false,reason:"no detection"});
-          }
-
-          if ($("refineLandmarks").checked && lastBox) {
-            let lmOK=false, lmMs=0;
-            try{
-              const lmReady = await ensureLandmarks();
-              if(lmReady){
-                const tLm = performance.now();
-                const withLm = await faceapi.detectSingleFace(lastCanvas, opts).withFaceLandmarks();
-                lmMs = Math.round(performance.now()-tLm);
-                if(withLm && withLm.landmarks){
-                  lastLandmarks = withLm.landmarks;
-                  try{
-                    const pts=lastLandmarks.positions||lastLandmarks;
-                    octx.fillStyle="#f472b6"; for(const p of pts){ octx.fillRect(p.x-1,p.y-1,2,2) }
-                  }catch(_){}
-                  lmOK=true;
-                }
-              }
-            }catch(e){ logEvt("error",{refine_landmarks_err:(e && (e.stack || e.message)) || String(e)}); }
-            if(lmOK){ logEvt("detect",{refine_landmarks_ok:true, lm_ms:lmMs, landmarks:lastLandmarks?68:0}); }
-            else{ logEvt("detect",{refine_landmarks_fail:true}); }
-          }
-        } else {
-          logEvt("detect", { refine_skipped: "faceapi not ready" });
-        }
-      } catch (e) {
-        logEvt("error", { refine_exception_top: (e && (e.stack || e.message)) || String(e) });
-      }
-    }
-
-    setProgress(100,"Done."); $("readyBadge").style.display="inline-flex";
-    $("startAnalysisBtn").disabled=false;
-    if($("autoAnalyze").checked){ $("startAnalysisBtn").click(); }
-  }catch(e){ logEvt("error",{detectFlow:e.message||String(e)}) }
-}
-
-/* Analysis */
-function runLightAnalysis(){
-  if(!lastCanvas||!lastBox){ logEvt("error",{analysis:"no detection"}); return }
-  const imgW=lastCanvas.width,imgH=lastCanvas.height,b=lastBox;
-  const areaPct=(b.width*b.height)/(imgW*imgH)*100, ar=b.width/b.height;
-  const orient = ar>=1.15 ? "landscape" : (ar<=0.87 ? "portrait" : "near-square");
-  const cx=b.x+b.width/2, cy=b.y+b.height/2; const offX=((cx-imgW/2)/(imgW/2))*100, offY=((cy-imgH/2)/(imgH/2))*100;
-  const crop=document.createElement("canvas"); crop.width=128; crop.height=128;
-  crop.getContext("2d").drawImage(lastCanvas,Math.max(0,Math.round(b.x)),Math.max(0,Math.round(b.y)),Math.max(1,Math.round(b.width)),Math.max(1,Math.round(b.height)),0,0,128,128);
-  const id=crop.getContext("2d").getImageData(0,0,128,128);
-  let sum=0,sum2=0; for(let i=0;i<id.data.length;i+=4){const y=0.299*id.data[i]+0.587*id.data[i+1]+0.114*id.data[i+2]; sum+=y; sum2+=y*y}
-  const mean=sum/(id.data.length/4), stdev=Math.sqrt(Math.max(0,(sum2/(id.data.length/4))-mean*mean));
-  const gray=new Float32Array(128*128); for(let i=0,p=0;i<id.data.length;i+=4,p++){gray[p]=0.299*id.data[i]+0.587*id.data[i+1]+0.114*id.data[i+2]}
-  let lapSum=0,lapSum2=0,count=0; for(let y=1;y<127;y++){for(let x=1;x<127;x++){const i=(y*128+x);const v=gray[i-128]+gray[i-1]-4*gray[i]+gray[i+1]+gray[i+128]; lapSum+=v; lapSum2+=v*v; count++;}}
-  const lapVar=Math.max(0,(lapSum2/Math.max(1,count))-(lapSum/Math.max(1,count))**2);
-
-  const okArea=areaPct>=7&&areaPct<=15, okBri=mean>=110&&mean<=160, okCon=stdev>=30&&stdev<=65, okSharp=lapVar>=120, okOffX=Math.abs(offX)<=12, okOffY=Math.abs(offY)<=12;
-
-  $("analysisCard").style.display="";
-  $("kv_area").textContent=areaPct.toFixed(2)+" %"; $("kv_ar").textContent=ar.toFixed(3); $("kv_orient").textContent=orient;
-  $("kv_bri").textContent=mean.toFixed(1); $("kv_contrast").textContent=stdev.toFixed(1);
-  $("kv_sharp").textContent=lapVar.toFixed(1);
-  $("kv_offx").textContent=(offX>=0?"+":"")+offX.toFixed(1)+" %"; $("kv_offy").textContent=(offY>=0?"+":"")+offY.toFixed(1)+" %";
-
-  function setBadge(el,ok,okTxt,badTxt){ el.textContent=ok?okTxt:badTxt; el.className="badge "+(ok?"ok":"warn") }
-  setBadge($("bdg_area"),okArea,"ok","adjust"); setBadge($("bdg_bri"),okBri,"ok","±light"); setBadge($("bdg_con"),okCon,"ok","±contrast"); setBadge($("bdg_sharp"),okSharp,"crisp","blurry"); setBadge($("bdg_offx"),okOffX,"centered","offset"); setBadge($("bdg_offy"),okOffY,"centered","offset");
-  const hints=[]; if(!okArea)hints.push("Adjust crop to ~7–15% face area"); if(!okBri)hints.push(mean<110?"Increase lighting":"Reduce brightness"); if(!okCon)hints.push(stdev<30?"Boost contrast":"Soften contrast"); if(!okSharp)hints.push("Reduce motion/clean lens"); if(!(okOffX&&okOffY))hints.push("Center the face");
-  hints.forEach(h=> hintCounts[h]=(hintCounts[h]||0)+1); anaCount++; updateFooter();
-
-  lastAnalysis={
-    revision:REVISION,
-    timestamp:new Date().toISOString(),
-    image:{width:imgW,height:imgH},
-    box:{x:+b.x.toFixed(2),y:+b.y.toFixed(2),width:+b.width.toFixed(2),height:+b.height.toFixed(2),area_pct:+areaPct.toFixed(4),aspect:+ar.toFixed(4),center:{x:+(b.x+b.width/2).toFixed(2),y:+(b.y+b.height/2).toFixed(2)},center_offset_pct:{x:+offX.toFixed(2),y:+offY.toFixed(2)}},
-    lighting:{brightness_mean:+mean.toFixed(3),contrast_stdev:+stdev.toFixed(3)},
-    sharpness:{laplacian_variance:+lapVar.toFixed(3)},
-    orientation:orient,
-    refine:{landmarks: lastLandmarks ? 68 : 0}
-  };
-  try{ localStorage.setItem("yorn_last_analysis", JSON.stringify(lastAnalysis)) }catch(_){}
-  $("analysisHints").textContent="Hints: "+(hints.length?hints.join(" • "):"Looks good!");
-  logEvt("analysis",{analysis:lastAnalysis});
-
-  $("copyJsonBtn").disabled=false; $("exportJsonBtn").disabled=false; $("exportPdfBtn").disabled=false;
-  $("researchCard").style.display=""; maybeEnableSave();
-}
-
-/* Research dataset */
-const DS_KEY='yorn_dataset_v1';
-function loadDS(){ try{ return JSON.parse(localStorage.getItem(DS_KEY)||'[]') }catch(_){ return [] } }
-function saveDS(rows){ try{ localStorage.setItem(DS_KEY, JSON.stringify(rows)) }catch(_){} }
-function dsCount(){ const n=loadDS().length; $("dsCount").textContent=String(n); $("exportCSVBtn").disabled=n===0; $("exportDSJsonBtn").disabled=n===0; }
-function maybeEnableSave(){ $("saveRowBtn").disabled = !(lastAnalysis && $("consent").value==='yes' && $("ageGroup").value) }
-$("consent").addEventListener('change',maybeEnableSave); $("ageGroup").addEventListener('change',maybeEnableSave);
-$("saveRowBtn").addEventListener('click', ()=>{
-  if(!(lastAnalysis && $("consent").value==='yes' && $("ageGroup").value)){ logEvt('error',{research:'missing required fields'}); return }
-  const row={ session_id: (crypto.randomUUID?crypto.randomUUID():('sess_'+Date.now())), created_at:new Date().toISOString(),
-    rater:{age_group:$("ageGroup").value, gender:$("raterGender").value||null, confidence_pct:+$("confidence").value},
-    rating:+$("rating").value, notes:($("notes").value||'').trim()||null, analysis:lastAnalysis };
-  const rows=loadDS(); rows.push(row); saveDS(rows); dsCount(); logEvt('analysis',{saved:true,row});
-});
-function toCSV(rows){
-  const esc=v=>v==null?'':String(v).replace(/"/g,'""');
-  const hdr=['created_at','rater_age_group','rater_gender','confidence_pct','rating','notes','img_w','img_h','box_x','box_y','box_w','box_h','box_area_pct','box_aspect','center_x','center_y','off_x_pct','off_y_pct','brightness_mean','contrast_stdev','sharpness_var','orientation','landmarks','revision'];
-  const lines=[hdr.join(',')];
-  for(const r of rows){
-    const a=r.analysis||{}; const b=a.box||{center:{},center_offset_pct:{}};
-    const cells=[r.created_at,r.rater?.age_group,r.rater?.gender,r.rater?.confidence_pct,r.rating,r.notes,a.image?.width?a.image.width:'',a.image?.height?a.image.height:'',b.x,b.y,b.width,b.height,a.box?.area_pct,a.box?.aspect,b.center?.x,b.center?.y,b.center_offset_pct?.x,b.center_offset_pct?.y,a.lighting?.brightness_mean,a.lighting?.contrast_stdev,a.sharpness?.laplacian_variance,a.orientation,a.refine?.landmarks,a.revision];
-    lines.push(cells.map(v=>`"${esc(v)}"`).join(','));
+  if(!baseSource){ setToast("Load a photo first"); return; }
+  await ensureBlaze();
+  const canvas = lastCanvas || renderWorkingCanvas(1024);
+  if (!lastCanvas) paintBaseCanvas(canvas);
+  const z = +$("zoom").value || 1.2;
+  logEvt("overlay",{autoZoomApplied:z});
+  // run Blaze
+  const t0 = performance.now();
+  const preds = await blazeModel.estimateFaces(canvas, false);
+  const dt = Math.round(performance.now() - t0);
+  if (!preds || !preds.length){
+    setToast("No face found");
+    logEvt("detect",{finalDetect_ms:dt, none:true});
+    return;
   }
-  return lines.join('\n');
+  // choose largest
+  let best = preds[0];
+  let bestArea = (best.bottomRight[0]-best.topLeft[0])*(best.bottomRight[1]-best.topLeft[1]);
+  for(const p of preds){
+    const area = (p.bottomRight[0]-p.topLeft[0])*(p.bottomRight[1]-p.topLeft[1]);
+    if (area > bestArea){ best=p; bestArea=area; }
+  }
+  const box = {
+    x: best.topLeft[0],
+    y: best.topLeft[1],
+    width: best.bottomRight[0]-best.topLeft[0],
+    height: best.bottomRight[1]-best.topLeft[1]
+  };
+  lastBox = box;
+  drawBox(box, "#68d391", "blaze");
+  logEvt("detect",{finalDetect_ms:dt, scale:256, mirror:false, box});
+  $("startAnalysisBtn").disabled = false;
 }
-$("exportCSVBtn").addEventListener('click', ()=>{
-  const rows=loadDS(); if(!rows.length) return;
-  const blob=new Blob([toCSV(rows)],{type:'text/csv'});
-  const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-dataset-${Date.now()}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  logEvt('config',{dataset:'csv_export',rows:rows.length});
-});
-$("exportDSJsonBtn").addEventListener('click', ()=>{
-  const rows=loadDS(); if(!rows.length) return;
-  const blob=new Blob([JSON.stringify(rows,null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-dataset-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  logEvt('config',{dataset:'json_export',rows:rows.length});
-});
-dsCount();
 
-/* Export PDF/HTML + JSON copy + Auto Test + UI binds (unchanged from previous revs) */
-function getAllLogsText(){ const el=$("diagnostics"); return el ? (el.innerText || el.textContent || '') : '' }
+function iou(a,b){
+  const x1 = Math.max(a.x, b.x);
+  const y1 = Math.max(a.y, b.y);
+  const x2 = Math.min(a.x+a.width, b.x+b.width);
+  const y2 = Math.min(a.y+a.height, b.y+b.height);
+  const inter = Math.max(0, x2-x1) * Math.max(0, y2-y1);
+  const areaA = a.width*a.height, areaB = b.width*b.height;
+  const uni = areaA + areaB - inter;
+  return uni>0 ? inter/uni : 0;
+}
+
+/* ========= lightweight analysis ========= */
+function runLightAnalysis(){
+  if(!lastCanvas || !lastBox){ setToast("Detect first"); return; }
+  // image stats
+  const ctx = lastCanvas.getContext("2d");
+  const {x,y,width,height} = lastBox;
+  const imgW = lastCanvas.width, imgH = lastCanvas.height;
+  const data = ctx.getImageData(0,0,imgW,imgH).data;
+  let mean=0, n=imgW*imgH, lums=new Float32Array(n);
+  for(let i=0, j=0;i<data.length;i+=4, j++){
+    const r=data[i], g=data[i+1], b=data[i+2];
+    const lum = 0.299*r + 0.587*g + 0.114*b;
+    lums[j]=lum; mean+=lum;
+  }
+  mean/=n;
+  let varsum=0;
+  for(let j=0;j<n;j++){ const d=lums[j]-mean; varsum+=d*d; }
+  const stdev = Math.sqrt(varsum/n);
+
+  // sharpness via Laplacian variance on the FACE crop
+  const fc = document.createElement("canvas");
+  fc.width = Math.max(1, Math.round(width));
+  fc.height = Math.max(1, Math.round(height));
+  fc.getContext("2d").drawImage(lastCanvas, x,y,width,height, 0,0, fc.width, fc.height);
+  const fd = fc.getContext("2d").getImageData(0,0,fc.width,fc.height).data;
+  // grayscale
+  const gray = new Float32Array(fc.width*fc.height);
+  for(let i=0,j=0;i<fd.length;i+=4,j++){
+    gray[j] = 0.299*fd[i] + 0.587*fd[i+1] + 0.114*fd[i+2];
+  }
+  // simple Laplacian 3x3
+  const W=fc.width,H=fc.height;
+  let lapVarSum=0, lapMean=0, cnt=0;
+  const idx=(xx,yy)=>yy*W+xx;
+  for(let yy=1; yy<H-1; yy++){
+    for(let xx=1; xx<W-1; xx++){
+      const c = 4*gray[idx(xx,yy)]
+        - gray[idx(xx-1,yy)] - gray[idx(xx+1,yy)]
+        - gray[idx(xx,yy-1)] - gray[idx(xx,yy+1)];
+      lapMean += c; lapVarSum += c*c; cnt++;
+    }
+  }
+  lapMean/=Math.max(1,cnt);
+  const lapVar = lapVarSum/Math.max(1,cnt) - lapMean*lapMean;
+
+  // optional IoU if refine exists
+  let iouVal = null;
+  if (lastRefineBox){
+    iouVal = +iou(lastBox, lastRefineBox).toFixed(3);
+  }
+
+  const analysis = {
+    revision: REVISION,
+    timestamp: new Date().toISOString(),
+    image: { width: lastCanvas.width, height: lastCanvas.height },
+    box: {
+      x:+lastBox.x.toFixed(2),
+      y:+lastBox.y.toFixed(2),
+      width:+lastBox.width.toFixed(2),
+      height:+lastBox.height.toFixed(2),
+      area_pct:+((lastBox.width*lastBox.height)/(lastCanvas.width*lastCanvas.height)*100).toFixed(4),
+      aspect:+(lastBox.width/lastBox.height).toFixed(4),
+      center:{ x:+(lastBox.x+lastBox.width/2).toFixed(2), y:+(lastBox.y+lastBox.height/2).toFixed(2) },
+      center_offset_pct:{
+        x:+(((lastBox.x+lastBox.width/2) - lastCanvas.width/2)/lastCanvas.width*100).toFixed(2),
+        y:+(((lastBox.y+lastBox.height/2) - lastCanvas.height/2)/lastCanvas.height*100).toFixed(2)
+      }
+    },
+    lighting:{ brightness_mean:+mean.toFixed(3), contrast_stdev:+stdev.toFixed(3) },
+    sharpness:{ laplacian_variance:+lapVar.toFixed(3) },
+    orientation: lastCanvas.width>=lastCanvas.height ? "landscape" : "portrait",
+    refine: { landmarks: 0, iou: iouVal }
+  };
+  lastAnalysis = analysis;
+  localStorage.setItem("yorn_last_analysis", JSON.stringify(analysis));
+  $("analysisCard").style.display="";
+  $("copyJsonBtn").disabled=false; $("exportJsonBtn").disabled=false;
+
+  // brief textual summary
+  const hints=[];
+  hints.push(`Face area ${(analysis.box.area_pct).toFixed(2)}%`);
+  const br = analysis.lighting.brightness_mean;
+  hints.push(`Brightness ${br<90?'low':br>170?'high':'ok'}`);
+  const cv = analysis.lighting.contrast_stdev;
+  hints.push(`Contrast ${cv<40?'soft':cv>95?'harsh':'ok'}`);
+  hints.push(`Sharpness ${analysis.sharpness.laplacian_variance>1200?'crisp':analysis.sharpness.laplacian_variance<400?'soft':'ok'}`);
+  if (iouVal!=null) hints.push(`IoU (refine·blaze) ${iouVal}`);
+
+  $("analysisSummary").textContent = hints.join(' • ');
+  logEvt("analysis",{analysis});
+}
+
+/* ========= copy helpers ========= */
 async function copyTextRobust(text){
-  if(text==null) text='';
+  if (text==null) text="";
   try{
-    if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(text); return {ok:true,via:'clipboard'} }
+    if (navigator.clipboard && window.isSecureContext){
+      await navigator.clipboard.writeText(text);
+      return {ok:true, via:"clipboard"};
+    }
   }catch(_){}
   try{
-    const ta=document.createElement('textarea'); ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px';
-    document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy'); document.body.removeChild(ta);
-    if(ok) return {ok:true,via:'execCommand'}
-  }catch(e){ return {ok:false,via:'fallback',err:e.message||String(e)} }
-  return {ok:false,via:'none',err:'No clipboard available'};
+    const ta=document.createElement("textarea");
+    ta.value=text; ta.setAttribute("readonly","");
+    ta.style.position="fixed"; ta.style.left="-9999px"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.select();
+    const ok=document.execCommand("copy");
+    document.body.removeChild(ta);
+    if (ok) return {ok:true, via:"execCommand"};
+  }catch(e){ return {ok:false, via:"fallback", err:e.message||String(e)} }
+  return {ok:false, via:"none", err:"No clipboard available"};
 }
+function getAllLogsText(){ return diagEl ? (diagEl.textContent||diagEl.innerText||"") : ""; }
 
-/* Buttons */
-$("enhanceBtn").addEventListener("click",()=>{ const z=$("zoom"); z.value=Math.max(+z.value,1.5); $("zoomLabel").textContent=(+z.value).toFixed(2);
-  const b=$("bri"); b.value=Math.max(+b.value,1.18); $("briLabel").textContent=(+b.value).toFixed(2);
-  const c=$("con"); c.value=Math.max(+c.value,1.25); $("conLabel").textContent=(+c.value).toFixed(2); detectFlow() });
-$("detectBtn").addEventListener("click",()=>detectFlow());
-$("startAnalysisBtn").addEventListener("click",()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis() });
-$("clearLogsBtn").addEventListener('click',()=>{ const d=$("diagnostics"); if(d) d.textContent='No diagnostics yet.'; });
-$("resetBtn").addEventListener('click',()=>{ ["base"].forEach(id=>$(id).classList.add('hidden')); baseSource=null; lastCanvas=null; lastBox=null; lastLandmarks=null; $("analysisCard").style.display="none"; $("researchCard").style.display="none"; logEvt('config',{reset:true}); setToast('Reset. Load Sample → Detect'); });
-
-/* File & Sample */
-$("fileInput").addEventListener('change', async ()=>{
-  if(!$("fileInput").files.length) return;
-  const f=$("fileInput").files[0];
-  setProgress(8,'Decoding photo…');
-  try{
-    baseSource = await decodeOriginal(f);
-    const canvas = renderWorkingCanvas(1024);
-    if(canvas){ paintBaseCanvas(canvas); setProgress(12,'Photo ready'); $("detectBtn").disabled=false; $("enhanceBtn").disabled=false; }
-  }catch(e){ logEvt('error',{decode_failed:e.message||String(e)}) }
-});
-$("sampleBtn").addEventListener('click', async ()=>{
-  try{
-    setProgress(5,'Fetching sample…');
-    const u="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
-    const res=await fetch(u,{cache:"no-store"}); if(!res.ok) throw new Error('HTTP '+res.status);
-    const blob=await res.blob();
-    baseSource = await decodeOriginal(blob);
-    const canvas=renderWorkingCanvas(1024);
-    if(canvas){ paintBaseCanvas(canvas); setProgress(12,'Sample ready'); $("detectBtn").disabled=false; $("enhanceBtn").disabled=false; }
-    logEvt('detect',{sampleImage:u});
-  }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) }
-});
-
-/* Auto Test (summary line + copy button wired already) */
-let __autoTestStartIdx=0;
+/* ========= Auto Test & ribbon ========= */
+let __autoTestStartIdx = 0;
 function buildAutoTestReport(){
   const full = getAllLogsText();
   const chunk = full.slice(__autoTestStartIdx);
-  const backendMatch = full.match(/"backend":"([^"]+)"/) || [];
-  const refineYes = /"refine_ms":/.test(chunk);
-  const errors = (chunk.match(/"type":"error"/g) || []).length;
-  const passes = (chunk.match(/"test","step":"[^"]+","ok":true/g) || []).length;
-  const roughMs = (chunk.match(/"roughLocate_ms":(\d+)/) || [])[1];
-  const finalMs = (chunk.match(/"finalDetect_ms":(\d+)/) || [])[1];
-  const summaryLine = `YorN ${REVISION} • TF backend: ${backendMatch[1]||'—'} • refine: ${refineYes?'yes':'no'} • passes: ${passes} • errors: ${errors} • rough: ${roughMs||'—'} ms • final: ${finalMs||'—'} ms`;
-  const lines = chunk.split('\n').filter(l => /"type":"test"|"type":"detect"|"type":"analysis"|"type":"config"|"type":"error"/.test(l));
-  return ['=== YorN Auto‑Test Report ===', summaryLine, '', ...lines, '=== End Report ===', ''].join('\n');
+  const backend = (full.match(/"backend":"([^"]+)"/)||[])[1] || "—";
+  const refineYes = /"iou":/.test(chunk) || /"refine_ms":/.test(chunk);
+  const errs = (chunk.match(/"type":"error"/g)||[]).length;
+  const passes = (chunk.match(/"step":"[^"]+","ok":true/g)||[]).length;
+  const roughMs = (chunk.match(/"roughLocate_ms":(\d+)/)||[])[1] || "—";
+  const finalMs = (chunk.match(/"finalDetect_ms":(\d+)/)||[])[1] || "—";
+  const head = `YorN ${REVISION} • TF backend: ${backend} • refine: ${refineYes?'yes':'no'} • passes: ${passes} • errors: ${errs} • rough: ${roughMs} ms • final: ${finalMs} ms`;
+  const lines = chunk.split('\n').filter(l => /"type":"(test|detect|analysis|config|error)"/.test(l));
+  return ['=== YorN Auto‑Test Report ===', head, '', ...lines, '=== End Report ===',''].join('\n');
 }
-$("copyTestBtn").addEventListener('click', async ()=>{
-  try{
-    const report = buildAutoTestReport();
-    const res = await copyTextRobust(report);
-    if (res.ok) { logEvt('config', { copiedAutoTestReport: true, via: res.via, length: report.length }); setToast('Test result copied'); }
-    else { logEvt('error', { copyAutoTestReportError: res.err || 'unknown', via: res.via }); setToast('Copy failed'); }
-  }catch(e){ logEvt('error', { copyAutoTestReportException: e.message || String(e) }); setToast('Copy failed'); }
-});
-$("autoTestBtn").addEventListener('click', runAutoTest);
+function setAutoBadge(ok, why){
+  const b = $("autoBadge");
+  b.className = `badge ${ok?'ok':'bad'}`;
+  b.textContent = `AUTO TEST • ${ok?'✅ PASSED':'❌ FAILED'}`;
+  if (why) b.title = why;
+}
+
 async function runAutoTest(){
-  $("autoTestBtn").disabled = true; $("copyTestBtn").disabled = true;
-  const fullBefore = getAllLogsText(); __autoTestStartIdx = fullBefore.length;
-  logEvt('test', { step:'begin', rev: REVISION });
+  $("autoTestBtn").disabled = true;
+  $("copyTestBtn").disabled = true;
+  const before = getAllLogsText();
+  __autoTestStartIdx = before.length;
+  setAutoBadge(false, "Running…");
+  logEvt("test",{step:"begin", rev:REVISION});
   try{
-    const tfPresent = !!window.tf; logEvt('test',{step:'tf_present',ok:tfPresent});
-    if(!tfPresent) throw new Error('tf missing');
-    await $("sampleBtn").click(); await new Promise(r=>setTimeout(r,350));
-    logEvt('test',{step:'sample',ok:!!baseSource});
-    const t0=performance.now(); await detectFlow(); await new Promise(r=>setTimeout(r,300));
-    const tDetect = Math.round(performance.now()-t0); logEvt('test',{step:'detect_blazeonly',ok:!!lastBox, ms:tDetect});
-    logEvt('test',{step:'refine_guard',ok:true});
-    $("startAnalysisBtn").click(); await new Promise(r=>setTimeout(r,250));
-    logEvt('test',{step:'analysis_blazeonly',ok:!!lastAnalysis});
+    const tfPresent = !!window.tf;
+    logEvt("test",{step:"tf_present", ok:tfPresent});
+    if(!tfPresent){ throw new Error("tf missing"); }
+
+    await $("sampleBtn").click();
+    await new Promise(r=>setTimeout(r,300));
+    logEvt("test",{step:"sample", ok:!!baseSource});
+
+    const t0 = performance.now();
+    await detectFlow();
+    const ms = Math.round(performance.now()-t0);
+    logEvt("test",{step:"detect_blazeonly", ok:!!lastBox, ms});
+
+    logEvt("test",{step:"refine_guard", ok:true});
+    $("startAnalysisBtn").click();
+    await new Promise(r=>setTimeout(r,250));
+    logEvt("test",{step:"analysis_blazeonly", ok:!!lastAnalysis});
+
     const ok = !!(baseSource && lastBox && lastAnalysis);
-    const badge = $("readinessBadge"); if(badge){ badge.style.display='inline-block'; badge.className = ok ? 'ready' : 'blocked'; badge.textContent = ok ? 'READY' : 'BLOCKED'; }
-    logEvt('test',{step:'summary',ok});
+    logEvt("test",{step:"summary", ok});
+    setAutoBadge(ok, ok ? "All good" : "Missing pieces");
     $("copyTestBtn").disabled = false;
-  }catch(e){ logEvt('error',{autoTest:e.message||String(e)}) }
+  }catch(e){
+    logEvt("error",{autoTest:e.message||String(e)});
+    setAutoBadge(false, e.message||"Auto Test failed");
+  }
   $("autoTestBtn").disabled = false;
 }
 
-/* Export JSON + PDF */
-$("copyJsonBtn").addEventListener('click', async ()=>{
+/* ========= UI binds ========= */
+$("zoom").addEventListener("input", e => $("zoomLabel").textContent=(+e.target.value).toFixed(2));
+$("bri").addEventListener("input", e => $("briLabel").textContent=(+e.target.value).toFixed(2));
+$("con").addEventListener("input", e => $("conLabel").textContent=(+e.target.value).toFixed(2));
+
+$("enhanceBtn").addEventListener("click", ()=>{
+  const z=$("zoom"); z.value=Math.max(+z.value,1.5); $("zoomLabel").textContent=(+z.value).toFixed(2);
+  const b=$("bri"); b.value=Math.max(+b.value,1.18); $("briLabel").textContent=(+b.value).toFixed(2);
+  const c=$("con"); c.value=Math.max(+c.value,1.25); $("conLabel").textContent=(+c.value).toFixed(2);
+  detectFlow();
+});
+$("detectBtn").addEventListener("click", detectFlow);
+$("startAnalysisBtn").addEventListener("click", ()=>{
+  logEvt("analysis",{analysisRequested:true, mode:"light"});
+  runLightAnalysis();
+});
+$("clearLogsBtn").addEventListener("click", ()=>{ diagEl.textContent="No diagnostics yet."; });
+$("resetBtn").addEventListener("click", ()=>{
+  ["base","overlay"].forEach(id=>{ const el=$(id); if(el){ el.getContext("2d").clearRect(0,0,el.width,el.height); }});
+  baseSource=null; lastCanvas=null; lastBox=null; lastRefineBox=null; lastAnalysis=null;
+  $("analysisCard").style.display="none";
+  $("copyJsonBtn").disabled=true; $("exportJsonBtn").disabled=true;
+  $("detectBtn").disabled=true; $("enhanceBtn").disabled=true; $("startAnalysisBtn").disabled=true;
+  setToast("Reset");
+  logEvt("config",{reset:true});
+});
+$("fileInput").addEventListener("change", async ()=>{
+  if(!$("fileInput").files.length) return;
+  const f=$("fileInput").files[0];
+  setProgress(10,"Decoding photo…");
+  try{
+    baseSource = await decodeOriginal(f);
+    const c = renderWorkingCanvas(1024);
+    paintBaseCanvas(c);
+    $("detectBtn").disabled=false; $("enhanceBtn").disabled=false;
+    setProgress(12,"Photo ready");
+  }catch(e){ logEvt("error",{decode_failed:e.message||String(e)}) }
+});
+$("sampleBtn").addEventListener("click", async ()=>{
+  try{
+    setProgress(5,"Fetching sample…");
+    const u="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
+    const res=await fetch(u,{cache:"no-store"});
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const blob=await res.blob();
+    baseSource = await decodeOriginal(blob);
+    const c = renderWorkingCanvas(1024);
+    paintBaseCanvas(c);
+    $("detectBtn").disabled=false; $("enhanceBtn").disabled=false;
+    logEvt("detect",{sampleImage:u});
+  }catch(e){ logEvt("error",{sample_failed:e.message||String(e)}) }
+});
+
+/* unified single “Copy Diagnostics” */
+$("copyDiagBtn").addEventListener("click", async ()=>{
+  const report = buildAutoTestReport();
+  const res = await copyTextRobust(report);
+  if(res.ok){ setToast("Diagnostics copied"); logEvt("config",{copiedDiagnostics:true, via:res.via}); }
+  else { setToast("Copy failed"); logEvt("error",{copyDiagnostics:res.err||"unknown"}) }
+});
+$("copyTestBtn").addEventListener("click", async ()=>{
+  const report = buildAutoTestReport();
+  const res = await copyTextRobust(report);
+  if(res.ok){ setToast("Auto Test copied"); logEvt("config",{copiedAutoTest:true, via:res.via}); }
+  else { setToast("Copy failed"); logEvt("error",{copyAutoTest:res.err||"unknown"}) }
+});
+$("autoTestBtn").addEventListener("click", runAutoTest);
+
+/* ========= boot ========= */
+window.addEventListener("load", ()=>{
+  $("rev").textContent = REVISION;
+  $("backend").textContent = "…";
+  envProbe();
+  try{
+    const saved = localStorage.getItem("yorn_last_analysis");
+    if(saved){
+      const a = JSON.parse(saved);
+      logEvt("analysis",{restored:true, analysis:a});
+      $("analysisCard").style.display="";
+      $("copyJsonBtn").disabled=false; $("exportJsonBtn").disabled=false;
+    }
+  }catch(_){}
+  logEvt("config",{boot:"dom-ready", rev:REVISION});
+  // tf backend ready event is logged in ensureBlaze(); run a gentle init
+  (async () => {
+    try{
+      await ensureBlaze();
+      logEvt("config",{boot:"frameworks-ready"});
+    }catch(e){
+      logEvt("error",{boot_frameworks:e.message||String(e)});
+    }
+  })();
+  logEvt("config",{boot:"complete"});
+});
+/* export JSON & copy JSON */
+$("copyJsonBtn").addEventListener("click", async ()=>{
   if(!lastAnalysis) return;
   const res = await copyTextRobust(JSON.stringify(lastAnalysis,null,2));
-  if(res.ok){ setToast('Analysis JSON copied'); }
+  if(res.ok) setToast("Analysis JSON copied");
 });
-$("exportJsonBtn").addEventListener('click', ()=>{
+$("exportJsonBtn").addEventListener("click", ()=>{
   if(!lastAnalysis) return;
-  const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-});
-$("exportPdfBtn").addEventListener('click', ()=>{
-  if(!lastAnalysis) return;
-  const a=lastAnalysis,b=a.box||{},l=a.lighting||{},s=a.sharpness||{};
-  const html=`<!doctype html><meta charset="utf-8"><title>YorN Report</title>
-  <style>body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:24px;background:#fff;color:#111}
-  h1{margin:0 0 6px}h2{margin:18px 0 6px;font-size:16px}code{background:#f4f4f4;padding:2px 6px;border-radius:6px}
-  table{border-collapse:collapse;margin-top:8px}td{border:1px solid #ddd;padding:6px 10px}</style>
-  <h1>YorN Report</h1>
-  <div>Revision <code>${a.revision}</code> • ${new Date(a.timestamp).toLocaleString()}</div>
-  <h2>Image</h2>
-  <table><tr><td>Width</td><td>${a.image?.width}</td></tr><tr><td>Height</td><td>${a.image?.height}</td></tr><tr><td>Orientation</td><td>${a.orientation}</td></tr></table>
-  <h2>Detection</h2>
-  <table><tr><td>Box</td><td>x=${b.x}, y=${b.y}, w=${b.width}, h=${b.height}</td></tr>
-  <tr><td>Area %</td><td>${b.area_pct}</td></tr><tr><td>Aspect</td><td>${b.aspect}</td></tr>
-  <tr><td>Center</td><td>${b.center?.x}, ${b.center?.y}</td></tr>
-  <tr><td>Center offset %</td><td>x=${b.center_offset_pct?.x}, y=${b.center_offset_pct?.y}</td></tr></table>
-  <h2>Quality</h2>
-  <table><tr><td>Brightness mean</td><td>${l.brightness_mean}</td></tr><tr><td>Contrast stdev</td><td>${l.contrast_stdev}</td></tr><tr><td>Laplacian var</td><td>${s.laplacian_variance}</td></tr></table>`;
-  const w = window.open('', '_blank'); if(w){ w.document.open(); w.document.write(html); w.document.close(); }
-  logEvt('config',{report:'pdf_print_opened'});
+  const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=`yorn-analysis-${Date.now()}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 });
 </script>
 </body>
