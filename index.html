@@ -1,304 +1,651 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"/>
-<title>YorN • 1.16.15-alpha</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>YorN 1.16.16‑alpha</title>
 <style>
-  :root{--bg:#0c0f14;--panel:#121722;--panel-2:#0f141d;--ink:#e9eef7;--muted:#a9b7cc;--accent:#5ac8fa;--ok:#29d399;--warn:#f5a524;--err:#ff6b6b;--chip:#1a2230}
-  *{box-sizing:border-box}html,body{height:100%}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-  header{position:sticky;top:0;z-index:30;backdrop-filter:blur(6px);background:linear-gradient(180deg,rgba(12,15,20,.9),rgba(12,15,20,.6));border-bottom:1px solid #1b2331;padding:10px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .title{font-weight:700}.sub{color:var(--muted);font-size:12px}.pill{padding:4px 8px;border-radius:999px;background:var(--chip);color:var(--muted)}.pill.ok{background:#0e2a1e;color:#7ff7c0}.pill.blocked{background:#2a0e11;color:#ff9aa5}
-  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.spacer{flex:1}main{max-width:980px;margin:16px auto;padding:0 12px;display:grid;gap:12px}
-  .card{background:var(--panel);border:1px solid #1b2331;border-radius:14px;overflow:hidden}.card h3{margin:0;padding:10px 12px;border-bottom:1px solid #1b2331;font-size:13px;color:var(--muted)}
-  .card .body{padding:12px;display:grid;gap:10px}.controls .grid{display:grid;grid-template-columns:1fr;gap:8px}
-  @media(min-width:740px){.controls .grid{grid-template-columns:1fr 1fr}}
-  label{color:var(--muted);font-size:12px}
-  input[type="file"],select,button,input[type="range"],input[type="number"]{background:var(--panel-2);color:var(--ink);border:1px solid #1b2331;border-radius:10px;padding:8px 10px;width:100%}
-  button{cursor:pointer;transition:.15s ease transform,.15s ease opacity}button.primary{background:#1a2230;border-color:#233045}button.action{background:#142335;border-color:#27354a}button:hover{transform:translateY(-1px)}button:disabled{opacity:.55;cursor:not-allowed}
-  .bar{display:flex;gap:8px;flex-wrap:wrap}.badge{border-radius:999px;padding:4px 10px;font-size:12px;border:1px solid #2a3547}.ready{background:#0f251a;color:#7ff7c0}.blocked{background:#2a1313;color:#ff9aa5}
-  .stage{display:grid;gap:8px}.stage-wrap{width:100%;background:#0b0f16;border:1px dashed #1b2a44;border-radius:12px;padding:10px;position:relative}
-  canvas{max-width:100%;height:auto;display:block;border-radius:10px}#diagnostics{white-space:pre-wrap;word-break:break-word;overflow:auto;max-height:44vh;background:#0a0f16;border:1px solid #192233;border-radius:10px;padding:10px}
-  .filters{display:flex;gap:6px;flex-wrap:wrap}.filters button{font-size:12px;padding:6px 8px}.footer{color:var(--muted);font-size:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  #veil{position:fixed;inset:0;display:none;place-items:center;background:rgba(10,14,20,.6);backdrop-filter:blur(4px);z-index:50}
-  #veil .sheet{background:#0f141d;border:1px solid #1b2331;border-radius:14px;padding:16px;min-width:240px;text-align:center}
-  .toast{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:#0f1a2a;color:#d7e7ff;border:1px solid #1c2a44;padding:8px 12px;border-radius:10px;display:none;z-index:60}
+  :root {
+    --bg: #0c0f14;
+    --card: #141a22;
+    --text: #e9eef5;
+    --muted: #a8b3c0;
+    --accent: #63b3ff;
+    --ok: #19c37d;
+    --warn: #fabb2d;
+    --bad: #ff5d5d;
+    --line: #222a35;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--text); font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; }
+  header { position:sticky; top:0; z-index:10; background:linear-gradient(180deg, rgba(12,15,20,.95), rgba(12,15,20,.65)); backdrop-filter: blur(6px); border-bottom:1px solid var(--line); }
+  header .row { max-width: 980px; margin:0 auto; padding:10px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .pill { background:var(--card); border:1px solid var(--line); padding:6px 10px; border-radius:999px; color:var(--muted); }
+  .rev { position:fixed; right:8px; top:6px; font-size:11px; color:#93a1b1; opacity:.9; background:rgba(0,0,0,.35); padding:3px 8px; border-radius:10px; border:1px solid #2a3442;}
+  .wrap { max-width:980px; margin:18px auto; padding:0 16px 36px; display:grid; grid-template-columns:1fr; gap:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; }
+  h2 { margin:0 0 10px; font-size:16px; letter-spacing:.2px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  input[type="file"] { display:none; }
+  .btn { appearance:none; border:1px solid var(--line); background:#0f1520; color:var(--text); padding:8px 12px; border-radius:10px; cursor:pointer; transition:.15s transform, .15s opacity; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:disabled { opacity:.45; cursor:not-allowed; transform:none; }
+  .btn.ok { border-color: #1f2d24; background:#0f1b16; color:#b3f7d3; }
+  .btn.accent { border-color:#1d3346; background:#102130; color:#cfe9ff; }
+  .btn.warn { border-color:#3a2b0d; background:#1d1406; color:#ffd98a; }
+  .select, .num { background:#0f1520; color:var(--text); border:1px solid var(--line); border-radius:10px; padding:8px 10px; }
+  .grid { display:grid; grid-template-columns:1fr; gap:16px; }
+  @media (min-width: 900px){ .grid { grid-template-columns: 1fr 1fr; } }
+  canvas, img { max-width:100%; height:auto; display:block; border-radius:10px; border:1px solid var(--line); background:#0a0f15; }
+  .pane { display:grid; gap:10px; }
+  .kvs { display:grid; grid-template-columns: max-content 1fr; gap:6px 10px; }
+  .kv k { color:var(--muted); }
+  .bar { height:8px; background:#0f1520; border:1px solid var(--line); border-radius:999px; overflow:hidden; }
+  .bar > i { display:block; height:100%; width:0%; background:linear-gradient(90deg, #63b3ff,#19c37d); }
+  .diag { font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; background:#0a0e14; border:1px solid var(--line); border-radius:10px; padding:10px; max-height:260px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid var(--line); color:var(--muted); }
+  .badge.ready { color:#0c2; background:#0a1a12; border-color:#163; }
+  .muted { color:var(--muted); }
+  .tiny { font-size:12px; color:var(--muted); }
 </style>
 </head>
 <body>
+<div class="rev">YorN <strong>1.16.16‑alpha</strong></div>
+
 <header>
   <div class="row">
-    <div class="title">YorN</div>
-    <div class="sub">prototype · rev <span id="rev">1.16.15-alpha</span></div>
+    <label class="btn">
+      <input id="fileInput" type="file" accept="image/*" />
+      Choose Photo
+    </label>
+    <button id="sampleBtn" class="btn">Load Sample</button>
+    <button id="enhanceBtn" class="btn">Enhance &amp; Retry</button>
+    <button id="detectBtn" class="btn accent" disabled>Detect</button>
+    <button id="startAnalysisBtn" class="btn ok" disabled>Start Analysis</button>
+    <button id="autoTestBtn" class="btn warn">Auto‑Test</button>
+    <button id="copyTestBtn" class="btn" disabled>Copy Test Report</button>
+    <span class="pill">Backend
+      <select id="backendSel" class="select">
+        <option value="wasm">WASM</option>
+        <option value="webgl">WebGL</option>
+        <option value="cpu">CPU</option>
+      </select>
+    </span>
+    <span id="readyBadge" class="badge" style="display:none;">READY</span>
   </div>
-  <span class="pill" id="tfBadge">TF: probing…</span>
-  <span class="pill" id="readiness" style="display:none">READY</span>
-  <div class="spacer"></div>
-  <span class="pill" id="sessStats">Session: 0 detects • 0 analyses • avg detect — ms</span>
 </header>
 
-<main>
-  <section class="card controls">
-    <h3>Inputs & Actions</h3>
-    <div class="body">
-      <div class="grid">
-        <div><label>Upload photo</label><input id="fileInput" type="file" accept="image/*"/></div>
-        <div><label>Sample</label><button id="sampleBtn" class="action">Load Sample</button></div>
+<main class="wrap">
+
+  <section class="grid">
+    <div class="card pane">
+      <h2>Preview</h2>
+      <canvas id="preview" width="1024" height="683"></canvas>
+      <div class="row">
+        <label>Zoom <input id="zoom" type="range" min="0.8" max="2.0" step="0.01" value="1.20" class="num" style="width:160px;"></label>
+        <label>Brightness <input id="bri" type="range" min="0.6" max="1.6" step="0.01" value="1.10" class="num" style="width:160px;"></label>
+        <label>Contrast <input id="con" type="range" min="0.6" max="1.6" step="0.01" value="1.15" class="num" style="width:160px;"></label>
+        <label>Rotate (°) <input id="rot" type="number" class="num" value="0" step="1" style="width:84px;"></label>
       </div>
-      <div class="grid">
-        <div><label>Rotate (°)</label><input id="rot" type="number" step="1" min="-180" max="180" value="0"/></div>
-        <div class="bar" style="align-items:center">
-          <label style="min-width:72px">Zoom</label><input id="zoom" type="range" min="0.8" max="2.0" step="0.05" value="1.20" style="flex:1"/><span class="pill"><span id="zoomLabel">1.20</span>x</span>
-        </div>
-        <div class="bar" style="align-items:center">
-          <label style="min-width:72px">Brightness</label><input id="bri" type="range" min="0.7" max="1.5" step="0.01" value="1.10" style="flex:1"/><span class="pill"><span id="briLabel">1.10</span>×</span>
-        </div>
-        <div class="bar" style="align-items:center">
-          <label style="min-width:72px">Contrast</label><input id="con" type="range" min="0.7" max="1.6" step="0.01" value="1.15" style="flex:1"/><span class="pill"><span id="conLabel">1.15</span>×</span>
-        </div>
+      <div class="bar"><i id="bar"></i></div>
+      <div id="progressText" class="tiny"></div>
+    </div>
+
+    <div class="card pane">
+      <h2>Diagnostics</h2>
+      <div class="row">
+        <button id="copyDiagBtn" class="btn">Copy Diagnostics</button>
+        <button id="clearLogsBtn" class="btn">Clear Logs</button>
+        <button id="resetBtn" class="btn">Reset</button>
       </div>
-      <div class="grid">
-        <div>
-          <label>Fix mode</label>
-          <select id="fixMode">
-            <option value="blaze" selected>BlazeFace only (fast, robust)</option>
-            <option value="cdn">Blaze → (optional) face‑api refine</option>
-          </select>
-        </div>
-        <div>
-          <label>Options</label>
-          <div class="bar" style="flex-wrap:wrap">
-            <label class="pill"><input id="showOverlay" type="checkbox" checked/> Show overlays</label>
-            <label class="pill"><input id="autoAnalyze" type="checkbox"/> Auto‑analyze</label>
-          </div>
-        </div>
-      </div>
-      <div class="bar">
-        <button id="enhanceBtn">Enhance & Retry</button>
-        <button id="detectBtn" class="primary" disabled>Detect</button>
-        <button id="startAnalysisBtn" disabled>Start Analysis</button>
-        <button id="autoTestBtn">Auto‑Test</button>
-        <button id="copyReportBtn">Copy Report</button>
-        <button id="resetBtn">Reset</button>
-        <button id="clearLogsBtn">Clear Logs</button>
-        <span id="progressText" class="sub"></span>
-      </div>
-      <div class="bar"><span class="badge" id="readyBadge" style="display:none">READY</span><span class="badge blocked" id="blockedBadge" style="display:none">BLOCKED</span></div>
+      <div id="diagnostics" class="diag">No diagnostics yet.</div>
     </div>
   </section>
 
-  <section class="card">
-    <h3>Preview</h3>
-    <div class="body stage">
-      <div class="stage-wrap">
-        <canvas id="base" width="0" height="0"></canvas>
-        <canvas id="overlay" width="0" height="0" style="position:absolute; inset:auto"></canvas>
-      </div>
-      <div class="footer"><span class="sub">Hints and metrics will appear after analysis.</span></div>
+  <section id="analysisCard" class="card pane" style="display:none">
+    <h2>Analysis</h2>
+    <div class="kvs">
+      <k>Face area</k><v id="kv_area">—</v>
+      <k>Aspect ratio</k><v id="kv_aspect">—</v>
+      <k>Center offset X</k><v id="kv_offx">—</v>
+      <k>Center offset Y</k><v id="kv_offy">—</v>
+      <k>Brightness</k><v id="kv_bri">—</v>
+      <k>Contrast</k><v id="kv_con">—</v>
+      <k>Sharpness</k><v id="kv_sharp">—</v>
+      <k>Backend</k><v id="kv_backend">—</v>
+    </div>
+    <div class="row">
+      <button id="copyJsonBtn" class="btn">Copy JSON</button>
+      <button id="exportJsonBtn" class="btn">Download JSON</button>
     </div>
   </section>
 
-  <section class="card">
-    <h3>Diagnostics</h3>
-    <div class="body">
-      <div class="filters">
-        <button class="pill" data-filter="all">all</button>
-        <button class="pill" data-filter="detect">detect</button>
-        <button class="pill" data-filter="overlay">overlay</button>
-        <button class="pill" data-filter="analysis">analysis</button>
-        <button class="pill" data-filter="config">config</button>
-        <button class="pill" data-filter="error">error</button>
-        <button class="pill" data-filter="test">test</button>
-      </div>
-      <div id="diagnostics">No diagnostics yet.</div>
-      <div class="footer"><span id="summaryLine" class="sub"></span></div>
-    </div>
-  </section>
 </main>
 
-<div id="veil"><div class="sheet"><div class="title" style="margin-bottom:6px">Loading frameworks…</div><div class="sub" id="veilNote">Preparing TensorFlow + models</div></div></div>
-<div class="toast" id="toast"></div>
-
+<!-- Frameworks -->
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
 
 <script>
 (() => {
-  const REVISION = "1.16.15-alpha";
-  let baseSource=null,lastBox=null,lastAnalysis=null,blazeModel=null;
-  let session={detects:0,analyses:0,detectMs:[]};
-  let __autoTestStartIdx=0, __currentFilter='all';
+  const REVISION = '1.16.16-alpha';
 
-  const $=id=>document.getElementById(id);
-  const diagEl=()=>$("diagnostics"); const base=$("base"); const overlay=$("overlay");
+  /* ---------- tiny helpers ---------- */
+  const $ = id => document.getElementById(id);
+  const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-  function nowIso(){try{return new Date().toISOString()}catch{return""}}
-  function toast(m){const t=$("toast");t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',1400)}
-  function updateSessStats(){const avg=session.detectMs.length?Math.round(session.detectMs.reduce((a,b)=>a+b,0)/session.detectMs.length):"—";$("sessStats").textContent=`Session: ${session.detects} detects • ${session.analyses} analyses • avg detect ${avg} ms`}
-  function setReadyState(ok){$("readyBadge").style.display=ok?'':'none';$("blockedBadge").style.display=ok?'none':'';const chip=$("readiness");chip.style.display='inline-block';chip.className='pill '+(ok?'ok':'blocked');chip.textContent=ok?'READY':'BLOCKED'}
-
-  function logEvt(type,obj){const ts=nowIso();const rec=Object.assign({type},obj||{});const line=`[${ts}] ${JSON.stringify(rec)}`;const el=diagEl();if(el.textContent==='No diagnostics yet.')el.textContent='';el.textContent+=(el.textContent?"\n":"")+line;if(__currentFilter!=='all')applyFilter(__currentFilter)}
-  function getAllLogsText(){const el=diagEl();return el?(el.textContent||''):''}
-  function applyFilter(kind){__currentFilter=kind;const full=getAllLogsText().split('\n').filter(Boolean);if(kind==='all'){diagEl().textContent=full.join('\n');return}const filtered=full.filter(l=>l.includes(`"type":"${kind}"`));diagEl().textContent=filtered.length?filtered.join('\n'):`(no entries of type ${kind})`}
-  document.querySelectorAll('.filters .pill').forEach(b=>b.addEventListener('click',()=>applyFilter(b.dataset.filter)));
-
-  function showVeil(msg){$("veil").style.display='grid';if(msg)$("veilNote").textContent=msg}
-  function hideVeil(){ $("veil").style.display='none' }
-  function setProgress(_,msg){ $("progressText").textContent=msg||'' }
-
-  async function copyTextRobust(text){
-    if(text==null) text='';
-    try{ if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(text); return {ok:true,via:'clipboard'} } }catch(_){}
-    try{ const ta=document.createElement('textarea'); ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px'; document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy'); document.body.removeChild(ta); if(ok) return {ok:true,via:'execCommand'} }catch(e){ return {ok:false,via:'fallback',err:e.message||String(e)} }
-    return {ok:false,via:'none',err:'No clipboard available'};
+  function logEvt(type, obj) {
+    const line = `[${new Date().toISOString()}] ${JSON.stringify({ type, ...obj })}`;
+    const box = $('diagnostics');
+    if (box.textContent.trim() === 'No diagnostics yet.') box.textContent = '';
+    box.textContent += (box.textContent ? '\n' : '') + line;
+    box.scrollTop = box.scrollHeight;
   }
 
-  async function decodeOriginal(fileOrBlob){
-    if('createImageBitmap' in window){ return await createImageBitmap(fileOrBlob) }
-    return new Promise((res,rej)=>{ const url=URL.createObjectURL(fileOrBlob); const img=new Image(); img.onload=()=>{res(img);URL.revokeObjectURL(url)}; img.onerror=()=>{rej(new Error('image decode error'));URL.revokeObjectURL(url)}; img.src=url; });
-  }
-  function paintBaseCanvas(canvas){ overlay.width=canvas.width; overlay.height=canvas.height; base.width=canvas.width; base.height=canvas.height; const ctx=base.getContext('2d'); ctx.clearRect(0,0,base.width,base.height); ctx.drawImage(canvas,0,0); overlay.getContext('2d').clearRect(0,0,overlay.width,overlay.height); logEvt('overlay',{painted:{w:canvas.width,h:canvas.height}}) }
-  function renderWorkingCanvas(targetW=1024){
-    if(!baseSource) return null;
-    const iw=baseSource.width, ih=baseSource.height, scale=targetW/iw, th=Math.round(ih*scale);
-    const c=document.createElement('canvas'); c.width=Math.round(targetW); c.height=th;
-    const ctx=c.getContext('2d');
-    const zoom=+$("zoom").value; $("zoomLabel").textContent=zoom.toFixed(2);
-    const bri=+$("bri").value;   $("briLabel").textContent=bri.toFixed(2);
-    const con=+$("con").value;   $("conLabel").textContent=con.toFixed(2);
-    const rot=+$("rot").value||0;
-    if(rot){ const rad=rot*Math.PI/180; const cw=Math.ceil(Math.abs(c.width*Math.cos(rad))+Math.abs(c.height*Math.sin(rad))); const ch=Math.ceil(Math.abs(c.width*Math.sin(rad))+Math.abs(c.height*Math.cos(rad))); c.width=cw;c.height=ch; }
-    const cx=c.getContext('2d'); cx.filter=`brightness(${bri}) contrast(${con})`; cx.save(); cx.translate(c.width/2,c.height/2); if(rot) cx.rotate(rot*Math.PI/180); const zw=Math.round(targetW*zoom), zh=Math.round(th*zoom); cx.drawImage(baseSource,-zw/2,-zh/2,zw,zh); cx.restore(); return c;
+  function setProgress(pct, text) {
+    $('bar').style.width = Math.max(0, Math.min(100, pct)) + '%';
+    $('progressText').textContent = text || '';
   }
 
-  async function ensureBlaze(){ if(blazeModel) return blazeModel; if(!window.blazeface) throw new Error('BlazeFace UMD missing'); blazeModel=await blazeface.load(); logEvt('detect',{blazefaceReady:true}); return blazeModel }
+  /* ---------- canvas pipeline ---------- */
+  let baseSource = null;       // ImageBitmap or HTMLImageElement
+  let model = null;            // BlazeFace model
+  let lastBox = null;          // final face box
+  let lastAnalysis = null;
 
-  async function detectFlow(){
-    if(!baseSource){ setProgress(0,'Load an image first'); return; }
-    const t0=performance.now();
-    try{
-      const canvas=renderWorkingCanvas(1024); if(canvas) paintBaseCanvas(canvas);
-      const model=await ensureBlaze();
-      // smaller downscale for speed (<=400)
-      const down=document.createElement('canvas');
-      down.width=Math.min(400, base.width);
-      down.height=Math.round(down.width*base.height/base.width);
-      down.getContext('2d').drawImage(base,0,0,down.width,down.height);
-      const preds=await model.estimateFaces(down,false);
-      if(!preds || !preds.length){ lastBox=null; logEvt('detect',{no_face:true}); setReadyState(false); return; }
-      const p=preds[0];
-      const [x,y,w,h]=p.topLeft&&p.bottomRight?(()=>{const tl=p.topLeft, br=p.bottomRight;return [tl[0],tl[1],br[0]-tl[0],br[1]-tl[1]]})():[p.box.x,p.box.y,p.box.width,p.box.height];
-      const sx=base.width/down.width, sy=base.height/down.height;
-      lastBox={x:x*sx,y:y*sy,width:w*sx,height:h*sy};
-      if($("showOverlay").checked){ const ox=overlay.getContext('2d'); ox.clearRect(0,0,overlay.width,overlay.height); ox.strokeStyle='#5ac8fa'; ox.lineWidth=3; ox.setLineDash([6,4]); ox.strokeRect(lastBox.x,lastBox.y,lastBox.width,lastBox.height); }
-      const roughMs=Math.round(performance.now()-t0); logEvt('detect',{roughLocate_ms:roughMs,box:lastBox});
-      const finalMs=Math.max(1,Math.round(performance.now()-t0)); session.detects+=1; session.detectMs.push(finalMs); updateSessStats(); logEvt('detect',{finalDetect_ms:finalMs,scale:256,mirror:false,box:lastBox});
-      $("startAnalysisBtn").disabled=false; if($("autoAnalyze").checked) runLightAnalysis(); setReadyState(true);
-    }catch(e){ setReadyState(false); logEvt('error',{detect:e.message||String(e)}) }
+  function get2d(w, h) {
+    const c = $('preview');
+    c.width = w; c.height = h;
+    return c.getContext('2d', { alpha:false, desynchronized:true });
   }
 
-  function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
-  function lapVar(data,w,h){const L=new Float32Array(w*h); for(let i=0,j=0;i<data.length;i+=4,j++){const r=data[i],g=data[i+1],b=data[i+2];L[j]=0.299*r+0.587*g+0.114*b} const K=[0,-1,0,-1,4,-1,0,-1,0]; const O=new Float32Array(w*h); for(let y=1;y<h-1;y++){for(let x=1;x<w-1;x++){let acc=0,k=0;for(let dy=-1;dy<=1;dy++){for(let dx=-1;dx<=1;dx++){acc+=L[(y+dy)*w+(x+dx)]*K[k++]}} O[y*w+x]=acc}} let sum=0,sum2=0,n=0; for(let i=0;i<O.length;i++){const v=O[i];sum+=v;sum2+=v*v;n++}const mean=sum/n;return (sum2/n)-mean*mean}
-  function statsBrightnessContrast(ctx,rect){const {x,y,width:w,height:h}=rect; const rx=clamp(Math.floor(x),0,base.width-1), ry=clamp(Math.floor(y),0,base.height-1), rw=clamp(Math.floor(w),1,base.width-rx), rh=clamp(Math.floor(h),1,base.height-ry); const img=ctx.getImageData(rx,ry,rw,rh); let sum=0,n=rw*rh,mu=0; for(let i=0;i<img.data.length;i+=4){const r=img.data[i],g=img.data[i+1],b=img.data[i+2]; sum+=0.299*r+0.587*g+0.114*b} mu=sum/n; let s2=0; for(let i=0;i<img.data.length;i+=4){const r=img.data[i],g=img.data[i+1],b=img.data[i+2]; const l=0.299*r+0.587*g+0.114*b; const d=l-mu; s2+=d*d} const sigma=Math.sqrt(s2/n); const lap=lapVar(img.data,rw,rh); return {brightness_mean:+mu.toFixed(3),contrast_stdev:+sigma.toFixed(3),laplacian_variance:+lap.toFixed(3)}}
-  function boxMeta(rect,imgW,imgH){const cx=rect.x+rect.width/2, cy=rect.y+rect.height/2; return {x:+rect.x.toFixed(2),y:+rect.y.toFixed(2),width:+rect.width.toFixed(2),height:+rect.height.toFixed(2),area_pct:+(((rect.width*rect.height)/(imgW*imgH))*100).toFixed(4),aspect:+(rect.width/rect.height).toFixed(4),center:{x:+cx.toFixed(2),y:+cy.toFixed(2)},center_offset_pct:{x:+(((cx-imgW/2)/imgW)*100).toFixed(2),y:+(((cy-imgH/2)/imgH)*100).toFixed(2)}}}
-  function runLightAnalysis(){try{if(!lastBox){logEvt('error',{analysis:'no box'});return}const ctx=base.getContext('2d'); const img={width:base.width,height:base.height}; const L=statsBrightnessContrast(ctx,lastBox); const analysis={revision:REVISION,timestamp:nowIso(),image:{width:img.width,height:img.height},box:boxMeta(lastBox,img.width,img.height),lighting:{brightness_mean:L.brightness_mean,contrast_stdev:L.contrast_stdev},sharpness:{laplacian_variance:L.laplacian_variance},orientation:(img.width>=img.height?'landscape':'portrait'),refine:{}}; lastAnalysis=analysis; session.analyses+=1; updateSessStats(); logEvt('analysis',{analysis})}catch(e){logEvt('error',{analysis:e.message||String(e)})}}
+  function composePreview() {
+    if (!baseSource) return null;
+    const z = +$('zoom').value || 1;
+    const rot = (+$('rot').value || 0) * Math.PI/180;
+    const bri = +$('bri').value || 1;
+    const con = +$('con').value || 1;
 
-  function buildAutoTestReport(){
-    const full=getAllLogsText(); const chunk=full.slice(__autoTestStartIdx);
-    const backendFromLogs=(full.match(/"backend":"([^"]+)"/)||[])[1]||'';
-    const tfVer=(full.match(/"tf_version":"([^"]+)"/)||[])[1]||'';
-    const backend = backendFromLogs || (window.tf&&tf.getBackend?tf.getBackend():'—');
-    const refineYes = /"refine":\{[^}]*\}/.test(chunk) && /"landmarks":\d+/.test(chunk);
-    const errors=(chunk.match(/"type":"error"/g)||[]).length;
-    const passes=(chunk.match(/"test","step":"[^"]+","ok":true/g)||[]).length;
-    const roughMs=(chunk.match(/"roughLocate_ms":(\d+)/)||[])[1];
-    const finalMs=(chunk.match(/"finalDetect_ms":(\d+)/)||[])[1];
-    const summaryLine=`YorN ${REVISION} • TF backend: ${backend}${tfVer?' • v'+tfVer:''} • refine: ${refineYes?'yes':'no'} • passes: ${passes} • errors: ${errors} • rough: ${roughMs||'—'} ms • final: ${finalMs||'—'} ms`;
-    $("summaryLine").textContent=summaryLine;
-    return ['=== YorN Auto‑Test Report ===',summaryLine,'',...chunk.split('\n').filter(l=>/"type":"/.test(l)),'=== End Report ===',''].join('\n');
+    const srcW = baseSource.width;
+    const srcH = baseSource.height;
+    const dstW = Math.round(Math.min(1024, srcW * z));
+    const dstH = Math.round(dstW * (srcH/srcW));
+
+    const ctx = get2d(dstW, dstH);
+    ctx.save();
+    ctx.filter = `brightness(${bri}) contrast(${con})`;
+    if (rot !== 0) {
+      ctx.translate(dstW/2, dstH/2);
+      ctx.rotate(rot);
+      const scaleFit = Math.min(dstW/srcW, dstH/srcH);
+      const drawW = srcW * scaleFit;
+      const drawH = srcH * scaleFit;
+      ctx.drawImage(baseSource, -drawW/2, -drawH/2, drawW, drawH);
+    } else {
+      ctx.drawImage(baseSource, 0, 0, dstW, dstH);
+    }
+    ctx.restore();
+    return ctx.canvas;
   }
 
-  async function warmup(){
-    try{
-      // compile a couple common kernels
+  function drawBoxOn(canvas, box, color='#63b3ff') {
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(2, canvas.width/256);
+    ctx.shadowColor = 'rgba(0,0,0,.7)';
+    ctx.shadowBlur = 6;
+    ctx.strokeRect(box.x, box.y, box.width, box.height);
+    ctx.restore();
+  }
+
+  /* ---------- tf backend & warmup ---------- */
+  async function setBackendPreferred() {
+    const sel = $('backendSel');
+    const wanted = localStorage.getItem('yorn_backend') || sel.value || 'wasm';
+    try {
+      await tf.setBackend(wanted);
       await tf.ready();
-      tf.tidy(()=>{ const a=tf.randomNormal([64,64]); const b=tf.randomNormal([64,64]); a.matMul(b).sum().dataSync() });
-      await tf.nextFrame();
-      logEvt('config',{warmup:'ok', backend: tf.getBackend()});
-    }catch(e){ logEvt('error',{warmup:e.message||String(e)}) }
-  }
-
-  async function runAutoTest(){
-    $("autoTestBtn").disabled=true; $("copyReportBtn").disabled=true;
-    const fullBefore=getAllLogsText(); __autoTestStartIdx=fullBefore.length;
-    logEvt('test',{step:'begin',rev:REVISION});
-    try{
-      const tfPresent=!!window.tf; logEvt('test',{step:'tf_present',ok:tfPresent}); if(!tfPresent) throw new Error('tf missing');
-      // Explicit backend/version logging for the report
-      try{ await tf.ready(); logEvt('config',{tf:'ready',backend:tf.getBackend(),tf_version:(tf.version_core||tf.version?.tfjs||'unknown')}); }catch(_){}
-      await warmup();
-
-      // Sample
-      const u="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
-      logEvt('detect',{sampleImage:u});
-      const res=await fetch(u,{cache:"no-store"}); const blob=await res.blob(); baseSource=await decodeOriginal(blob);
-      const c=renderWorkingCanvas(1024); if(c) paintBaseCanvas(c);
-      logEvt('test',{step:'sample',ok:!!baseSource});
-
-      const t0=performance.now(); await detectFlow(); const ms=Math.round(performance.now()-t0);
-      logEvt('test',{step:'detect_blazeonly',ok:!!lastBox,ms});
-      logEvt('test',{step:'refine_guard',ok:true});
-      logEvt('analysis',{analysisRequested:true,mode:'light'}); runLightAnalysis();
-      logEvt('test',{step:'analysis_blazeonly',ok:!!lastAnalysis});
-      const ok=!!(baseSource&&lastBox&&lastAnalysis); logEvt('test',{step:'summary',ok}); setReadyState(ok);
-      $("copyReportBtn").disabled=false;
-    }catch(e){ setReadyState(false); logEvt('error',{autoTest:e.message||String(e)}) }
-    $("autoTestBtn").disabled=false;
-  }
-
-  // UI binds
-  $("enhanceBtn").addEventListener("click",()=>{ $("zoom").value=Math.max(1.5,+$("zoom").value);$("zoomLabel").textContent=(+$("zoom").value).toFixed(2);$("bri").value=Math.max(1.18,+$("bri").value);$("briLabel").textContent=(+$("bri").value).toFixed(2);$("con").value=Math.max(1.25,+$("con").value);$("conLabel").textContent=(+$("con").value).toFixed(2);detectFlow() });
-  $("detectBtn").addEventListener("click",()=>detectFlow());
-  $("startAnalysisBtn").addEventListener("click",()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis() });
-  $("clearLogsBtn").addEventListener("click",()=>{ diagEl().textContent='No diagnostics yet.'; $("summaryLine").textContent=''; });
-  $("resetBtn").addEventListener("click",()=>{ ["base","overlay"].forEach(id=>$(id).getContext('2d').clearRect(0,0,$(id).width,$(id).height)); baseSource=null; lastBox=null; lastAnalysis=null; $("detectBtn").disabled=true; $("startAnalysisBtn").disabled=true; setReadyState(false); logEvt('config',{reset:true}) });
-  $("fileInput").addEventListener("change",async()=>{ if(!$("fileInput").files.length) return; const f=$("fileInput").files[0]; setProgress(8,'Decoding photo…'); try{ baseSource=await decodeOriginal(f); const c=renderWorkingCanvas(1024); if(c){ paintBaseCanvas(c); setProgress(12,'Photo ready'); $("detectBtn").disabled=false; } }catch(e){ logEvt('error',{decode_failed:e.message||String(e)}) } });
-  $("sampleBtn").addEventListener("click",async()=>{ try{ setProgress(5,'Fetching sample…'); const u="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop"; const res=await fetch(u,{cache:"no-store"}); if(!res.ok) throw new Error('HTTP '+res.status); const blob=await res.blob(); baseSource=await decodeOriginal(blob); const c=renderWorkingCanvas(1024); if(c){ paintBaseCanvas(c); setProgress(12,'Sample ready'); $("detectBtn").disabled=false; } logEvt('detect',{sampleImage:u}); }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) } });
-  $("autoTestBtn").addEventListener("click",runAutoTest);
-  $("copyReportBtn").addEventListener("click",async()=>{ const report=buildAutoTestReport(); const res=await copyTextRobust(report); if(res.ok){ toast('Report copied'); logEvt('config',{copied:true,via:res.via}) } else { logEvt('error',{copy_failed:res.err||'unknown'}) } });
-  ["zoom","bri","con"].forEach(id=>$(id).addEventListener('input',()=>{ if(id==='zoom')$("zoomLabel").textContent=(+$("zoom").value).toFixed(2); if(id==='bri')$("briLabel").textContent=(+$("bri").value).toFixed(2); if(id==='con')$("conLabel").textContent=(+$("con").value).toFixed(2) }));
-
-  async function initTf(){
-    try{
-      showVeil('Initializing TensorFlow…');
-      if(window.tf && tf.wasm && tf.wasm.setWasmPaths){
-        tf.wasm.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/');
+      localStorage.setItem('yorn_backend', wanted);
+      sel.value = wanted;
+      logEvt('config', { tf:'ready', backend: tf.getBackend(), tf_version: tf.version_core || tf.version_core });
+      await warmupKernels();
+    } catch (e) {
+      logEvt('error', { backend_set_failed: e.message || String(e) });
+      // fallback chain
+      for (const b of ['wasm','webgl','cpu']) {
+        if (b === wanted) continue;
+        try {
+          await tf.setBackend(b);
+          await tf.ready();
+          sel.value = b;
+          localStorage.setItem('yorn_backend', b);
+          logEvt('config', { tf:'ready', backend: tf.getBackend(), tf_version: tf.version_core || tf.version_core, fallback_from: wanted });
+          await warmupKernels();
+          break;
+        } catch(_) {}
       }
-      try{ await tf.setBackend('wasm'); await tf.ready() } catch(_){ await tf.setBackend('cpu'); await tf.ready() }
-      const ver=(tf.version_core||tf.version?.tfjs||'3.x'); const be=tf.getBackend();
-      logEvt('config',{tf:'ready',backend:be,tf_version:ver}); $("tfBadge").textContent=`TF: ${be} • v${ver}`;
-      await warmup();
-      hideVeil();
-    }catch(e){ hideVeil(); $("tfBadge").textContent='TF: init error'; logEvt('error',{tf_init:e.message||String(e)}) }
+    }
   }
 
-  async function boot(){
-    logEvt('config',{boot:'dom-ready',rev:REVISION});
-    showVeil('Loading models…');
-    await initTf();
-    try{
-      await ensureBlaze();
-      // tiny compile touch
-      const tmp=document.createElement('canvas'); tmp.width=64; tmp.height=64; tmp.getContext('2d').fillRect(0,0,64,64);
-      try{ await blazeModel.estimateFaces(tmp,false); }catch(_){}
-    }catch(e){ logEvt('error',{blazeface:e.message||String(e)}) }
-    hideVeil(); logEvt('config',{boot:'frameworks-ready'}); updateSessStats(); setReadyState(false); $("detectBtn").disabled=!baseSource;
+  async function warmupKernels() {
+    try {
+      // light but diversified warmup
+      await tf.tidy(() => {
+        const a = tf.randomUniform([1,32,32,3]);
+        const k = tf.ones([3,3,3,8]);
+        const c = tf.conv2d(a, k, 1, 'same');
+        const r = tf.image.resizeBilinear(c, [16,16]);
+        return r.mean().dataSync();
+      });
+      logEvt('config', { warmup:'ok', backend: tf.getBackend() });
+    } catch (e) {
+      logEvt('error', { warmup: e.message || String(e) });
+    }
   }
 
-  window.addEventListener('load',()=>{ try{ const saved=localStorage.getItem('yorn_last_analysis'); if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}) } }catch(_){} logEvt('config',{boot:'complete'}) });
-  boot();
+  $('backendSel').addEventListener('change', async () => {
+    localStorage.setItem('yorn_backend', $('backendSel').value);
+    await setBackendPreferred();
+  });
+
+  /* ---------- model load ---------- */
+  async function ensureModel() {
+    if (model) return model;
+    if (!window.blazeface) {
+      logEvt('error', { model:'blazeface UMD missing' });
+      throw new Error('BlazeFace not available');
+    }
+    model = await blazeface.load({ maxFaces: 1, inputWidth: 256, inputHeight: 256 });
+    logEvt('detect', { blazefaceReady: true });
+    return model;
+  }
+
+  /* ---------- detection ---------- */
+  function extractCanvasData(srcCanvas, maxW) {
+    const scale = Math.min(1, (maxW||384)/srcCanvas.width);
+    if (scale === 1) return srcCanvas;
+    const w = Math.round(srcCanvas.width * scale);
+    const h = Math.round(srcCanvas.height * scale);
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    c.getContext('2d').drawImage(srcCanvas, 0, 0, w, h);
+    return c;
+  }
+
+  function upscaleBox(box, srcCanvas, downCanvas) {
+    if (downCanvas === srcCanvas) return box;
+    const s = srcCanvas.width / downCanvas.width;
+    return {
+      x: box.x * s,
+      y: box.y * s,
+      width: box.width * s,
+      height: box.height * s
+    };
+  }
+
+  async function quickDetect() {
+    await ensureModel();
+    const src = composePreview();
+    if (!src) return null;
+    setProgress(35, 'Scanning…');
+    const down = extractCanvasData(src, 384); // quick path
+    const preds = await model.estimateFaces(down, false);
+    if (!preds || preds.length === 0) return null;
+    // convert normalized landmarks box -> xywh
+    const p = preds[0];
+    // BlazeFace returns topLeft & bottomRight
+    const [x0,y0] = p.topLeft;
+    const [x1,y1] = p.bottomRight;
+    const box = { x:x0, y:y0, width: (x1-x0), height:(y1-y0) };
+    const up = upscaleBox(box, src, down);
+    return { box: up, canvas: src };
+  }
+
+  async function detectFlow() {
+    try {
+      setProgress(10, 'Preparing…');
+      const src = composePreview();
+      if (!src) return;
+      // rough locate
+      const t0 = performance.now();
+      const res = await quickDetect();
+      if (!res) {
+        setProgress(100, 'No face found');
+        logEvt('analysis', { finalDetect_ms: 0, box: null });
+        return;
+      }
+      const roughMs = Math.round(performance.now() - t0);
+      const box = res.box;
+      lastBox = box;
+      drawBoxOn(src, box, '#63b3ff');
+      setProgress(65, 'Face found');
+      logEvt('detect', { roughLocate_ms: roughMs, box });
+
+      // final (same as rough for now; refine disabled)
+      const t1 = performance.now();
+      drawBoxOn(src, box, '#19c37d');
+      const finalMs = Math.round(performance.now() - t1);
+      logEvt('detect', { finalDetect_ms: finalMs, scale: 256, mirror: false, box });
+      $('startAnalysisBtn').disabled = false;
+      return box;
+    } catch (e) {
+      logEvt('error', { detect: e.message || String(e) });
+    } finally {
+      setProgress(100, '');
+      setTimeout(()=>setProgress(0,''), 400);
+    }
+  }
+
+  /* ---------- analysis ---------- */
+  function varianceLaplacian(gray, w, h) {
+    // simple, fast laplacian var using 3x3 kernel on downscaled image
+    const K = [[0,1,0],[1,-4,1],[0,1,0]];
+    const out = [];
+    let sum = 0, sum2 = 0, n = 0;
+    for (let y=1; y<h-1; y++) {
+      for (let x=1; x<w-1; x++) {
+        let v = 0;
+        for (let ky=-1; ky<=1; ky++) {
+          for (let kx=-1; kx<=1; kx++) {
+            v += K[ky+1][kx+1] * gray[(y+ky)*w + (x+kx)];
+          }
+        }
+        out.push(v);
+        sum += v; sum2 += v*v; n++;
+      }
+    }
+    const mean = sum/n;
+    return Math.max(0, (sum2/n) - mean*mean);
+  }
+
+  function computeStats(canvas, box) {
+    const ctx = canvas.getContext('2d');
+    const { x,y,width:W,height:H } = box;
+    const sx = Math.max(0, Math.floor(x));
+    const sy = Math.max(0, Math.floor(y));
+    const sw = Math.min(canvas.width - sx, Math.floor(W));
+    const sh = Math.min(canvas.height - sy, Math.floor(H));
+    const img = ctx.getImageData(sx, sy, sw, sh);
+    let briSum=0, briCnt=0;
+    const gray = new Uint8Array(sw*sh);
+    let i=0;
+    for (let p=0; p<img.data.length; p+=4) {
+      const r = img.data[p], g=img.data[p+1], b=img.data[p+2];
+      const l = 0.299*r + 0.587*g + 0.114*b;
+      gray[i++] = l;
+      briSum += l; briCnt++;
+    }
+    const mean = briSum / Math.max(1,briCnt);
+
+    // contrast ~ stdev of luminance
+    let dev=0;
+    i=0;
+    for (let p=0; p<img.data.length; p+=4) {
+      const l = gray[i++];
+      dev += (l-mean)*(l-mean);
+    }
+    const stdev = Math.sqrt(dev/Math.max(1,briCnt));
+
+    // sharpness via Laplacian on small map
+    // downscale to ~128px wide region for speed
+    const scale = Math.min(1, 128/sw);
+    const dw = Math.max(8, Math.round(sw*scale));
+    const dh = Math.max(8, Math.round(sh*scale));
+    const tmp = document.createElement('canvas');
+    tmp.width=dw; tmp.height=dh;
+    tmp.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, dw, dh);
+    const d = tmp.getContext('2d').getImageData(0,0,dw,dh).data;
+    const g2 = new Uint8Array(dw*dh);
+    for (let y=0, idx=0; y<dh; y++) {
+      for (let x=0; x<dw; x++, idx+=4) {
+        g2[y*dw+x] = 0.299*d[idx] + 0.587*d[idx+1] + 0.114*d[idx+2];
+      }
+    }
+    const lapVar = varianceLaplacian(g2, dw, dh);
+
+    return { brightness_mean: +mean.toFixed(3), contrast_stdev: +stdev.toFixed(3), laplacian_variance: +lapVar.toFixed(3) };
+  }
+
+  async function runLightAnalysis() {
+    try {
+      if (!lastBox) { await detectFlow(); if (!lastBox) return; }
+      const canvas = composePreview();
+      const A = computeStats(canvas, lastBox);
+      const area = (lastBox.width * lastBox.height) / (canvas.width * canvas.height) * 100;
+      const aspect = lastBox.width / lastBox.height;
+      const cx = lastBox.x + lastBox.width/2;
+      const cy = lastBox.y + lastBox.height/2;
+      const offx = (cx - canvas.width/2) / canvas.width * 100;
+      const offy = (cy - canvas.height/2) / canvas.height * 100;
+
+      lastAnalysis = {
+        revision: REVISION,
+        timestamp: new Date().toISOString(),
+        image: { width: canvas.width, height: canvas.height },
+        box: {
+          x: +lastBox.x.toFixed(2), y: +lastBox.y.toFixed(2),
+          width: +lastBox.width.toFixed(2), height: +lastBox.height.toFixed(2),
+          area_pct: +area.toFixed(4),
+          aspect: +aspect.toFixed(4),
+          center: { x:+cx.toFixed(2), y:+cy.toFixed(2) },
+          center_offset_pct: { x:+offx.toFixed(2), y:+offy.toFixed(2) }
+        },
+        lighting: A,
+        orientation: canvas.width >= canvas.height ? 'landscape' : 'portrait',
+        refine: {}
+      };
+
+      $('kv_area').textContent  = area.toFixed(2) + ' %';
+      $('kv_aspect').textContent= aspect.toFixed(4);
+      $('kv_offx').textContent  = (offx>=0?'+':'') + offx.toFixed(2) + ' %';
+      $('kv_offy').textContent  = (offy>=0?'+':'') + offy.toFixed(2) + ' %';
+      $('kv_bri').textContent   = A.brightness_mean;
+      $('kv_con').textContent   = A.contrast_stdev;
+      $('kv_sharp').textContent = A.laplacian_variance;
+      $('kv_backend').textContent = (tf.getBackend() || '—') + ' (tf ' + (tf?.version_core || tf?.version?.tfjs || '—') + ')';
+
+      $('analysisCard').style.display = '';
+      localStorage.setItem('yorn_last_analysis', JSON.stringify(lastAnalysis));
+      logEvt('analysis', { analysis: lastAnalysis });
+    } catch (e) {
+      logEvt('error', { analysis: e.message || String(e) });
+    }
+  }
+
+  /* ---------- copy helpers ---------- */
+  async function copyTextRobust(text) {
+    if (text == null) text = '';
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return { ok:true, via:'clipboard' };
+      }
+    } catch(_) {}
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly','');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (ok) return { ok:true, via:'execCommand' };
+    } catch (e) {
+      return { ok:false, via:'fallback', err:e.message || String(e) };
+    }
+    return { ok:false, via:'none', err:'No clipboard available' };
+  }
+
+  function getAllLogsText() {
+    const el = $('diagnostics');
+    return el ? (el.innerText || el.textContent || '') : '';
+  }
+
+  function buildAutoTestReport() {
+    const full = getAllLogsText();
+    // pull last run summary-ish
+    const backendMatch = full.match(/"backend":"([^"]+)"/) || [];
+    const tfVerMatch = full.match(/"tf_version":"([^"]+)"/) || [];
+    const refine = /"refine":\{/.test(full) ? 'yes' : 'no';
+    const rough = (full.match(/"roughLocate_ms":(\d+)/) || [])[1] || '—';
+    const final = (full.match(/"finalDetect_ms":(\d+)/) || [])[1] || '—';
+    const errors = (full.match(/"type":"error"/g) || []).length;
+    const passes = (full.match(/"type":"test","step":"[^"]+","ok":true/g) || []).length;
+    const summary = `YorN ${REVISION} • TF backend: ${backendMatch[1]||'—'} • refine: ${refine} • passes: ${passes} • errors: ${errors} • rough: ${rough} ms • final: ${final} ms`;
+    const lines = full.split('\n').filter(l => /"type":"(test|detect|analysis|config|error)"/.test(l));
+    return ['=== YorN Auto‑Test Report ===', summary, '', ...lines, '=== End Report ===', ''].join('\n');
+  }
+
+  /* ---------- UI binds ---------- */
+  $('enhanceBtn').addEventListener('click', () => {
+    const z=$('zoom'); z.value = Math.max(+z.value, 1.5);
+    const b=$('bri');  b.value = Math.max(+b.value, 1.18);
+    const c=$('con');  c.value = Math.max(+c.value, 1.25);
+    detectFlow();
+  });
+
+  $('detectBtn').addEventListener('click', detectFlow);
+  $('startAnalysisBtn').addEventListener('click', () => {
+    logEvt('analysis', { analysisRequested: true, mode: 'light' });
+    runLightAnalysis();
+  });
+
+  $('clearLogsBtn').addEventListener('click', () => {
+    $('diagnostics').textContent = 'No diagnostics yet.';
+  });
+
+  $('resetBtn').addEventListener('click', () => {
+    baseSource = null; lastBox = null; lastAnalysis = null;
+    $('analysisCard').style.display = 'none';
+    const ctx = get2d(1024, 683); ctx.clearRect(0,0,ctx.canvas.width, ctx.canvas.height);
+    $('detectBtn').disabled = true; $('startAnalysisBtn').disabled = true;
+    logEvt('config', { reset:true });
+  });
+
+  $('fileInput').addEventListener('change', async () => {
+    if (!$('fileInput').files.length) return;
+    const f = $('fileInput').files[0];
+    setProgress(10, 'Decoding photo…');
+    try {
+      baseSource = await createImageBitmap(f);
+      composePreview(); setProgress(20, 'Photo ready');
+      $('detectBtn').disabled = false;
+      logEvt('detect', { fileName:f.name, size_bytes:f.size, w:baseSource.width, h:baseSource.height });
+    } catch (e) {
+      logEvt('error', { decode_failed: e.message || String(e) });
+    }
+  });
+
+  $('sampleBtn').addEventListener('click', async () => {
+    try {
+      setProgress(6, 'Fetching sample…');
+      const u = "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
+      const res = await fetch(u, { cache:'no-store' });
+      if (!res.ok) throw new Error('HTTP '+res.status);
+      const blob = await res.blob();
+      baseSource = await createImageBitmap(blob);
+      composePreview(); setProgress(12, 'Sample ready');
+      $('detectBtn').disabled = false;
+      logEvt('detect', { sampleImage: u });
+    } catch (e) {
+      logEvt('error', { sample_failed: e.message || String(e) });
+    }
+  });
+
+  $('copyDiagBtn').addEventListener('click', async () => {
+    const report = getAllLogsText();
+    const res = await copyTextRobust(report);
+    if (res.ok) {
+      logEvt('config', { copiedDiagnostics:true, via:res.via, length: report.length });
+      $('progressText').textContent = 'Diagnostics copied';
+      setTimeout(()=> $('progressText').textContent = '', 1200);
+    } else {
+      logEvt('error', { copyDiagnosticsError: res.err || 'unknown', via: res.via });
+    }
+  });
+
+  $('copyTestBtn').addEventListener('click', async () => {
+    const report = buildAutoTestReport();
+    const res = await copyTextRobust(report);
+    if (res.ok) {
+      logEvt('config', { copiedAutoTestReport:true, via:res.via, length: report.length });
+      $('progressText').textContent = 'Test report copied';
+      setTimeout(()=> $('progressText').textContent = '', 1200);
+    } else {
+      logEvt('error', { copyAutoTestReportError: res.err || 'unknown', via: res.via });
+    }
+  });
+
+  $('autoTestBtn').addEventListener('click', async () => {
+    $('autoTestBtn').disabled = true;
+    $('copyTestBtn').disabled = true;
+    try {
+      logEvt('test', { step:'begin', rev: REVISION });
+      logEvt('test', { step:'tf_present', ok: !!window.tf });
+      await setBackendPreferred(); // sets backend + warmup
+      // sample
+      await $('sampleBtn').click();
+      await sleep(150);
+      logEvt('test', { step:'sample', ok: !!baseSource });
+      // detect
+      const t0 = performance.now();
+      const b = await detectFlow();
+      const ms = Math.round(performance.now() - t0);
+      logEvt('test', { step:'detect_blazeonly', ok: !!b, ms });
+      logEvt('test', { step:'refine_guard', ok: true });
+      // analysis
+      $('startAnalysisBtn').click();
+      await sleep(120);
+      logEvt('test', { step:'analysis_blazeonly', ok: !!lastAnalysis });
+      // summary
+      const ok = !!(baseSource && lastBox && lastAnalysis);
+      const badge = $('readyBadge');
+      badge.style.display = 'inline-block';
+      badge.className = ok ? 'badge ready' : 'badge';
+      badge.textContent = ok ? 'READY' : 'BLOCKED';
+      logEvt('test', { step:'summary', ok });
+      $('copyTestBtn').disabled = false;
+    } catch (e) {
+      logEvt('error', { autoTest: e.message || String(e) });
+    }
+    $('autoTestBtn').disabled = false;
+  });
+
+  // live controls
+  for (const id of ['zoom','bri','con','rot']) {
+    $(id).addEventListener('input', () => {
+      composePreview();
+      if (lastBox) {
+        const c = $('preview');
+        drawBoxOn(c, lastBox, '#63b3ff');
+      }
+    });
+  }
+
+  /* ---------- boot ---------- */
+  window.addEventListener('DOMContentLoaded', async () => {
+    logEvt('config', { boot:'dom-ready', rev: REVISION });
+    // restore backend preference
+    const pref = localStorage.getItem('yorn_backend');
+    if (pref) $('backendSel').value = pref;
+    await setBackendPreferred();
+    // restore last analysis if present
+    try {
+      const saved = localStorage.getItem('yorn_last_analysis');
+      if (saved) {
+        const a = JSON.parse(saved);
+        logEvt('analysis', { restored:true, analysis:a });
+        $('analysisCard').style.display = '';
+      }
+    } catch(_) {}
+    logEvt('config', { boot:'complete' });
+  });
+
 })();
 </script>
 </body>
-</html
+</html>
