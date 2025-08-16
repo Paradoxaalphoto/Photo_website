@@ -2,92 +2,34 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta
-  name="viewport"
-  content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
-/>
-<title>YorN • 1.16.14-alpha</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"/>
+<title>YorN • 1.16.15-alpha</title>
 <style>
-  :root {
-    --bg:#0c0f14; --panel:#121722; --panel-2:#0f141d; --ink:#e9eef7;
-    --muted:#a9b7cc; --accent:#5ac8fa; --ok:#29d399; --warn:#f5a524; --err:#ff6b6b;
-    --chip:#1a2230; --chip-on:#0d141d; --brand:#8a5cff;
-  }
-  * { box-sizing: border-box }
-  html, body { height:100% }
-  body {
-    margin:0; background:var(--bg); color:var(--ink);
-    font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-  }
-  header {
-    position:sticky; top:0; z-index:30; backdrop-filter: blur(6px);
-    background: linear-gradient(180deg, rgba(12,15,20,.9), rgba(12,15,20,.6));
-    border-bottom: 1px solid #1b2331; padding: 10px 12px;
-    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
-  }
-  .title { font-weight:700; letter-spacing:.2px }
-  .sub { color:var(--muted); font-size:12px }
-  .pill { padding:4px 8px; border-radius:999px; background:var(--chip); color:var(--muted); }
-  .pill.ok { background: #0e2a1e; color:#7ff7c0 }
-  .pill.blocked { background:#2a0e11; color:#ff9aa5 }
-  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center }
-  .spacer { flex:1 }
-  main { max-width: 980px; margin: 16px auto; padding: 0 12px; display:grid; gap:12px }
-  .card {
-    background: var(--panel); border:1px solid #1b2331; border-radius:14px; overflow:hidden;
-  }
-  .card h3 { margin:0; padding:10px 12px; border-bottom:1px solid #1b2331; font-size:13px; letter-spacing:.3px; color:var(--muted) }
-  .card .body { padding:12px; display:grid; gap:10px }
-  .controls .body { display:grid; gap:8px }
-  .controls .grid { display:grid; grid-template-columns: 1fr; gap:8px }
-  @media(min-width:740px){ .controls .grid { grid-template-columns: 1fr 1fr } }
-  label { color:var(--muted); font-size:12px }
-  input[type="file"], select, button, input[type="range"], input[type="number"] {
-    background: var(--panel-2); color:var(--ink); border:1px solid #1b2331;
-    border-radius:10px; padding:8px 10px; width:100%;
-  }
-  button {
-    cursor:pointer; transition: .15s ease transform, .15s ease opacity;
-  }
-  button.primary { background: #1a2230; border-color:#233045 }
-  button.action { background: #142335; border-color:#27354a }
-  button:hover { transform: translateY(-1px) }
-  button:disabled { opacity:.55; cursor:not-allowed }
-  .bar { display:flex; gap:8px; flex-wrap:wrap }
-  .chip { padding:6px 8px; border-radius:10px; background:var(--chip); color:var(--muted); font-size:12px }
-  .status { display:flex; gap:8px; align-items:center; flex-wrap:wrap }
-  .badge { border-radius:999px; padding:4px 10px; font-size:12px; border:1px solid #2a3547 }
-  .ready { background:#0f251a; color:#7ff7c0; }
-  .blocked { background:#2a1313; color:#ff9aa5 }
-  /* Canvas area */
-  .stage { display:grid; gap:8px }
-  .stage-wrap { width:100%; background:#0b0f16; border:1px dashed #1b2a44; border-radius:12px; padding:10px; }
-  canvas { max-width:100%; height:auto; display:block; border-radius:10px; }
-  /* Diagnostics */
-  .diag-body { display:grid; gap:8px }
-  .filters { display:flex; gap:6px; flex-wrap:wrap }
-  .filters button { font-size:12px; padding:6px 8px }
-  #diagnostics {
-    white-space:pre-wrap; word-break: break-word; overflow:auto; max-height: 44vh;
-    background:#0a0f16; border:1px solid #192233; border-radius:10px; padding:10px;
-  }
-  .footer { color:var(--muted); font-size:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap }
-  /* Veil overlay */
-  #veil {
-    position:fixed; inset:0; display:none; place-items:center; background:rgba(10,14,20,.6);
-    backdrop-filter: blur(4px); z-index:50;
-  }
-  #veil .sheet { background:#0f141d; border:1px solid #1b2331; border-radius:14px; padding:16px; min-width:240px; text-align:center }
-  .toast { position:fixed; bottom:14px; left:50%; transform:translateX(-50%); background:#0f1a2a; color:#d7e7ff; border:1px solid #1c2a44; padding:8px 12px; border-radius:10px; display:none; z-index:60 }
-  .kv { display:flex; gap:8px; align-items:center; flex-wrap:wrap }
-  .kv .pill { font-size:12px }
+  :root{--bg:#0c0f14;--panel:#121722;--panel-2:#0f141d;--ink:#e9eef7;--muted:#a9b7cc;--accent:#5ac8fa;--ok:#29d399;--warn:#f5a524;--err:#ff6b6b;--chip:#1a2230}
+  *{box-sizing:border-box}html,body{height:100%}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  header{position:sticky;top:0;z-index:30;backdrop-filter:blur(6px);background:linear-gradient(180deg,rgba(12,15,20,.9),rgba(12,15,20,.6));border-bottom:1px solid #1b2331;padding:10px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .title{font-weight:700}.sub{color:var(--muted);font-size:12px}.pill{padding:4px 8px;border-radius:999px;background:var(--chip);color:var(--muted)}.pill.ok{background:#0e2a1e;color:#7ff7c0}.pill.blocked{background:#2a0e11;color:#ff9aa5}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.spacer{flex:1}main{max-width:980px;margin:16px auto;padding:0 12px;display:grid;gap:12px}
+  .card{background:var(--panel);border:1px solid #1b2331;border-radius:14px;overflow:hidden}.card h3{margin:0;padding:10px 12px;border-bottom:1px solid #1b2331;font-size:13px;color:var(--muted)}
+  .card .body{padding:12px;display:grid;gap:10px}.controls .grid{display:grid;grid-template-columns:1fr;gap:8px}
+  @media(min-width:740px){.controls .grid{grid-template-columns:1fr 1fr}}
+  label{color:var(--muted);font-size:12px}
+  input[type="file"],select,button,input[type="range"],input[type="number"]{background:var(--panel-2);color:var(--ink);border:1px solid #1b2331;border-radius:10px;padding:8px 10px;width:100%}
+  button{cursor:pointer;transition:.15s ease transform,.15s ease opacity}button.primary{background:#1a2230;border-color:#233045}button.action{background:#142335;border-color:#27354a}button:hover{transform:translateY(-1px)}button:disabled{opacity:.55;cursor:not-allowed}
+  .bar{display:flex;gap:8px;flex-wrap:wrap}.badge{border-radius:999px;padding:4px 10px;font-size:12px;border:1px solid #2a3547}.ready{background:#0f251a;color:#7ff7c0}.blocked{background:#2a1313;color:#ff9aa5}
+  .stage{display:grid;gap:8px}.stage-wrap{width:100%;background:#0b0f16;border:1px dashed #1b2a44;border-radius:12px;padding:10px;position:relative}
+  canvas{max-width:100%;height:auto;display:block;border-radius:10px}#diagnostics{white-space:pre-wrap;word-break:break-word;overflow:auto;max-height:44vh;background:#0a0f16;border:1px solid #192233;border-radius:10px;padding:10px}
+  .filters{display:flex;gap:6px;flex-wrap:wrap}.filters button{font-size:12px;padding:6px 8px}.footer{color:var(--muted);font-size:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  #veil{position:fixed;inset:0;display:none;place-items:center;background:rgba(10,14,20,.6);backdrop-filter:blur(4px);z-index:50}
+  #veil .sheet{background:#0f141d;border:1px solid #1b2331;border-radius:14px;padding:16px;min-width:240px;text-align:center}
+  .toast{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:#0f1a2a;color:#d7e7ff;border:1px solid #1c2a44;padding:8px 12px;border-radius:10px;display:none;z-index:60}
 </style>
 </head>
 <body>
 <header>
   <div class="row">
     <div class="title">YorN</div>
-    <div class="sub">prototype · rev <span id="rev">1.16.14-alpha</span></div>
+    <div class="sub">prototype · rev <span id="rev">1.16.15-alpha</span></div>
   </div>
   <span class="pill" id="tfBadge">TF: probing…</span>
   <span class="pill" id="readiness" style="display:none">READY</span>
@@ -100,55 +42,37 @@
     <h3>Inputs & Actions</h3>
     <div class="body">
       <div class="grid">
-        <div>
-          <label>Upload photo</label>
-          <input id="fileInput" type="file" accept="image/*" />
-        </div>
-        <div>
-          <label>Sample</label>
-          <button id="sampleBtn" class="action">Load Sample</button>
-        </div>
+        <div><label>Upload photo</label><input id="fileInput" type="file" accept="image/*"/></div>
+        <div><label>Sample</label><button id="sampleBtn" class="action">Load Sample</button></div>
       </div>
-
       <div class="grid">
-        <div>
-          <label>Rotate (°)</label>
-          <input id="rot" type="number" step="1" min="-180" max="180" value="0" />
+        <div><label>Rotate (°)</label><input id="rot" type="number" step="1" min="-180" max="180" value="0"/></div>
+        <div class="bar" style="align-items:center">
+          <label style="min-width:72px">Zoom</label><input id="zoom" type="range" min="0.8" max="2.0" step="0.05" value="1.20" style="flex:1"/><span class="pill"><span id="zoomLabel">1.20</span>x</span>
         </div>
-        <div class="kv">
-          <label>Zoom</label>
-          <input id="zoom" type="range" min="0.8" max="2.0" step="0.05" value="1.20" style="flex:1" />
-          <span class="pill"><span id="zoomLabel">1.20</span>x</span>
+        <div class="bar" style="align-items:center">
+          <label style="min-width:72px">Brightness</label><input id="bri" type="range" min="0.7" max="1.5" step="0.01" value="1.10" style="flex:1"/><span class="pill"><span id="briLabel">1.10</span>×</span>
         </div>
-        <div class="kv">
-          <label>Brightness</label>
-          <input id="bri" type="range" min="0.7" max="1.5" step="0.01" value="1.10" style="flex:1" />
-          <span class="pill"><span id="briLabel">1.10</span>×</span>
-        </div>
-        <div class="kv">
-          <label>Contrast</label>
-          <input id="con" type="range" min="0.7" max="1.6" step="0.01" value="1.15" style="flex:1" />
-          <span class="pill"><span id="conLabel">1.15</span>×</span>
+        <div class="bar" style="align-items:center">
+          <label style="min-width:72px">Contrast</label><input id="con" type="range" min="0.7" max="1.6" step="0.01" value="1.15" style="flex:1"/><span class="pill"><span id="conLabel">1.15</span>×</span>
         </div>
       </div>
-
       <div class="grid">
         <div>
           <label>Fix mode</label>
           <select id="fixMode">
             <option value="blaze" selected>BlazeFace only (fast, robust)</option>
-            <option value="cdn">Blaze → (optional) face-api refine</option>
+            <option value="cdn">Blaze → (optional) face‑api refine</option>
           </select>
         </div>
         <div>
           <label>Options</label>
-          <div class="bar">
-            <label class="chip"><input id="showOverlay" type="checkbox" checked /> Show overlays</label>
-            <label class="chip"><input id="autoAnalyze" type="checkbox" /> Auto‑analyze</label>
+          <div class="bar" style="flex-wrap:wrap">
+            <label class="pill"><input id="showOverlay" type="checkbox" checked/> Show overlays</label>
+            <label class="pill"><input id="autoAnalyze" type="checkbox"/> Auto‑analyze</label>
           </div>
         </div>
       </div>
-
       <div class="bar">
         <button id="enhanceBtn">Enhance & Retry</button>
         <button id="detectBtn" class="primary" disabled>Detect</button>
@@ -159,11 +83,7 @@
         <button id="clearLogsBtn">Clear Logs</button>
         <span id="progressText" class="sub"></span>
       </div>
-
-      <div class="status">
-        <span class="badge" id="readyBadge" style="display:none">READY</span>
-        <span class="badge blocked" id="blockedBadge" style="display:none">BLOCKED</span>
-      </div>
+      <div class="bar"><span class="badge" id="readyBadge" style="display:none">READY</span><span class="badge blocked" id="blockedBadge" style="display:none">BLOCKED</span></div>
     </div>
   </section>
 
@@ -174,511 +94,209 @@
         <canvas id="base" width="0" height="0"></canvas>
         <canvas id="overlay" width="0" height="0" style="position:absolute; inset:auto"></canvas>
       </div>
-      <div class="footer">
-        <span class="sub">Hints and metrics will appear after analysis.</span>
-      </div>
+      <div class="footer"><span class="sub">Hints and metrics will appear after analysis.</span></div>
     </div>
   </section>
 
   <section class="card">
     <h3>Diagnostics</h3>
-    <div class="body diag-body">
+    <div class="body">
       <div class="filters">
-        <button class="chip" data-filter="all">all</button>
-        <button class="chip" data-filter="detect">detect</button>
-        <button class="chip" data-filter="overlay">overlay</button>
-        <button class="chip" data-filter="analysis">analysis</button>
-        <button class="chip" data-filter="config">config</button>
-        <button class="chip" data-filter="error">error</button>
-        <button class="chip" data-filter="test">test</button>
+        <button class="pill" data-filter="all">all</button>
+        <button class="pill" data-filter="detect">detect</button>
+        <button class="pill" data-filter="overlay">overlay</button>
+        <button class="pill" data-filter="analysis">analysis</button>
+        <button class="pill" data-filter="config">config</button>
+        <button class="pill" data-filter="error">error</button>
+        <button class="pill" data-filter="test">test</button>
       </div>
       <div id="diagnostics">No diagnostics yet.</div>
-      <div class="footer">
-        <span id="summaryLine" class="sub"></span>
-      </div>
+      <div class="footer"><span id="summaryLine" class="sub"></span></div>
     </div>
   </section>
 </main>
 
-<!-- Veil -->
-<div id="veil">
-  <div class="sheet">
-    <div class="title" style="margin-bottom:6px">Loading frameworks…</div>
-    <div class="sub" id="veilNote">Preparing TensorFlow + models</div>
-  </div>
-</div>
-
+<div id="veil"><div class="sheet"><div class="title" style="margin-bottom:6px">Loading frameworks…</div><div class="sub" id="veilNote">Preparing TensorFlow + models</div></div></div>
 <div class="toast" id="toast"></div>
 
-<!-- Frameworks (defer preserves order) -->
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
 
 <script>
 (() => {
-  const REVISION = "1.16.14-alpha";
-  let baseSource = null;           // ImageBitmap for current photo
-  let lastBox = null;              // {x,y,width,height}
-  let lastAnalysis = null;
-  let blazeModel = null;
-  let session = { detects:0, analyses:0, detectMs:[] };
-  let __autoTestStartIdx = 0;
-  let __currentFilter = 'all';
+  const REVISION = "1.16.15-alpha";
+  let baseSource=null,lastBox=null,lastAnalysis=null,blazeModel=null;
+  let session={detects:0,analyses:0,detectMs:[]};
+  let __autoTestStartIdx=0, __currentFilter='all';
 
-  /* ===== DOM helpers ===== */
-  const $ = id => document.getElementById(id);
-  const diagEl = () => $("diagnostics");
-  const overlay = $("overlay");
-  const base = $("base");
+  const $=id=>document.getElementById(id);
+  const diagEl=()=>$("diagnostics"); const base=$("base"); const overlay=$("overlay");
 
-  function nowIso(){ try { return new Date().toISOString() } catch { return "" } }
-  function toast(msg){
-    const t=$("toast"); t.textContent = msg; t.style.display='block';
-    setTimeout(()=>{ t.style.display='none' }, 1400);
-  }
-  function updateSessStats(){
-    const avg = session.detectMs.length ? Math.round(session.detectMs.reduce((a,b)=>a+b,0)/session.detectMs.length) : "—";
-    $("sessStats").textContent = `Session: ${session.detects} detects • ${session.analyses} analyses • avg detect ${avg} ms`;
-  }
-  function setReadyState(ok){
-    $("readyBadge").style.display = ok ? '' : 'none';
-    $("blockedBadge").style.display = ok ? 'none' : '';
-    const chip = $("readiness");
-    chip.style.display = 'inline-block';
-    chip.className = 'pill ' + (ok ? 'ok' : 'blocked');
-    chip.textContent = ok ? 'READY' : 'BLOCKED';
-  }
+  function nowIso(){try{return new Date().toISOString()}catch{return""}}
+  function toast(m){const t=$("toast");t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',1400)}
+  function updateSessStats(){const avg=session.detectMs.length?Math.round(session.detectMs.reduce((a,b)=>a+b,0)/session.detectMs.length):"—";$("sessStats").textContent=`Session: ${session.detects} detects • ${session.analyses} analyses • avg detect ${avg} ms`}
+  function setReadyState(ok){$("readyBadge").style.display=ok?'':'none';$("blockedBadge").style.display=ok?'none':'';const chip=$("readiness");chip.style.display='inline-block';chip.className='pill '+(ok?'ok':'blocked');chip.textContent=ok?'READY':'BLOCKED'}
 
-  /* ===== Logging & filters ===== */
-  function logEvt(type, obj){
-    const ts = nowIso();
-    const rec = Object.assign({type}, obj||{});
-    const line = `[${ts}] ${JSON.stringify(rec)}`;
-    const el = diagEl();
-    if(el.textContent === 'No diagnostics yet.') el.textContent = '';
-    el.textContent += (el.textContent ? "\n" : "") + line;
-    // Filter view
-    if(__currentFilter !== 'all') applyFilter(__currentFilter);
-  }
-  function getAllLogsText(){ const el=diagEl(); return el ? (el.textContent||'') : '' }
-  function applyFilter(kind){
-    __currentFilter = kind;
-    const full = getAllLogsText().split('\n').filter(Boolean);
-    if(kind==='all'){ diagEl().textContent = full.join('\n'); return; }
-    const filtered = full.filter(l => l.includes(`"type":"${kind}"`));
-    diagEl().textContent = filtered.length ? filtered.join('\n') : '(no entries of type '+kind+')';
-  }
-  document.querySelectorAll('.filters .chip').forEach(btn=>{
-    btn.addEventListener('click', ()=>applyFilter(btn.dataset.filter));
-  });
+  function logEvt(type,obj){const ts=nowIso();const rec=Object.assign({type},obj||{});const line=`[${ts}] ${JSON.stringify(rec)}`;const el=diagEl();if(el.textContent==='No diagnostics yet.')el.textContent='';el.textContent+=(el.textContent?"\n":"")+line;if(__currentFilter!=='all')applyFilter(__currentFilter)}
+  function getAllLogsText(){const el=diagEl();return el?(el.textContent||''):''}
+  function applyFilter(kind){__currentFilter=kind;const full=getAllLogsText().split('\n').filter(Boolean);if(kind==='all'){diagEl().textContent=full.join('\n');return}const filtered=full.filter(l=>l.includes(`"type":"${kind}"`));diagEl().textContent=filtered.length?filtered.join('\n'):`(no entries of type ${kind})`}
+  document.querySelectorAll('.filters .pill').forEach(b=>b.addEventListener('click',()=>applyFilter(b.dataset.filter)));
 
-  /* ===== Progress / veil ===== */
-  function showVeil(msg){ $("veil").style.display='grid'; if(msg) $("veilNote").textContent=msg; }
+  function showVeil(msg){$("veil").style.display='grid';if(msg)$("veilNote").textContent=msg}
   function hideVeil(){ $("veil").style.display='none' }
-  function setProgress(_, msg){ $("progressText").textContent = msg || ''; }
+  function setProgress(_,msg){ $("progressText").textContent=msg||'' }
 
-  /* ===== Clipboard ===== */
   async function copyTextRobust(text){
     if(text==null) text='';
-    try{
-      if(navigator.clipboard && window.isSecureContext){
-        await navigator.clipboard.writeText(text);
-        return {ok:true, via:'clipboard'}
-      }
-    }catch(_){}
-    try{
-      const ta = document.createElement('textarea');
-      ta.value = text; ta.setAttribute('readonly','');
-      ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px';
-      document.body.appendChild(ta); ta.select();
-      const ok = document.execCommand('copy'); document.body.removeChild(ta);
-      if(ok) return {ok:true, via:'execCommand'};
-    }catch(e){ return {ok:false, via:'fallback', err:e.message||String(e)} }
-    return {ok:false, via:'none', err:'No clipboard available'};
+    try{ if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(text); return {ok:true,via:'clipboard'} } }catch(_){}
+    try{ const ta=document.createElement('textarea'); ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px'; document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy'); document.body.removeChild(ta); if(ok) return {ok:true,via:'execCommand'} }catch(e){ return {ok:false,via:'fallback',err:e.message||String(e)} }
+    return {ok:false,via:'none',err:'No clipboard available'};
   }
 
-  /* ===== Image decode & canvas render ===== */
   async function decodeOriginal(fileOrBlob){
-    if('createImageBitmap' in window){
-      const bmp = await createImageBitmap(fileOrBlob);
-      return bmp;
-    }
-    // Fallback via <img>
-    return new Promise((res, rej)=>{
-      const url = URL.createObjectURL(fileOrBlob);
-      const img = new Image(); img.onload = ()=>{ res(img); URL.revokeObjectURL(url) };
-      img.onerror = (e)=>{ rej(new Error('image decode error')); URL.revokeObjectURL(url) };
-      img.src = url;
-    });
+    if('createImageBitmap' in window){ return await createImageBitmap(fileOrBlob) }
+    return new Promise((res,rej)=>{ const url=URL.createObjectURL(fileOrBlob); const img=new Image(); img.onload=()=>{res(img);URL.revokeObjectURL(url)}; img.onerror=()=>{rej(new Error('image decode error'));URL.revokeObjectURL(url)}; img.src=url; });
   }
-  function paintBaseCanvas(canvas){
-    // Mirror overlay canvas size
-    overlay.width = canvas.width; overlay.height = canvas.height;
-    base.width = canvas.width; base.height = canvas.height;
-    const ctx = base.getContext('2d');
-    ctx.clearRect(0,0,base.width, base.height);
-    ctx.drawImage(canvas, 0, 0);
-    // clear overlay
-    overlay.getContext('2d').clearRect(0,0,overlay.width,overlay.height);
-    logEvt('overlay',{painted:{w:canvas.width, h:canvas.height}});
-  }
+  function paintBaseCanvas(canvas){ overlay.width=canvas.width; overlay.height=canvas.height; base.width=canvas.width; base.height=canvas.height; const ctx=base.getContext('2d'); ctx.clearRect(0,0,base.width,base.height); ctx.drawImage(canvas,0,0); overlay.getContext('2d').clearRect(0,0,overlay.width,overlay.height); logEvt('overlay',{painted:{w:canvas.width,h:canvas.height}}) }
   function renderWorkingCanvas(targetW=1024){
     if(!baseSource) return null;
-    // Compute scale
-    const iw = baseSource.width, ih = baseSource.height;
-    const scale = targetW / iw;
-    const th = Math.round(ih * scale);
-    const c = document.createElement('canvas'); c.width = Math.round(targetW); c.height = th;
-    const ctx = c.getContext('2d');
-    // Filters
-    const zoom = +$("zoom").value; $("zoomLabel").textContent = zoom.toFixed(2);
-    const bri = +$("bri").value;   $("briLabel").textContent = bri.toFixed(2);
-    const con = +$("con").value;   $("conLabel").textContent = con.toFixed(2);
-    const rot = +$("rot").value || 0;
-    // Draw with rotation
-    if(rot){
-      const rad = rot * Math.PI/180;
-      const cw = Math.ceil(Math.abs(c.width * Math.cos(rad)) + Math.abs(c.height * Math.sin(rad)));
-      const ch = Math.ceil(Math.abs(c.width * Math.sin(rad)) + Math.abs(c.height * Math.cos(rad)));
-      c.width = cw; c.height = ch;
-    }
-    const cx = c.getContext('2d');
-    cx.filter = `brightness(${bri}) contrast(${con})`;
-    cx.save();
-    cx.translate(c.width/2, c.height/2);
-    if(+$("rot").value) cx.rotate(+$("rot").value * Math.PI/180);
-    const zw = Math.round(targetW*zoom), zh = Math.round(th*zoom);
-    cx.drawImage(baseSource, -zw/2, -zh/2, zw, zh);
-    cx.restore();
-    return c;
+    const iw=baseSource.width, ih=baseSource.height, scale=targetW/iw, th=Math.round(ih*scale);
+    const c=document.createElement('canvas'); c.width=Math.round(targetW); c.height=th;
+    const ctx=c.getContext('2d');
+    const zoom=+$("zoom").value; $("zoomLabel").textContent=zoom.toFixed(2);
+    const bri=+$("bri").value;   $("briLabel").textContent=bri.toFixed(2);
+    const con=+$("con").value;   $("conLabel").textContent=con.toFixed(2);
+    const rot=+$("rot").value||0;
+    if(rot){ const rad=rot*Math.PI/180; const cw=Math.ceil(Math.abs(c.width*Math.cos(rad))+Math.abs(c.height*Math.sin(rad))); const ch=Math.ceil(Math.abs(c.width*Math.sin(rad))+Math.abs(c.height*Math.cos(rad))); c.width=cw;c.height=ch; }
+    const cx=c.getContext('2d'); cx.filter=`brightness(${bri}) contrast(${con})`; cx.save(); cx.translate(c.width/2,c.height/2); if(rot) cx.rotate(rot*Math.PI/180); const zw=Math.round(targetW*zoom), zh=Math.round(th*zoom); cx.drawImage(baseSource,-zw/2,-zh/2,zw,zh); cx.restore(); return c;
   }
 
-  /* ===== Detection (BlazeFace) ===== */
-  async function ensureBlaze(){
-    if(blazeModel) return blazeModel;
-    if(!window.blazeface) throw new Error('BlazeFace UMD missing');
-    blazeModel = await blazeface.load();
-    logEvt('detect',{blazefaceReady:true});
-    return blazeModel;
-  }
+  async function ensureBlaze(){ if(blazeModel) return blazeModel; if(!window.blazeface) throw new Error('BlazeFace UMD missing'); blazeModel=await blazeface.load(); logEvt('detect',{blazefaceReady:true}); return blazeModel }
+
   async function detectFlow(){
     if(!baseSource){ setProgress(0,'Load an image first'); return; }
-    const t0 = performance.now();
+    const t0=performance.now();
     try{
-      const canvas = renderWorkingCanvas(1024);
-      if(canvas) paintBaseCanvas(canvas);
-      const model = await ensureBlaze();
-      // Downscale for detection pass (faster)
-      const down = document.createElement('canvas');
-      down.width = Math.min(512, base.width); down.height = Math.round(down.width * base.height / base.width);
-      down.getContext('2d').drawImage(base, 0,0,down.width,down.height);
-
-      const preds = await model.estimateFaces(down, false);
-      if(!preds || !preds.length) {
-        lastBox = null;
-        logEvt('detect',{no_face:true});
-        setReadyState(false);
-        return;
-      }
-      // Take first face
-      const p = preds[0];
-      const [x, y, w, h] = p.topLeft && p.bottomRight
-        ? (()=>{
-            const tl = p.topLeft, br = p.bottomRight;
-            return [tl[0], tl[1], br[0]-tl[0], br[1]-tl[1]];
-          })()
-        : [p.box.x, p.box.y, p.box.width, p.box.height];
-
-      // Map coords from down -> base
-      const sx = base.width / down.width, sy = base.height / down.height;
-      lastBox = { x: x*sx, y: y*sy, width: w*sx, height: h*sy };
-
-      if($("showOverlay").checked){
-        const ox = overlay.getContext('2d');
-        ox.clearRect(0,0,overlay.width, overlay.height);
-        ox.strokeStyle = '#5ac8fa'; ox.lineWidth = 3; ox.setLineDash([6,4]);
-        ox.strokeRect(lastBox.x, lastBox.y, lastBox.width, lastBox.height);
-      }
-
-      const roughMs = Math.round(performance.now()-t0);
-      logEvt('detect',{roughLocate_ms:roughMs, box:lastBox});
-      // Final detect time here equals rough because single model
-      const t1 = performance.now();
-      const finalMs = Math.max(1, Math.round(t1 - t0)); // never show 0
-      session.detects += 1; session.detectMs.push(finalMs); updateSessStats();
-      logEvt('detect',{finalDetect_ms:finalMs, scale:256, mirror:false, box:lastBox});
-
-      $("startAnalysisBtn").disabled = false;
-      if($("autoAnalyze").checked) runLightAnalysis();
-      setReadyState(true);
-    }catch(e){
-      setReadyState(false);
-      logEvt('error',{detect:e.message||String(e)});
-    }
+      const canvas=renderWorkingCanvas(1024); if(canvas) paintBaseCanvas(canvas);
+      const model=await ensureBlaze();
+      // smaller downscale for speed (<=400)
+      const down=document.createElement('canvas');
+      down.width=Math.min(400, base.width);
+      down.height=Math.round(down.width*base.height/base.width);
+      down.getContext('2d').drawImage(base,0,0,down.width,down.height);
+      const preds=await model.estimateFaces(down,false);
+      if(!preds || !preds.length){ lastBox=null; logEvt('detect',{no_face:true}); setReadyState(false); return; }
+      const p=preds[0];
+      const [x,y,w,h]=p.topLeft&&p.bottomRight?(()=>{const tl=p.topLeft, br=p.bottomRight;return [tl[0],tl[1],br[0]-tl[0],br[1]-tl[1]]})():[p.box.x,p.box.y,p.box.width,p.box.height];
+      const sx=base.width/down.width, sy=base.height/down.height;
+      lastBox={x:x*sx,y:y*sy,width:w*sx,height:h*sy};
+      if($("showOverlay").checked){ const ox=overlay.getContext('2d'); ox.clearRect(0,0,overlay.width,overlay.height); ox.strokeStyle='#5ac8fa'; ox.lineWidth=3; ox.setLineDash([6,4]); ox.strokeRect(lastBox.x,lastBox.y,lastBox.width,lastBox.height); }
+      const roughMs=Math.round(performance.now()-t0); logEvt('detect',{roughLocate_ms:roughMs,box:lastBox});
+      const finalMs=Math.max(1,Math.round(performance.now()-t0)); session.detects+=1; session.detectMs.push(finalMs); updateSessStats(); logEvt('detect',{finalDetect_ms:finalMs,scale:256,mirror:false,box:lastBox});
+      $("startAnalysisBtn").disabled=false; if($("autoAnalyze").checked) runLightAnalysis(); setReadyState(true);
+    }catch(e){ setReadyState(false); logEvt('error',{detect:e.message||String(e)}) }
   }
 
-  /* ===== Analysis (lightweight, no extra models) ===== */
-  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)) }
-  function lapVar(data, w, h){
-    // tiny, naive Laplacian variance on luma
-    const L = new Float32Array(w*h);
-    for(let i=0, j=0; i<data.length; i+=4, j++){
-      const r=data[i], g=data[i+1], b=data[i+2];
-      L[j] = 0.299*r + 0.587*g + 0.114*b;
-    }
-    const K = [0,-1,0,-1,4,-1,0,-1,0];
-    const O = new Float32Array(w*h);
-    for(let y=1;y<h-1;y++){
-      for(let x=1;x<w-1;x++){
-        let acc=0, k=0;
-        for(let dy=-1; dy<=1; dy++){
-          for(let dx=-1; dx<=1; dx++){
-            acc += L[(y+dy)*w + (x+dx)] * K[k++];
-          }
-        }
-        O[y*w+x] = acc;
-      }
-    }
-    // variance
-    let sum=0,sum2=0,n=0;
-    for(let i=0;i<O.length;i++){ const v=O[i]; sum+=v; sum2+=v*v; n++ }
-    const mean = sum/n; return (sum2/n) - mean*mean;
-  }
-  function statsBrightnessContrast(ctx, rect){
-    const {x,y,width:w,height:h} = rect;
-    const rx = clamp(Math.floor(x),0, base.width-1);
-    const ry = clamp(Math.floor(y),0, base.height-1);
-    const rw = clamp(Math.floor(w),1, base.width-rx);
-    const rh = clamp(Math.floor(h),1, base.height-ry);
-    const img = ctx.getImageData(rx,ry,rw,rh);
-    let sum=0, n=rw*rh, mu=0, sigma=0;
-    // brightness mean
-    for(let i=0;i<img.data.length;i+=4){
-      const r=img.data[i], g=img.data[i+1], b=img.data[i+2];
-      sum += 0.299*r + 0.587*g + 0.114*b;
-    }
-    mu = sum/n;
-    // stddev (as proxy for contrast)
-    let s2=0;
-    for(let i=0;i<img.data.length;i+=4){
-      const r=img.data[i], g=img.data[i+1], b=img.data[i+2];
-      const l = 0.299*r + 0.587*g + 0.114*b;
-      const d = l - mu; s2 += d*d;
-    }
-    sigma = Math.sqrt(s2/n);
-    const lap = lapVar(img.data, rw, rh);
-    return { brightness_mean: +mu.toFixed(3), contrast_stdev:+sigma.toFixed(3), laplacian_variance:+lap.toFixed(3) }
-  }
-  function boxMeta(rect, imgW, imgH){
-    const cx = rect.x + rect.width/2;
-    const cy = rect.y + rect.height/2;
-    const center = { x:+cx.toFixed(2), y:+cy.toFixed(2) };
-    const center_offset_pct = {
-      x: +(((cx - imgW/2)/imgW)*100).toFixed(2),
-      y: +(((cy - imgH/2)/imgH)*100).toFixed(2)
-    };
-    return {
-      x:+rect.x.toFixed(2), y:+rect.y.toFixed(2),
-      width:+rect.width.toFixed(2), height:+rect.height.toFixed(2),
-      area_pct:+(((rect.width*rect.height)/(imgW*imgH))*100).toFixed(4),
-      aspect:+(rect.width/rect.height).toFixed(4),
-      center, center_offset_pct
-    };
-  }
-  function runLightAnalysis(){
-    try{
-      if(!lastBox){ logEvt('error',{analysis:'no box'}); return; }
-      const ctx = base.getContext('2d');
-      const img = { width: base.width, height: base.height };
-      const L = statsBrightnessContrast(ctx, lastBox);
-      const analysis = {
-        revision: REVISION,
-        timestamp: nowIso(),
-        image: { width: img.width, height: img.height },
-        box: boxMeta(lastBox, img.width, img.height),
-        lighting: { brightness_mean: L.brightness_mean, contrast_stdev: L.contrast_stdev },
-        sharpness: { laplacian_variance: L.laplacian_variance },
-        orientation: (img.width >= img.height ? 'landscape' : 'portrait'),
-        refine: {}
-      };
-      lastAnalysis = analysis;
-      session.analyses += 1; updateSessStats();
-      logEvt('analysis',{analysis});
-    }catch(e){
-      logEvt('error',{analysis:e.message||String(e)});
-    }
-  }
+  function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+  function lapVar(data,w,h){const L=new Float32Array(w*h); for(let i=0,j=0;i<data.length;i+=4,j++){const r=data[i],g=data[i+1],b=data[i+2];L[j]=0.299*r+0.587*g+0.114*b} const K=[0,-1,0,-1,4,-1,0,-1,0]; const O=new Float32Array(w*h); for(let y=1;y<h-1;y++){for(let x=1;x<w-1;x++){let acc=0,k=0;for(let dy=-1;dy<=1;dy++){for(let dx=-1;dx<=1;dx++){acc+=L[(y+dy)*w+(x+dx)]*K[k++]}} O[y*w+x]=acc}} let sum=0,sum2=0,n=0; for(let i=0;i<O.length;i++){const v=O[i];sum+=v;sum2+=v*v;n++}const mean=sum/n;return (sum2/n)-mean*mean}
+  function statsBrightnessContrast(ctx,rect){const {x,y,width:w,height:h}=rect; const rx=clamp(Math.floor(x),0,base.width-1), ry=clamp(Math.floor(y),0,base.height-1), rw=clamp(Math.floor(w),1,base.width-rx), rh=clamp(Math.floor(h),1,base.height-ry); const img=ctx.getImageData(rx,ry,rw,rh); let sum=0,n=rw*rh,mu=0; for(let i=0;i<img.data.length;i+=4){const r=img.data[i],g=img.data[i+1],b=img.data[i+2]; sum+=0.299*r+0.587*g+0.114*b} mu=sum/n; let s2=0; for(let i=0;i<img.data.length;i+=4){const r=img.data[i],g=img.data[i+1],b=img.data[i+2]; const l=0.299*r+0.587*g+0.114*b; const d=l-mu; s2+=d*d} const sigma=Math.sqrt(s2/n); const lap=lapVar(img.data,rw,rh); return {brightness_mean:+mu.toFixed(3),contrast_stdev:+sigma.toFixed(3),laplacian_variance:+lap.toFixed(3)}}
+  function boxMeta(rect,imgW,imgH){const cx=rect.x+rect.width/2, cy=rect.y+rect.height/2; return {x:+rect.x.toFixed(2),y:+rect.y.toFixed(2),width:+rect.width.toFixed(2),height:+rect.height.toFixed(2),area_pct:+(((rect.width*rect.height)/(imgW*imgH))*100).toFixed(4),aspect:+(rect.width/rect.height).toFixed(4),center:{x:+cx.toFixed(2),y:+cy.toFixed(2)},center_offset_pct:{x:+(((cx-imgW/2)/imgW)*100).toFixed(2),y:+(((cy-imgH/2)/imgH)*100).toFixed(2)}}}
+  function runLightAnalysis(){try{if(!lastBox){logEvt('error',{analysis:'no box'});return}const ctx=base.getContext('2d'); const img={width:base.width,height:base.height}; const L=statsBrightnessContrast(ctx,lastBox); const analysis={revision:REVISION,timestamp:nowIso(),image:{width:img.width,height:img.height},box:boxMeta(lastBox,img.width,img.height),lighting:{brightness_mean:L.brightness_mean,contrast_stdev:L.contrast_stdev},sharpness:{laplacian_variance:L.laplacian_variance},orientation:(img.width>=img.height?'landscape':'portrait'),refine:{}}; lastAnalysis=analysis; session.analyses+=1; updateSessStats(); logEvt('analysis',{analysis})}catch(e){logEvt('error',{analysis:e.message||String(e)})}}
 
-  /* ===== Auto‑Test ===== */
   function buildAutoTestReport(){
-    const full = getAllLogsText();
-    const chunk = full.slice(__autoTestStartIdx);
-    const backendMatch = full.match(/"backend":"([^"]+)"/) || [];
-    const tfVerMatch = full.match(/"tf_version":"([^"]+)"/) || [];
-    const refineYes = /"refine":\{[^}]*\}/.test(chunk) && /"landmarks":\d+/.test(chunk); // heuristic
-    const errors = (chunk.match(/"type":"error"/g) || []).length;
-    const passes = (chunk.match(/"test","step":"[^"]+","ok":true/g) || []).length;
-    const roughMs = (chunk.match(/"roughLocate_ms":(\d+)/) || [])[1];
-    const finalMs = (chunk.match(/"finalDetect_ms":(\d+)/) || [])[1];
-    const backend = backendMatch[1] || '—';
-    const summaryLine = `YorN ${REVISION} • TF backend: ${backend}${tfVerMatch[1] ? ' • v'+tfVerMatch[1] : ''} • refine: ${refineYes?'yes':'no'} • passes: ${passes} • errors: ${errors} • rough: ${roughMs||'—'} ms • final: ${finalMs||'—'} ms`;
-    $("summaryLine").textContent = summaryLine;
-    return ['=== YorN Auto‑Test Report ===', summaryLine, '', ...chunk.split('\n').filter(l => /"type":"/.test(l)), '=== End Report ===', ''].join('\n');
+    const full=getAllLogsText(); const chunk=full.slice(__autoTestStartIdx);
+    const backendFromLogs=(full.match(/"backend":"([^"]+)"/)||[])[1]||'';
+    const tfVer=(full.match(/"tf_version":"([^"]+)"/)||[])[1]||'';
+    const backend = backendFromLogs || (window.tf&&tf.getBackend?tf.getBackend():'—');
+    const refineYes = /"refine":\{[^}]*\}/.test(chunk) && /"landmarks":\d+/.test(chunk);
+    const errors=(chunk.match(/"type":"error"/g)||[]).length;
+    const passes=(chunk.match(/"test","step":"[^"]+","ok":true/g)||[]).length;
+    const roughMs=(chunk.match(/"roughLocate_ms":(\d+)/)||[])[1];
+    const finalMs=(chunk.match(/"finalDetect_ms":(\d+)/)||[])[1];
+    const summaryLine=`YorN ${REVISION} • TF backend: ${backend}${tfVer?' • v'+tfVer:''} • refine: ${refineYes?'yes':'no'} • passes: ${passes} • errors: ${errors} • rough: ${roughMs||'—'} ms • final: ${finalMs||'—'} ms`;
+    $("summaryLine").textContent=summaryLine;
+    return ['=== YorN Auto‑Test Report ===',summaryLine,'',...chunk.split('\n').filter(l=>/"type":"/.test(l)),'=== End Report ===',''].join('\n');
   }
+
+  async function warmup(){
+    try{
+      // compile a couple common kernels
+      await tf.ready();
+      tf.tidy(()=>{ const a=tf.randomNormal([64,64]); const b=tf.randomNormal([64,64]); a.matMul(b).sum().dataSync() });
+      await tf.nextFrame();
+      logEvt('config',{warmup:'ok', backend: tf.getBackend()});
+    }catch(e){ logEvt('error',{warmup:e.message||String(e)}) }
+  }
+
   async function runAutoTest(){
-    $("autoTestBtn").disabled = true;
-    $("copyReportBtn").disabled = true;
-    const fullBefore = getAllLogsText(); __autoTestStartIdx = fullBefore.length;
-    logEvt('test',{step:'begin', rev:REVISION});
+    $("autoTestBtn").disabled=true; $("copyReportBtn").disabled=true;
+    const fullBefore=getAllLogsText(); __autoTestStartIdx=fullBefore.length;
+    logEvt('test',{step:'begin',rev:REVISION});
     try{
-      const tfPresent = !!window.tf; logEvt('test',{step:'tf_present', ok:tfPresent}); if(!tfPresent) throw new Error('tf missing');
+      const tfPresent=!!window.tf; logEvt('test',{step:'tf_present',ok:tfPresent}); if(!tfPresent) throw new Error('tf missing');
+      // Explicit backend/version logging for the report
+      try{ await tf.ready(); logEvt('config',{tf:'ready',backend:tf.getBackend(),tf_version:(tf.version_core||tf.version?.tfjs||'unknown')}); }catch(_){}
+      await warmup();
 
-      // Sample load
-      const u = "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
+      // Sample
+      const u="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
       logEvt('detect',{sampleImage:u});
-      const res = await fetch(u, {cache:"no-store"});
-      const blob = await res.blob();
-      baseSource = await decodeOriginal(blob);
-      // Paint immediately
-      const c = renderWorkingCanvas(1024);
-      if(c) paintBaseCanvas(c);
-      logEvt('test',{step:'sample', ok:!!baseSource});
+      const res=await fetch(u,{cache:"no-store"}); const blob=await res.blob(); baseSource=await decodeOriginal(blob);
+      const c=renderWorkingCanvas(1024); if(c) paintBaseCanvas(c);
+      logEvt('test',{step:'sample',ok:!!baseSource});
 
-      // Detect
-      const t0 = performance.now();
-      await detectFlow();
-      const ms = Math.round(performance.now()-t0);
-      logEvt('test',{step:'detect_blazeonly', ok:!!lastBox, ms});
-
-      // Refine guard (we keep face-api optional and off by default)
-      logEvt('test',{step:'refine_guard', ok:true});
-
-      // Analysis
-      logEvt('analysis',{analysisRequested:true, mode:'light'});
-      runLightAnalysis();
-      logEvt('test',{step:'analysis_blazeonly', ok:!!lastAnalysis});
-
-      const ok = !!(baseSource && lastBox && lastAnalysis);
-      logEvt('test',{step:'summary', ok});
-      setReadyState(ok);
-      $("copyReportBtn").disabled = false;
-    }catch(e){
-      setReadyState(false);
-      logEvt('error',{autoTest:e.message||String(e)});
-    }
-    $("autoTestBtn").disabled = false;
+      const t0=performance.now(); await detectFlow(); const ms=Math.round(performance.now()-t0);
+      logEvt('test',{step:'detect_blazeonly',ok:!!lastBox,ms});
+      logEvt('test',{step:'refine_guard',ok:true});
+      logEvt('analysis',{analysisRequested:true,mode:'light'}); runLightAnalysis();
+      logEvt('test',{step:'analysis_blazeonly',ok:!!lastAnalysis});
+      const ok=!!(baseSource&&lastBox&&lastAnalysis); logEvt('test',{step:'summary',ok}); setReadyState(ok);
+      $("copyReportBtn").disabled=false;
+    }catch(e){ setReadyState(false); logEvt('error',{autoTest:e.message||String(e)}) }
+    $("autoTestBtn").disabled=false;
   }
 
-  /* ===== Bind UI ===== */
-  $("enhanceBtn").addEventListener("click", ()=>{
-    $("zoom").value = Math.max(1.5, +$("zoom").value); $("zoomLabel").textContent = (+$("zoom").value).toFixed(2);
-    $("bri").value = Math.max(1.18, +$("bri").value); $("briLabel").textContent = (+$("bri").value).toFixed(2);
-    $("con").value = Math.max(1.25, +$("con").value); $("conLabel").textContent = (+$("con").value).toFixed(2);
-    detectFlow();
-  });
-  $("detectBtn").addEventListener("click", ()=>detectFlow());
-  $("startAnalysisBtn").addEventListener("click", ()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis(); });
-  $("clearLogsBtn").addEventListener("click", ()=>{ diagEl().textContent = 'No diagnostics yet.'; $("summaryLine").textContent = ''; });
-  $("resetBtn").addEventListener("click", ()=>{
-    ["base","overlay"].forEach(id=>$(id).getContext('2d').clearRect(0,0,$(id).width,$(id).height));
-    baseSource = null; lastBox=null; lastAnalysis=null;
-    $("detectBtn").disabled=true; $("startAnalysisBtn").disabled = true;
-    setReadyState(false);
-    logEvt('config',{reset:true});
-  });
-  $("fileInput").addEventListener("change", async ()=>{
-    if(!$("fileInput").files.length) return;
-    const f = $("fileInput").files[0];
-    setProgress(8,'Decoding photo…');
-    try{
-      baseSource = await decodeOriginal(f);
-      const c = renderWorkingCanvas(1024);
-      if(c){ paintBaseCanvas(c); setProgress(12,'Photo ready'); $("detectBtn").disabled=false; }
-    }catch(e){ logEvt('error',{decode_failed:e.message||String(e)}) }
-  });
-  $("sampleBtn").addEventListener("click", async ()=>{
-    try{
-      setProgress(5,'Fetching sample…');
-      const u = "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop";
-      const res = await fetch(u,{cache:"no-store"}); if(!res.ok) throw new Error('HTTP '+res.status);
-      const blob = await res.blob(); baseSource = await decodeOriginal(blob);
-      const c = renderWorkingCanvas(1024); if(c){ paintBaseCanvas(c); setProgress(12,'Sample ready'); $("detectBtn").disabled=false; }
-      logEvt('detect',{sampleImage:u});
-    }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) }
-  });
-  $("autoTestBtn").addEventListener("click", runAutoTest);
-  $("copyReportBtn").addEventListener("click", async ()=>{
-    const report = buildAutoTestReport();
-    const res = await copyTextRobust(report);
-    if(res.ok){ toast('Report copied'); logEvt('config',{copied:true, via:res.via}) }
-    else { logEvt('error',{copy_failed:res.err||'unknown'}) }
-  });
+  // UI binds
+  $("enhanceBtn").addEventListener("click",()=>{ $("zoom").value=Math.max(1.5,+$("zoom").value);$("zoomLabel").textContent=(+$("zoom").value).toFixed(2);$("bri").value=Math.max(1.18,+$("bri").value);$("briLabel").textContent=(+$("bri").value).toFixed(2);$("con").value=Math.max(1.25,+$("con").value);$("conLabel").textContent=(+$("con").value).toFixed(2);detectFlow() });
+  $("detectBtn").addEventListener("click",()=>detectFlow());
+  $("startAnalysisBtn").addEventListener("click",()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis() });
+  $("clearLogsBtn").addEventListener("click",()=>{ diagEl().textContent='No diagnostics yet.'; $("summaryLine").textContent=''; });
+  $("resetBtn").addEventListener("click",()=>{ ["base","overlay"].forEach(id=>$(id).getContext('2d').clearRect(0,0,$(id).width,$(id).height)); baseSource=null; lastBox=null; lastAnalysis=null; $("detectBtn").disabled=true; $("startAnalysisBtn").disabled=true; setReadyState(false); logEvt('config',{reset:true}) });
+  $("fileInput").addEventListener("change",async()=>{ if(!$("fileInput").files.length) return; const f=$("fileInput").files[0]; setProgress(8,'Decoding photo…'); try{ baseSource=await decodeOriginal(f); const c=renderWorkingCanvas(1024); if(c){ paintBaseCanvas(c); setProgress(12,'Photo ready'); $("detectBtn").disabled=false; } }catch(e){ logEvt('error',{decode_failed:e.message||String(e)}) } });
+  $("sampleBtn").addEventListener("click",async()=>{ try{ setProgress(5,'Fetching sample…'); const u="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1000&auto=format&fit=crop"; const res=await fetch(u,{cache:"no-store"}); if(!res.ok) throw new Error('HTTP '+res.status); const blob=await res.blob(); baseSource=await decodeOriginal(blob); const c=renderWorkingCanvas(1024); if(c){ paintBaseCanvas(c); setProgress(12,'Sample ready'); $("detectBtn").disabled=false; } logEvt('detect',{sampleImage:u}); }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}) } });
+  $("autoTestBtn").addEventListener("click",runAutoTest);
+  $("copyReportBtn").addEventListener("click",async()=>{ const report=buildAutoTestReport(); const res=await copyTextRobust(report); if(res.ok){ toast('Report copied'); logEvt('config',{copied:true,via:res.via}) } else { logEvt('error',{copy_failed:res.err||'unknown'}) } });
+  ["zoom","bri","con"].forEach(id=>$(id).addEventListener('input',()=>{ if(id==='zoom')$("zoomLabel").textContent=(+$("zoom").value).toFixed(2); if(id==='bri')$("briLabel").textContent=(+$("bri").value).toFixed(2); if(id==='con')$("conLabel").textContent=(+$("con").value).toFixed(2) }));
 
-  // Live control labels
-  ["zoom","bri","con"].forEach(id=>{
-    $(id).addEventListener('input', ()=>{
-      if(id==='zoom') $("zoomLabel").textContent=(+$("zoom").value).toFixed(2);
-      if(id==='bri') $("briLabel").textContent=(+$("bri").value).toFixed(2);
-      if(id==='con') $("conLabel").textContent=(+$("con").value).toFixed(2);
-    });
-  });
-
-  /* ===== Framework boot ===== */
   async function initTf(){
     try{
       showVeil('Initializing TensorFlow…');
       if(window.tf && tf.wasm && tf.wasm.setWasmPaths){
         tf.wasm.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/');
       }
-      // Try WASM, fallback to CPU if CSP blocks WASM/Eval
-      try{
-        await tf.setBackend('wasm');
-        await tf.ready();
-        logEvt('config',{tf:'ready', backend:tf.getBackend(), tf_version: tf.version_core || tf.version?.tfjs || 'unknown'});
-        $("tfBadge").textContent = `TF: ${tf.getBackend()} • v${tf.version_core || tf.version?.tfjs || '3.x'}`;
-      }catch(_){
-        await tf.setBackend('cpu');
-        await tf.ready();
-        logEvt('config',{tf:'ready', backend:tf.getBackend(), tf_version: tf.version_core || 'unknown'});
-        $("tfBadge").textContent = `TF: ${tf.getBackend()} • v${tf.version_core || '3.x'}`;
-      }
+      try{ await tf.setBackend('wasm'); await tf.ready() } catch(_){ await tf.setBackend('cpu'); await tf.ready() }
+      const ver=(tf.version_core||tf.version?.tfjs||'3.x'); const be=tf.getBackend();
+      logEvt('config',{tf:'ready',backend:be,tf_version:ver}); $("tfBadge").textContent=`TF: ${be} • v${ver}`;
+      await warmup();
       hideVeil();
-    }catch(e){
-      hideVeil();
-      $("tfBadge").textContent = 'TF: init error';
-      logEvt('error',{tf_init:e.message||String(e)});
-    }
+    }catch(e){ hideVeil(); $("tfBadge").textContent='TF: init error'; logEvt('error',{tf_init:e.message||String(e)}) }
   }
 
   async function boot(){
-    logEvt('config',{boot:'dom-ready', rev:REVISION});
+    logEvt('config',{boot:'dom-ready',rev:REVISION});
     showVeil('Loading models…');
     await initTf();
     try{
       await ensureBlaze();
-    }catch(e){
-      logEvt('error',{blazeface:e.message||String(e)});
-    }
-    hideVeil();
-    logEvt('config',{boot:'frameworks-ready'});
-    updateSessStats();
-    setReadyState(false);
-    // Enable detect once any image is drawn later
-    $("detectBtn").disabled = !baseSource;
+      // tiny compile touch
+      const tmp=document.createElement('canvas'); tmp.width=64; tmp.height=64; tmp.getContext('2d').fillRect(0,0,64,64);
+      try{ await blazeModel.estimateFaces(tmp,false); }catch(_){}
+    }catch(e){ logEvt('error',{blazeface:e.message||String(e)}) }
+    hideVeil(); logEvt('config',{boot:'frameworks-ready'}); updateSessStats(); setReadyState(false); $("detectBtn").disabled=!baseSource;
   }
 
-  window.addEventListener('load', ()=>{
-    try{
-      const saved = localStorage.getItem('yorn_last_analysis');
-      if(saved){
-        const a = JSON.parse(saved);
-        logEvt('analysis',{restored:true, analysis:a});
-      }
-    }catch(_){}
-    logEvt('config',{boot:'complete'});
-  });
-  // Start
+  window.addEventListener('load',()=>{ try{ const saved=localStorage.getItem('yorn_last_analysis'); if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}) } }catch(_){} logEvt('config',{boot:'complete'}) });
   boot();
 })();
 </script>
