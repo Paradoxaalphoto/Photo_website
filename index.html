@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
-<title>YorN • 1.16.10-alpha</title>
+<title>YorN • 1.16.11-alpha</title>
 <style>
   :root{
     --bg:#0b0e12; --panel:#121720; --ink:#e7edf6; --muted:#9fb0c6; --accent:#68d391; --warn:#ffb020; --bad:#ff6b6b; --line:#243043;
@@ -12,7 +12,7 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto}
   .wrap{max-width:980px;margin:0 auto;padding:18px}
-  h1{font-size:18px;margin:0 0 12px;display:flex;align-items:center;gap:10px}
+  h1{font-size:18px;margin:0 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .rev{font:600 12px/1 ui-monospace,Menlo,Consolas;background:#0f1420;border:1px solid var(--line);padding:4px 8px;border-radius:999px;color:#9ad;display:flex;gap:6px}
   .badge{font:600 11px/1 ui-monospace,Menlo,Consolas;padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
   .ok{background:#0f1a14;color:#aef2c0;border-color:#163a27}
@@ -27,21 +27,24 @@
   input[type="range"]{width:160px}
   label.small{font-size:12px;color:var(--muted);margin-right:6px}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  @media(max-width:700px){.grid2{grid-template-columns:1fr}}
   canvas{max-width:100%;border-radius:12px;display:block}
   .hud{position:relative}
   .hud canvas{position:absolute;inset:0;pointer-events:none}
-  #diagnostics{height:240px;overflow:auto;background:#0c1119;border:1px solid var(--line);border-radius:10px;padding:10px;font:12px/1.45 ui-monospace,Menlo,Consolas;white-space:pre-wrap;word-break:break-word}
+  #diagnostics{height:260px;overflow:auto;background:#0c1119;border:1px solid var(--line);border-radius:10px;padding:10px;font:12px/1.45 ui-monospace,Menlo,Consolas;white-space:pre-wrap;word-break:break-word}
   .muted{color:var(--muted)}
   .pill{display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid var(--line);font:12px ui-monospace,Menlo,Consolas}
   .spacer{flex:1}
   .toast{min-height:18px;color:#cce9d8}
+  .grade{font:700 28px/1.2 ui-monospace,Menlo,Consolas}
+  .grade small{font:12px;color:var(--muted);font-weight:600;margin-left:8px}
 </style>
 </head>
 <body>
   <div class="wrap">
     <h1>
       YorN
-      <span class="rev">rev <span id="rev">1.16.10-alpha</span></span>
+      <span class="rev">rev <span id="rev">1.16.11-alpha</span></span>
       <span id="autoBadge" class="badge bad" title="Auto Test hasn’t run yet">AUTO TEST • —</span>
       <span class="spacer"></span>
       <span class="muted">Lightweight face analysis prototype</span>
@@ -59,7 +62,7 @@
         </div>
         <div class="grid2">
           <div>
-            <div class="hud">
+            <div class="hud" style="min-height:220px">
               <canvas id="base" width="0" height="0"></canvas>
               <canvas id="overlay" width="0" height="0"></canvas>
             </div>
@@ -103,6 +106,7 @@
         <div id="analysisCard" class="card" style="margin-top:12px; display:none;">
           <h3>Analysis</h3>
           <div id="analysisSummary" class="muted">—</div>
+          <div class="grade" id="qualityScore" style="margin:8px 0 4px 0">—<small>photo quality</small></div>
           <div class="controls">
             <button id="copyJsonBtn" type="button" disabled>Copy Analysis JSON</button>
             <button id="exportJsonBtn" type="button" disabled>Download JSON</button>
@@ -112,14 +116,14 @@
     </div>
   </div>
 
-<!-- Corrected TFJS load order + WASM backend -->
+<!-- Correct TFJS load order + WASM backend -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.js"></script>
 <!-- BlazeFace UMD -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
 
 <script>
-const REVISION = "1.16.10-alpha";
+const REVISION = "1.16.11-alpha";
 const $ = id => document.getElementById(id);
 const diagEl = $("diagnostics");
 
@@ -176,16 +180,11 @@ function drawBox(box, color="#68d391", label="face"){
 async function ensureBackends(){
   try{
     if (!window.tf) { logEvt("error",{tf_present:false}); throw new Error("tf missing"); }
-    // set WASM binary path BEFORE selecting wasm
     if (tf.wasm && tf.wasm.setWasmPaths){
       tf.wasm.setWasmPaths("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/");
     }
     const tryBackends = ["wasm","webgl","cpu"];
     for (const b of tryBackends){
-      const ok = tf.findBackend(b);
-      if (!ok && b==="wasm") {
-        // registering wasm backend happens when tf-backend-wasm script is loaded; if not present, skip
-      }
       try{
         await tf.setBackend(b);
         await tf.ready();
@@ -193,9 +192,7 @@ async function ensureBackends(){
         $("tfver").textContent = tf?.version_core || "—";
         logEvt("config",{tf:"ready", backend:b, tf_version: tf?.version_core||"—"});
         return b;
-      }catch(_e){
-        // try next backend
-      }
+      }catch(_e){ /* try next */ }
     }
     throw new Error("No backend found in registry.");
   }catch(e){
@@ -222,26 +219,33 @@ async function decodeOriginal(fileOrBlob){
   return bmp;
 }
 
-/* ---------- detect ---------- */
+/* ---------- detect (with rough timing) ---------- */
 async function detectFlow(){
   if(!baseSource){ setToast("Load a photo first"); return; }
   await ensureBlaze();
   const canvas = lastCanvas || renderWorkingCanvas(1024);
   if (!lastCanvas) paintBaseCanvas(canvas);
+
   const z = +$("zoom").value || 1.2;
   logEvt("overlay",{autoZoomApplied:z});
 
-  const t0 = performance.now();
+  // Rough timing restored
+  const r0 = performance.now();
   const preds = await blazeModel.estimateFaces(canvas, false);
-  const dt = Math.round(performance.now()-t0);
-  if(!preds || !preds.length){ setToast("No face found"); logEvt("detect",{finalDetect_ms:dt, none:true}); return; }
+  const roughMs = Math.round(performance.now() - r0);
+  logEvt("detect",{roughLocate_ms: roughMs});
 
+  if(!preds || !preds.length){ setToast("No face found"); return; }
+
+  const t0 = performance.now();
   let best = preds[0], bestArea=(best.bottomRight[0]-best.topLeft[0])*(best.bottomRight[1]-best.topLeft[1]);
   for(const p of preds){
     const area = (p.bottomRight[0]-p.topLeft[0])*(p.bottomRight[1]-p.topLeft[1]);
     if(area>bestArea){ best=p; bestArea=area; }
   }
   const box = { x:best.topLeft[0], y:best.topLeft[1], width:best.bottomRight[0]-best.topLeft[0], height:best.bottomRight[1]-best.topLeft[1] };
+  const dt = Math.round(performance.now()-t0);
+
   lastBox = box;
   drawBox(box, "#68d391", "blaze");
   logEvt("detect",{finalDetect_ms:dt, scale:256, mirror:false, box});
@@ -255,6 +259,40 @@ function iou(a,b){
   const inter=Math.max(0,x2-x1)*Math.max(0,y2-y1);
   const uni=a.width*a.height + b.width*b.height - inter;
   return uni>0 ? inter/uni : 0;
+}
+
+/* ---------- simple photo quality (lightweight) ---------- */
+function scoreQuality(analysis){
+  // Targets: area ≈ 10–20%, center offsets near 0, sharpness high-ish, contrast mid/high
+  const area = analysis.box.area_pct;                 // 0–100
+  const offx = Math.abs(analysis.box.center_offset_pct.x); // 0–50
+  const offy = Math.abs(analysis.box.center_offset_pct.y);
+  const sharp = analysis.sharpness.laplacian_variance; // 0–∞
+  const contrast = analysis.lighting.contrast_stdev;   // ~20–120
+
+  function clamp(v,lo,hi){ return Math.max(lo, Math.min(hi,v)); }
+
+  // area subscore: 12% ideal
+  const aScore = 1 - Math.min(Math.abs(area-12)/12, 1);
+  // center subscore
+  const cScore = 1 - clamp((offx+offy)/40, 0, 1);
+  // sharpness subscore (800 good → 1.0; 200 mediocre → 0)
+  const sScore = clamp((sharp-200)/600, 0, 1);
+  // contrast subscore (50–95 sweet spot)
+  const conScore = clamp((contrast-35)/(95-35), 0, 1);
+
+  const total = 0.32*aScore + 0.30*cScore + 0.22*sScore + 0.16*conScore;
+  const pct = Math.round(total*100);
+  let grade="C";
+  if(pct>=90) grade="A+";
+  else if(pct>=80) grade="A";
+  else if(pct>=70) grade="B";
+  else if(pct>=60) grade="C+";
+  else if(pct>=50) grade="C";
+  else if(pct>=40) grade="D";
+  else grade="E";
+
+  return {pct, grade};
 }
 
 /* ---------- analysis ---------- */
@@ -292,7 +330,7 @@ function runLightAnalysis(){
       center:{ x:+(lastBox.x+lastBox.width/2).toFixed(2), y:+(lastBox.y+lastBox.height/2).toFixed(2) },
       center_offset_pct:{
         x:+(((lastBox.x+lastBox.width/2)-lastCanvas.width/2)/lastCanvas.width*100).toFixed(2),
-        y:+(((lastBox.y+lastBox.height/2)-lastCanvas.height/2)/lastCanvas.height*100).toFixed(2)
+        y:+(((lastBox.y+lastBox.width/2)-lastCanvas.height/2)/lastCanvas.height*100).toFixed(2)
       }
     },
     lighting:{ brightness_mean:+mean.toFixed(3), contrast_stdev:+stdev.toFixed(3) },
@@ -302,7 +340,6 @@ function runLightAnalysis(){
   };
   lastAnalysis=analysis;
   localStorage.setItem("yorn_last_analysis", JSON.stringify(analysis));
-  $("analysisCard").style.display=""; $("copyJsonBtn").disabled=false; $("exportJsonBtn").disabled=false;
 
   const hints=[];
   hints.push(`Face area ${(analysis.box.area_pct).toFixed(2)}%`);
@@ -310,7 +347,11 @@ function runLightAnalysis(){
   hints.push(`Contrast ${analysis.lighting.contrast_stdev<40?'soft':analysis.lighting.contrast_stdev>95?'harsh':'ok'}`);
   hints.push(`Sharpness ${analysis.sharpness.laplacian_variance>1200?'crisp':analysis.sharpness.laplacian_variance<400?'soft':'ok'}`);
   if(iouVal!=null) hints.push(`IoU ${iouVal}`);
+
+  const q = scoreQuality(analysis);
+  $("analysisCard").style.display=""; $("copyJsonBtn").disabled=false; $("exportJsonBtn").disabled=false;
   $("analysisSummary").textContent = hints.join(' • ');
+  $("qualityScore").innerHTML = `${q.grade} <small>photo quality (${q.pct}%)</small>`;
   logEvt("analysis",{analysis});
 }
 
@@ -353,17 +394,13 @@ async function runAutoTest(){
   setAutoBadge(false,"Running…"); logEvt("test",{step:"begin",rev:REVISION});
   try{
     const tfPresent=!!window.tf; logEvt("test",{step:"tf_present",ok:tfPresent}); if(!tfPresent) throw new Error("tf missing");
-
     await $("sampleBtn").click(); await new Promise(r=>setTimeout(r,300));
     logEvt("test",{step:"sample",ok:!!baseSource});
-
     const t0=performance.now(); await detectFlow(); const ms=Math.round(performance.now()-t0);
     logEvt("test",{step:"detect_blazeonly",ok:!!lastBox,ms});
-
     logEvt("test",{step:"refine_guard",ok:true});
     $("startAnalysisBtn").click(); await new Promise(r=>setTimeout(r,250));
     logEvt("test",{step:"analysis_blazeonly",ok:!!lastAnalysis});
-
     const ok=!!(baseSource && lastBox && lastAnalysis);
     logEvt("test",{step:"summary",ok});
     setAutoBadge(ok, ok?"All good":"Missing pieces"); $("copyTestBtn").disabled=false;
@@ -388,7 +425,7 @@ $("detectBtn").addEventListener("click", detectFlow);
 $("startAnalysisBtn").addEventListener("click", ()=>{ logEvt("analysis",{analysisRequested:true,mode:"light"}); runLightAnalysis(); });
 $("clearLogsBtn").addEventListener("click", ()=>{ diagEl.textContent="No diagnostics yet."; });
 $("resetBtn").addEventListener("click", ()=>{
-  ["base","overlay"].forEach(id=>{ const el=$(id); if(el) el.getContext("2d").clearRect(0,0,el.width,el.height); });
+  ["base","overlay"].forEach(id=>{ const el=$(id); if(el && el.getContext) el.getContext("2d").clearRect(0,0,el.width,el.height); });
   baseSource=null; lastCanvas=null; lastBox=null; lastRefineBox=null; lastAnalysis=null;
   $("analysisCard").style.display="none";
   $("copyJsonBtn").disabled=true; $("exportJsonBtn").disabled=true;
@@ -426,12 +463,19 @@ $("copyTestBtn").addEventListener("click", async ()=>{
 });
 $("autoTestBtn").addEventListener("click", runAutoTest);
 
-/* ---------- boot ---------- */
+/* ---------- boot (with warm‑up) ---------- */
 window.addEventListener("load", async ()=>{
   $("rev").textContent=REVISION; envProbe();
   logEvt("config",{boot:"dom-ready",rev:REVISION});
   try{
-    await ensureBackends(); // pick a backend ASAP so Auto Test shows backend
+    await ensureBackends();        // pick backend
+    // Warmup to reduce first-detect latency
+    try{
+      await ensureBlaze();
+      const tmp = tf.tidy(()=>tf.zeros([8,8,3]));
+      await tf.nextFrame(); tmp.dispose();
+      logEvt("config",{warmup:"ok"});
+    }catch(e){ logEvt("error",{warmup:e.message||String(e)}) }
     logEvt("config",{boot:"frameworks-ready"});
   }catch(_){}
   try{
