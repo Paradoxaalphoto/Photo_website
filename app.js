@@ -16,6 +16,31 @@
 
   const session = { detects: 0, detectTimes: [], analyses: 0 };
 
+window.onerror = (msg, src, line, col, err) => {
+  const box = document.getElementById("diagnostics");
+  const lineTxt = JSON.stringify({
+    time: new Date().toISOString(),
+    type: "error",
+    onerror: String(msg),
+    src, line, col,
+    stack: err && err.stack ? String(err.stack) : undefined
+  });
+  if (box.textContent === "No diagnostics yet.") box.textContent = "";
+  box.textContent += (box.textContent ? "\n" : "") + lineTxt;
+};
+
+window.onunhandledrejection = (ev) => {
+  const box = document.getElementById("diagnostics");
+  const lineTxt = JSON.stringify({
+    time: new Date().toISOString(),
+    type: "error",
+    unhandledrejection: String(ev.reason && ev.reason.message || ev.reason || "unknown"),
+  });
+  if (box.textContent === "No diagnostics yet.") box.textContent = "";
+  box.textContent += (box.textContent ? "\n" : "") + lineTxt;
+};
+
+
   /* ===== Utils ===== */
   function setBusy(v) {
     isBusy = !!v;
@@ -61,7 +86,24 @@
 
   /* ===== Detection with watchdog ===== */
   async function detectOnce(){ if (!baseBitmap) return null; await initTF(); await loadModel();
-    const runPredict = async () => await tf.tidy(async () => { const input = tf.browser.fromPixels(stage); const preds = await faceModel.estimateFaces(input, false); if (!preds || !preds.length) return null; const p=preds[0]; const [x1,y1]=p.topLeft; const [x2,y2]=p.bottomRight; return { x:x1, y:y1, width:x2-x1, height:y2-y1 }; });
+   const runPredict = async () => {
+  // DO NOT wrap this in tf.tidy when using await
+  const input = tf.browser.fromPixels(stage);
+  try {
+    // returnTensors=false, flipHorizontal=false (explicit)
+    const preds = await faceModel.estimateFaces(input, false, false);
+    if (!preds || !preds.length) return null;
+    const p = preds[0];
+
+    // When returnTensors=false, topLeft/bottomRight are [x,y] arrays
+    const [x1, y1] = p.topLeft;
+    const [x2, y2] = p.bottomRight;
+    return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
+  } finally {
+    // manual cleanup
+    input.dispose?.();
+  }
+};  ;
     const timed=(ms,fn)=>new Promise((resolve,reject)=>{ let done=false; const t=setTimeout(()=>{ if(!done){ done=true; reject(new Error("detect_timeout")); }}, ms); fn().then(v=>{ if(!done){ done=true; clearTimeout(t); resolve(v); }}).catch(e=>{ if(!done){ done=true; clearTimeout(t); reject(e); }}); });
     const t0=performance.now();
     try {
