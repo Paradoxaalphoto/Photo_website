@@ -3,12 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>YorN 1.16.18‑alpha</title>
+<title>YorN 1.16.19‑alpha (Safe Mode)</title>
 <style>
-  :root {
-    --bg:#0c0f14; --card:#141a22; --text:#e9eef5; --muted:#a8b3c0;
-    --accent:#63b3ff; --ok:#19c37d; --line:#222a35;
-  }
+  :root { --bg:#0c0f14; --card:#141a22; --text:#e9eef5; --muted:#a8b3c0; --accent:#63b3ff; --ok:#19c37d; --line:#222a35; }
   *{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
   header{position:sticky;top:0;z-index:10;background:linear-gradient(180deg,rgba(12,15,20,.95),rgba(12,15,20,.65));backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
   header .row{max-width:980px;margin:0 auto;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
@@ -40,7 +37,7 @@
 </style>
 </head>
 <body>
-<div class="rev">YorN <strong>1.16.18‑alpha</strong></div>
+<div class="rev">YorN <strong>1.16.19‑alpha</strong> • Safe Mode (CPU)</div>
 
 <header>
   <div class="row">
@@ -53,9 +50,9 @@
     <button id="copyTestBtn" class="btn" disabled>Copy Test Report</button>
     <span class="pill">Backend
       <select id="backendSel" class="select">
+        <option value="cpu" selected>CPU (safe)</option>
         <option value="wasm">WASM</option>
         <option value="webgl">WebGL</option>
-        <option value="cpu">CPU</option>
       </select>
     </span>
     <span id="readyBadge" class="badge" style="display:none;">READY</span>
@@ -107,26 +104,18 @@
   </section>
 </main>
 
-<!-- Frameworks (order matters; keep these before the app script) -->
+<!-- Minimal frameworks (CPU‑only to avoid CSP/eval issues) -->
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@3.21.0/dist/tf-backend-webgl.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-cpu@3.21.0/dist/tf-backend-cpu.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
 
 <script>
 (() => {
-  const REVISION='1.16.18-alpha';
+  const REVISION='1.16.19-alpha';
   const BLAZE_SIZE=128;
-
   const $=id=>document.getElementById(id);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-
-  function logEvt(type,obj){
-    const line=\`[\${new Date().toISOString()}] \${JSON.stringify({type,...obj})}\`;
-    const box=$('diagnostics'); if(box.textContent.trim()==='No diagnostics yet.') box.textContent='';
-    box.textContent += (box.textContent?'\n':'') + line; box.scrollTop=box.scrollHeight;
-  }
+  function logEvt(type,obj){ const line=\`[\${new Date().toISOString()}] \${JSON.stringify({type,...obj})}\`; const box=$('diagnostics'); if(box.textContent.trim()==='No diagnostics yet.') box.textContent=''; box.textContent += (box.textContent?'\n':'') + line; box.scrollTop=box.scrollHeight; }
   function setProgress(p,t){ $('bar').style.width=Math.max(0,Math.min(100,p))+'%'; $('progressText').textContent=t||''; }
 
   let baseSource=null, model=null, lastBox=null, lastAnalysis=null;
@@ -144,53 +133,15 @@
   }
   function drawBoxOn(canvas,box,color='#63b3ff'){ const ctx=canvas.getContext('2d'); ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=Math.max(2,canvas.width/256); ctx.shadowColor='rgba(0,0,0,.7)'; ctx.shadowBlur=6; ctx.strokeRect(box.x,box.y,box.width,box.height); ctx.restore(); }
 
-  // --- Backend registration & selection ---
-  async function registerWasmPath(){
-    try{
-      // ensure WASM binaries path is set (tfjs 3.x)
-      if(tf?.wasm?.setWasmPaths){
-        tf.wasm.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/wasm/');
-        logEvt('config',{wasm_path:'set'});
-      }
-    }catch(e){ logEvt('error',{wasm_path:e.message||String(e)}); }
+  async function setBackendCPU(){
+    try{ await tf.setBackend('cpu'); await tf.ready(); logEvt('config',{tf:'ready',backend:tf.getBackend(),tf_version:tf.version_core||tf.version?.tfjs}); }
+    catch(e){ logEvt('error',{tf_init:e.message||String(e)}); }
   }
-  async function setBackendPreferred(){
-    const sel=$('backendSel');
-    const wanted=localStorage.getItem('yorn_backend')||sel.value||'wasm';
-    try{
-      if(wanted==='wasm') await registerWasmPath();
-      await tf.setBackend(wanted);
-      await tf.ready();
-      localStorage.setItem('yorn_backend',wanted);
-      sel.value=wanted;
-      logEvt('config',{tf:'ready',backend:tf.getBackend(),tf_version:tf.version_core||tf.version?.tfjs});
-      await warmup();
-    }catch(e){
-      logEvt('error',{backend_set_failed:e.message||String(e),wanted});
-      for(const b of ['webgl','wasm','cpu']){
-        if(b===wanted) continue;
-        try{
-          if(b==='wasm') await registerWasmPath();
-          await tf.setBackend(b); await tf.ready();
-          sel.value=b; localStorage.setItem('yorn_backend',b);
-          logEvt('config',{tf:'ready',backend:tf.getBackend(),tf_version:tf.version_core||tf.version?.tfjs,fallback_from:wanted});
-          await warmup(); break;
-        }catch(_){}
-      }
-    }
-  }
-  async function warmup(){
-    try{
-      await tf.tidy(()=>{ const a=tf.randomUniform([1,32,32,3]); const k=tf.ones([3,3,3,8]); const c=tf.conv2d(a,k,1,'same'); return c.mean().dataSync(); });
-      logEvt('config',{warmup:'ok',backend:tf.getBackend()});
-    }catch(e){ logEvt('error',{warmup:e.message||String(e)}); }
-  }
-  $('backendSel').addEventListener('change', async ()=>{ localStorage.setItem('yorn_backend',$('backendSel').value); await setBackendPreferred(); });
 
   async function ensureModel(){
     if(model) return model;
     if(!window.blazeface){ logEvt('error',{model:'blazeface UMD missing'}); throw new Error('BlazeFace not available'); }
-    model = await blazeface.load({maxFaces:1}); 
+    model = await blazeface.load({maxFaces:1});
     logEvt('detect',{blazefaceReady:true});
     return model;
   }
@@ -222,18 +173,7 @@
       const p=preds[0], [x0,y0]=p.topLeft, [x1,y1]=p.bottomRight;
       const up=mapBoxFromSquare({x:x0,y:y0,width:(x1-x0),height:(y1-y0)},map);
       return { box:up, canvas:src };
-    }catch(e){
-      logEvt('error',{detect_primary:e.message||String(e)});
-      // retry with explicit tensor
-      try{
-        const t=tf.tidy(()=>tf.image.resizeBilinear(tf.browser.fromPixels(sq),[BLAZE_SIZE,BLAZE_SIZE]).expandDims(0));
-        const preds=await model.estimateFaces(t,false); t.dispose?.();
-        if(!preds?.length) return null;
-        const p=preds[0], [x0,y0]=p.topLeft,[x1,y1]=p.bottomRight;
-        const up=mapBoxFromSquare({x:x0,y:y0,width:(x1-x0),height:(y1-y0)},map);
-        return { box:up, canvas:src };
-      }catch(e2){ logEvt('error',{detect_retry:e2.message||String(e2)}); throw e2; }
-    }
+    }catch(e){ logEvt('error',{detect_primary:e.message||String(e)}); return null; }
   }
 
   async function detectFlow(){
@@ -242,14 +182,12 @@
       const src=composePreview(); if(!src) return;
       const t0=performance.now();
       const res=await quickDetect();
-      if(!res){ setProgress(100,'No face found'); logEvt('detect',{finalDetect_ms:0,box:null}); return; }
       const rough=Math.round(performance.now()-t0);
+      if(!res){ setProgress(100,'No face found'); logEvt('detect',{roughLocate_ms:rough,finalDetect_ms:0,box:null}); return; }
       lastBox=res.box;
       drawBoxOn(src,lastBox,'#63b3ff');
-      setProgress(65,'Face found');
-      logEvt('detect',{roughLocate_ms:rough,box:lastBox});
-      const t1=performance.now(); drawBoxOn(src,lastBox,'#19c37d');
-      logEvt('detect',{finalDetect_ms:Math.round(performance.now()-t1),scale:BLAZE_SIZE,mirror:false,box:lastBox});
+      setProgress(70,'Face found');
+      logEvt('detect',{roughLocate_ms:rough,finalDetect_ms:0,scale:BLAZE_SIZE,mirror:false,box:lastBox});
       $('startAnalysisBtn').disabled=false;
       return lastBox;
     }catch(e){ logEvt('error',{detect:e.message||String(e)}); }
@@ -362,7 +300,9 @@
     try{
       logEvt('test',{step:'begin',rev:REVISION});
       logEvt('test',{step:'tf_present',ok:!!window.tf});
-      await setBackendPreferred();
+      await setBackendCPU(); // force CPU safe backend
+      // reflect selection UI
+      $('backendSel').value='cpu';
       await $('sampleBtn').click(); await sleep(150);
       logEvt('test',{step:'sample',ok:!!baseSource});
       const t0=performance.now(); const b=await detectFlow(); const ms=Math.round(performance.now()-t0);
@@ -384,8 +324,7 @@
 
   window.addEventListener('DOMContentLoaded', async ()=>{
     logEvt('config',{boot:'dom-ready',rev:REVISION});
-    const pref=localStorage.getItem('yorn_backend'); if(pref) $('backendSel').value=pref;
-    await setBackendPreferred();
+    await setBackendCPU();
     try{ const saved=localStorage.getItem('yorn_last_analysis'); if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}); $('analysisCard').style.display=''; } }catch(_){}
     logEvt('config',{boot:'complete'});
   });
