@@ -2,350 +2,510 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-<title>YorN • 1.17.3‑alpha</title>
+<meta
+  name="viewport"
+  content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover"
+/>
+<title>YorN 1.17.4-alpha</title>
 <style>
-  :root { --bg:#0b0d10; --fg:#e6e9ef; --muted:#aab3c0; --ink:#121418; --accent:#7cd2ff; --ok:#20c997; --warn:#ffd166; --err:#ff6b6b; --card:#14171c; --line:#262a31; }
-  html,body {margin:0; height:100%; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
-  .wrap {max-width:980px; margin:0 auto; padding:16px; display:flex; flex-direction:column; gap:12px;}
-  header{display:flex; align-items:center; gap:10px; position:sticky; top:0; background:linear-gradient(180deg, rgba(11,13,16,.95), rgba(11,13,16,.75) 70%, transparent); padding:8px 0; z-index:10; backdrop-filter:saturate(120%) blur(6px)}
-  h1{font-size:16px; margin:0; letter-spacing:.2px; font-weight:600}
-  .rev{margin-left:auto; font-size:12px; color:var(--muted); opacity:.8; padding:2px 8px; border:1px solid var(--line); border-radius:999px}
-  .grid{display:grid; gap:12px}
-  @media(min-width:900px){ .grid{ grid-template-columns: 1.2fr .8fr; align-items:start } }
-  .card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px}
-  .row{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
-  button, .btn { background:#1b2027; color:var(--fg); border:1px solid var(--line); border-radius:10px; padding:8px 10px; cursor:pointer }
-  button.primary { background:#1d2a33; border-color:#254254 }
-  button:disabled{ opacity:.5; cursor:not-allowed }
-  label.small{font-size:12px; color:var(--muted)}
-  input[type="file"]{ display:block; }
-  canvas{ max-width:100%; height:auto; background:#0f1216; border-radius:10px; border:1px solid var(--line)}
-  .controls{display:flex; flex-wrap:wrap; gap:8px}
-  .kv{display:flex; gap:6px; align-items:center}
-  .meter{height:8px; background:#0e1116; border:1px solid var(--line); border-radius:6px; width:120px; overflow:hidden}
-  .meter > i{display:block; height:100%; width:0; background:linear-gradient(90deg, var(--accent), #83ffa1)}
-  pre{white-space:pre-wrap; word-break:break-word; background:#0f1318; border:1px solid var(--line); border-radius:10px; padding:10px; max-height:320px; overflow:auto}
-  .toast{position:fixed; left:50%; bottom:18px; transform:translateX(-50%); background:#11161c; color:#d9e2ee; border:1px solid var(--line); border-radius:10px; padding:8px 12px; opacity:0; pointer-events:none; transition:opacity .2s ease}
-  .toast.show{opacity:1}
-  .pill{display:inline-block; padding:2px 8px; border:1px solid var(--line); border-radius:999px; font-size:12px; color:var(--muted)}
-  .badge{display:inline-block; padding:2px 8px; border-radius:999px; font-weight:600; font-size:11px}
-  .ready{ background:#0f2a1e; color:#64e6a5; border:1px solid #1f4c3a }
-  .blocked{ background:#2a1010; color:#ffa7a7; border:1px solid #4c1f1f }
+  :root {
+    --bg: #0b0c10;
+    --panel: #111318;
+    --muted: #818597;
+    --text: #e9ecf1;
+    --accent: #70e1ff;
+    --ok: #2ecc71;
+    --warn: #ffb347;
+    --bad: #ff6b6b;
+    --chip: #1b1f27;
+    --chip-brd: #272b35;
+  }
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif}
+  .wrap{max-width:980px;margin:0 auto;padding:16px}
+  h1{font-size:18px;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+  .rev{font-size:12px;color:var(--muted);padding:2px 8px;border-radius:999px;background:var(--chip);border:1px solid var(--chip-brd)}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .card{background:var(--panel);border:1px solid var(--chip-brd);border-radius:12px;padding:12px;flex:1 1 320px;min-width:280px}
+  .controls .row > *{flex:1}
+  label{display:block;font-size:12px;color:var(--muted);margin:2px 0 6px}
+  input[type="file"]{width:100%}
+  .btn{background:#1e222b;color:var(--text);border:1px solid var(--chip-brd);padding:10px 12px;border-radius:10px;cursor:pointer}
+  .btn[disabled]{opacity:.5;cursor:not-allowed}
+  .btn.ok{border-color:#254;box-shadow:inset 0 0 0 1px #254}
+  .btn.warn{border-color:#554;box-shadow:inset 0 0 0 1px #554}
+  .btn.accent{border-color:#1f3a48;box-shadow:inset 0 0 0 1px #1f3a48}
+  .tog{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:900px){ .grid{grid-template-columns:1fr 1fr} }
+  canvas, img{max-width:100%;border-radius:10px;border:1px solid var(--chip-brd)}
+  .diag{white-space:pre-wrap;background:#0e1116;border:1px solid #232835;border-radius:10px;padding:10px;max-height:280px;overflow:auto;font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .small{font-size:12px;color:var(--muted)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{font-size:12px;color:var(--muted);padding:2px 8px;border-radius:999px;background:var(--chip);border:1px solid var(--chip-brd)}
+  .statline{display:flex;gap:10px;flex-wrap:wrap}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--chip-brd);background:var(--chip);font-size:12px}
+  .badge.ready{color:#d4ffd4;border-color:#264;border-left:6px solid var(--ok)}
+  .badge.blocked{color:#ffe2d9;border-color:#642;border-left:6px solid var(--bad)}
+  .row-tight{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <h1>YorN Prototype</h1>
-    <span id="backendPill" class="pill">TF: —</span>
-    <span id="readiness" class="badge blocked" style="display:none">BLOCKED</span>
-    <span class="rev">rev <strong id="rev">1.17.3‑alpha</strong></span>
-  </header>
+  <h1>YorN <span class="rev" id="rev">1.17.4‑alpha</span></h1>
 
   <div class="grid">
-    <!-- Left: Preview & Actions -->
-    <section class="card">
-      <div class="row" style="justify-content:space-between">
-        <div class="controls">
-          <input id="file" type="file" accept="image/*" />
-          <button id="sample" class="primary">Load Sample</button>
-          <button id="detect" disabled>Detect</button>
-          <button id="analyze" disabled>Start Analysis</button>
-          <button id="reset">Reset</button>
+    <!-- Left: Image + Controls -->
+    <div class="card controls">
+      <div class="row">
+        <div>
+          <label>Upload photo</label>
+          <input type="file" id="fileInput" accept="image/*" />
         </div>
-        <div class="kv">
-          <label class="small">Progress</label>
-          <div class="meter"><i id="meterBar"></i></div>
-          <span id="progressTxt" class="small">idle</span>
+        <div class="row-tight" style="align-self:end">
+          <button class="btn" id="sampleBtn">Load Sample</button>
+          <button class="btn" id="resetBtn">Reset</button>
         </div>
       </div>
 
-      <div class="row" style="margin-top:8px">
-        <div class="kv"><label class="small">Zoom</label><input id="zoom" type="range" min="0.8" max="2" step="0.05" value="1.2" /></div>
-        <div class="kv"><label class="small">Brightness</label><input id="bri" type="range" min="0.8" max="1.4" step="0.02" value="1.1" /></div>
-        <div class="kv"><label class="small">Contrast</label><input id="con" type="range" min="0.8" max="1.6" step="0.02" value="1.15" /></div>
-        <button id="enhance">Enhance & Retry</button>
-      </div>
-
-      <div style="margin-top:10px">
-        <canvas id="preview" width="0" height="0"></canvas>
-      </div>
-    </section>
-
-    <!-- Right: Logs & AutoTest -->
-    <aside class="card">
-      <div class="row" style="justify-content:space-between; align-items:center">
-        <strong>Diagnostics</strong>
-        <div class="controls">
-          <button id="autoTest" class="primary">Auto‑Test</button>
-          <button id="copyDiag">Copy Diagnostics</button>
-          <button id="clearDiag">Clear</button>
+      <div class="row">
+        <div>
+          <label>Rotate (°)</label>
+          <input type="number" id="rot" value="0" step="1" min="-180" max="180" />
+        </div>
+        <div>
+          <label>Zoom (0.8–2.0) <span class="small" id="zoomLabel">1.20</span></label>
+          <input type="range" id="zoom" min="0.8" max="2.0" step="0.01" value="1.20" />
+        </div>
+        <div>
+          <label>Brightness <span class="small" id="briLabel">1.10</span></label>
+          <input type="range" id="bri" min="0.6" max="1.6" step="0.01" value="1.10" />
+        </div>
+        <div>
+          <label>Contrast <span class="small" id="conLabel">1.15</span></label>
+          <input type="range" id="con" min="0.6" max="1.6" step="0.01" value="1.15" />
         </div>
       </div>
-      <pre id="diag">No diagnostics yet.</pre>
-    </aside>
-  </div>
 
-  <section id="analysisCard" class="card" style="display:none">
-    <div class="row" style="justify-content:space-between; align-items:center">
-      <strong>Analysis</strong>
-      <div class="controls">
-        <button id="copyJson">Copy JSON</button>
-        <button id="saveJson">Download JSON</button>
+      <div class="row">
+        <button class="btn accent" id="enhanceBtn">Enhance & Retry</button>
+        <button class="btn" id="detectBtn" disabled>Detect</button>
+        <button class="btn ok" id="startAnalysisBtn" disabled>Start Analysis</button>
+        <button class="btn" id="reanalyzeBtn" disabled>Re‑analyze Last Crop</button>
+      </div>
+
+      <div class="row">
+        <div class="tog">
+          <input type="checkbox" id="autoAnalyze" />
+          <label for="autoAnalyze">Auto‑analyze after detect</label>
+        </div>
+        <div class="tog">
+          <input type="checkbox" id="autoTestOnLoad" />
+          <label for="autoTestOnLoad">Auto‑test on load</label>
+        </div>
+        <div class="tog">
+          <label for="backendSelect">Backend:</label>
+          <select id="backendSelect">
+            <option value="auto">auto</option>
+            <option value="webgl">webgl</option>
+            <option value="wasm">wasm</option>
+            <option value="cpu">cpu</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="btn" id="autoTestBtn">Auto Test</button>
+        <button class="btn" id="copyTestBtn" disabled>Copy Auto‑Test Report</button>
+      </div>
+
+      <div class="statline small" id="sessionStats">
+        <span class="chip">Session: 0 detects</span>
+        <span class="chip">0 analyses</span>
+        <span class="chip">avg detect — ms</span>
+        <span class="chip" id="readinessBadge" style="display:none">READY</span>
+      </div>
+
+      <div class="small" id="progressText"></div>
+    </div>
+
+    <!-- Right: Preview + Results -->
+    <div class="card">
+      <label>Preview</label>
+      <canvas id="preview" width="1024" height="683"></canvas>
+
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="copySummaryBtn" disabled>Copy Summary</button>
+        <button class="btn" id="copyJsonBtn" disabled>Copy Analysis JSON</button>
+        <button class="btn" id="exportJsonBtn" disabled>Download JSON</button>
+      </div>
+
+      <div class="chips" style="margin-top:10px">
+        <span class="chip">Show overlays <input type="checkbox" id="showOverlay" checked/></span>
+        <span class="chip">Show HUD <input type="checkbox" id="showHud" checked/></span>
       </div>
     </div>
-    <pre id="analysisBox">—</pre>
-  </section>
+  </div>
+
+  <!-- Diagnostics -->
+  <div class="card">
+    <div class="row-tight" style="justify-content:space-between">
+      <label style="margin:0">Diagnostics</label>
+      <div class="row-tight">
+        <button class="btn" id="clearLogsBtn">Clear Logs</button>
+        <button class="btn" id="copyDiagnosticsBtn">Copy Diagnostics</button>
+      </div>
+    </div>
+    <div id="diagnostics" class="diag">No diagnostics yet.</div>
+  </div>
 </div>
 
-<div id="toast" class="toast">Copied ✓</div>
-
-<!-- Frameworks (pinned) -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
-
+<!-- Frameworks -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.min.js" crossorigin="anonymous"></script>
 <script>
-(() => {
-  const REV = "1.17.3-alpha";
-  const el = id => document.getElementById(id);
-  const $diag = el('diag');
-  const $meter = el('meterBar');
-  const $progress = el('progressTxt');
-  const $preview = el('preview');
-  const $analysisCard = el('analysisCard');
-  const $analysisBox = el('analysisBox');
-  const $backendPill = el('backendPill');
-  const $readiness = el('readiness');
+  // ===== Global state =====
+  const REVISION = "1.17.4-alpha";
+  const $ = id => document.getElementById(id);
+  let isBusy = false;
+  let baseBitmap = null;          // ImageBitmap of current source
+  let lastBox = null;             // {x,y,width,height}
+  let lastAnalysis = null;        // JSON result object
+  let session = { detects: 0, analyses: 0, detectTimes: [] };
 
-  let model = null;
-  let baseBitmap = null;     // createImageBitmap of the original
-  let workW = 0, workH = 0;  // preview canvas dims
-  let lastBox = null;
-  let lastAnalysis = null;
-
-  /* ---------- utils ---------- */
-  function nowISO(){ return new Date().toISOString(); }
-  function log(type, obj){
-    const line = JSON.stringify({ time: nowISO(), type, ...obj });
-    if ($diag.textContent === 'No diagnostics yet.') $diag.textContent = '';
-    $diag.textContent += ( ($diag.textContent && !$diag.textContent.endsWith('\n'))?'\n':'') + line + '\n';
-    // keep scrolled to bottom for convenience
-    $diag.scrollTop = $diag.scrollHeight;
-  }
-  function setProgress(pct, txt){
-    $meter.style.width = Math.max(0, Math.min(100, pct)) + '%';
-    if (txt) $progress.textContent = txt;
-  }
-  function toast(msg='Copied ✓'){
-    const t = el('toast');
-    t.textContent = msg;
-    t.classList.add('show');
-    setTimeout(()=>t.classList.remove('show'), 1200);
-  }
-  function drawPreview(bitmap, zoom=+el('zoom').value, bri=+el('bri').value, con=+el('con').value){
-    const pw = Math.min(1024, bitmap.width);
-    const ph = Math.round(bitmap.height * (pw/bitmap.width));
-    $preview.width = pw;
-    $preview.height = ph;
-    const ctx = $preview.getContext('2d');
-    ctx.filter = `brightness(${bri}) contrast(${con})`;
-    const zw = Math.round(pw / zoom);
-    const zh = Math.round(ph / zoom);
-    const sx = Math.max(0, Math.round((pw-zw)/2));
-    const sy = Math.max(0, Math.round((ph-zh)/2));
-    // draw to a temp canvas so filters work predictably
-    const t = document.createElement('canvas');
-    t.width = pw; t.height = ph;
-    t.getContext('2d').drawImage(bitmap, 0,0,pw,ph);
-    ctx.drawImage(t, sx, sy, zw, zh, 0, 0, pw, ph);
-    workW = pw; workH = ph;
-    // overlay previous box if present
-    if (lastBox){
-      ctx.save();
-      ctx.strokeStyle = '#7cd2ff';
-      ctx.lineWidth = 2;
-      ctx.globalAlpha = .9;
-      ctx.strokeRect(lastBox.x, lastBox.y, lastBox.width, lastBox.height);
-      ctx.restore();
-    }
-  }
-
-  /* ---------- TF backend & warm-up ---------- */
-  async function setupTF(){
-    const ua = navigator.userAgent || '';
-    const preferWasm = /Android|Mobile/i.test(ua);
-    let backendTried = [];
+  // ===== Logging =====
+  function ts() { return new Date().toISOString(); }
+  function logEvt(type, obj) {
     try {
-      if (preferWasm){
-        await tf.setBackend('wasm'); await tf.ready();
-        backendTried.push('wasm');
-      } else {
-        await tf.setBackend('webgl'); await tf.ready();
-        backendTried.push('webgl');
+      const line = JSON.stringify({ time: ts(), type, ...obj });
+      const box = $("diagnostics");
+      if (box.textContent === "No diagnostics yet.") box.textContent = "";
+      box.textContent += (box.textContent ? "\n" : "") + line;
+      box.scrollTop = box.scrollHeight;
+    } catch (_) {}
+  }
+  function getAllLogsText() {
+    const el = $("diagnostics");
+    return el ? (el.innerText || el.textContent || "") : "";
+  }
+
+  // ===== Canvas helpers =====
+  const canvas = $("preview");
+  const ctx = canvas.getContext("2d");
+  function paintBase() {
+    if (!baseBitmap) return;
+    const rot = +$("rot").value || 0;
+    const zoom = +$("zoom").value || 1.0;
+    const bri = +$("bri").value || 1.0;
+    const con = +$("con").value || 1.0;
+
+    const iw = baseBitmap.width, ih = baseBitmap.height;
+    canvas.width = iw; canvas.height = ih;
+
+    // draw base with rotation/zoom around center
+    ctx.save();
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.translate(iw/2, ih/2);
+    ctx.rotate(rot * Math.PI/180);
+    ctx.scale(zoom, zoom);
+    ctx.drawImage(baseBitmap, -iw/2, -ih/2);
+    ctx.restore();
+
+    // simple brightness/contrast pass
+    const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
+    const d = imgData.data;
+    const cFactor = con;
+    const bShift = (bri - 1.0) * 255;
+    for (let i=0;i<d.length;i+=4){
+      d[i]   = Math.min(255, Math.max(0, d[i]  * cFactor + bShift));
+      d[i+1] = Math.min(255, Math.max(0, d[i+1]* cFactor + bShift));
+      d[i+2] = Math.min(255, Math.max(0, d[i+2]* cFactor + bShift));
+    }
+    ctx.putImageData(imgData,0,0);
+  }
+  function drawOverlay(box) {
+    if (!box || !$("showOverlay").checked) return;
+    ctx.save();
+    ctx.strokeStyle = "#70e1ff";
+    ctx.lineWidth = Math.max(2, Math.min(canvas.width, canvas.height) * 0.004);
+    ctx.strokeRect(box.x, box.y, box.width, box.height);
+    ctx.restore();
+  }
+
+  // ===== Copy helpers =====
+  async function copyTextRobust(text) {
+    if (text == null) text = "";
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return { ok: true, via: "clipboard" };
       }
-    } catch(e){
-      log('error', { backend_error: e.message || String(e) });
+    } catch (_) {}
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if (ok) return { ok: true, via: "execCommand" };
+    } catch (e) {
+      return { ok: false, via: "fallback", err: e.message || String(e) };
     }
-    // verify & fallback chain
-    let b = tf.getBackend();
-    if (!b){
-      try { await tf.setBackend(preferWasm ? 'webgl' : 'wasm'); await tf.ready(); } catch(_) {}
-      b = tf.getBackend();
+    return { ok: false, via: "none", err: "No clipboard available" };
+  }
+
+  // ===== Persistence (sliders, toggles, backend) =====
+  const PERSIST_KEYS = ["rot","zoom","bri","con","autoAnalyze","autoTestOnLoad","backendSelect"];
+  function loadPrefs() {
+    try {
+      PERSIST_KEYS.forEach(k=>{
+        const v = localStorage.getItem("yorn_"+k);
+        if (v != null) {
+          const el = $(k);
+          if (!el) return;
+          if (el.type === "checkbox") el.checked = v === "1";
+          else if (el.tagName === "SELECT") el.value = v;
+          else el.value = v;
+        }
+      });
+      $("zoomLabel").textContent = (+$("zoom").value).toFixed(2);
+      $("briLabel").textContent  = (+$("bri").value).toFixed(2);
+      $("conLabel").textContent  = (+$("con").value).toFixed(2);
+    } catch(_) {}
+  }
+  function savePref(id) {
+    try {
+      const el = $(id); if (!el) return;
+      const v =
+        el.type === "checkbox" ? (el.checked ? "1" : "0") :
+        el.tagName === "SELECT" ? el.value :
+        el.value;
+      localStorage.setItem("yorn_"+id, v);
+    } catch(_) {}
+  }
+
+  // ===== TFJS & model =====
+  let faceModel = null;   // blazeface model
+  let tfBackend = "auto";
+  let tfVersion = "—";
+
+  async function initTF() {
+    // backend selection
+    const want = $("backendSelect").value;
+    tfBackend = want;
+    try {
+      if (want !== "auto") {
+        await tf.setBackend(want);
+      } else {
+        // prefer webgl, then wasm, else cpu
+        try { await tf.setBackend("webgl"); }
+        catch { try { await tf.setBackend("wasm"); }
+          catch { await tf.setBackend("cpu"); } }
+      }
+      await tf.ready();
+      tfVersion = tf?.version_core || tf?.version?.tfjs || "—";
+      // WASM path (needed only if wasm is active)
+      if (tf.getBackend() === "wasm") {
+        // when using jsdelivr, TF will pick default path embedded in the script
+        // Optional: tf.wasm.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/');
+      }
+      logEvt("config",{tf_ready:true, backend: tf.getBackend(), tf_version: tfVersion});
+      // warmup
+      const t0 = performance.now();
+      await tf.tidy(()=>tf.tensor([1,2,3,4]).sum().data());
+      logEvt("config",{warmup:"ok", backend: tf.getBackend(), ms: Math.round(performance.now()-t0)});
+    } catch (e) {
+      logEvt("error",{tf_init:e.message||String(e)});
     }
-    if (!b){ try { await tf.setBackend('cpu'); await tf.ready(); b = tf.getBackend(); } catch(_) {} }
-    $backendPill.textContent = `TF: ${b || '—'}`;
-    log('config', { tf_ready: !!b, backend: b || 'none', tf_version: tf?.version_core || 'unknown' });
-
-    // load model
-    setProgress(8, 'Loading detector…');
-    model = await blazeface.load({ maxFaces: 1 });
-    log('detect', { blazefaceReady: true });
-
-    // warm-up with a 128×128 dummy once
-    const warm = document.createElement('canvas');
-    warm.width = 128; warm.height = 128;
-    const wctx = warm.getContext('2d');
-    wctx.fillStyle = '#222'; wctx.fillRect(0,0,128,128);
-    const t0 = performance.now();
-    await model.estimateFaces(warm, false);
-    const dt = Math.round(performance.now() - t0);
-    log('config', { warmup: 'ok', backend: tf.getBackend(), ms: dt });
   }
 
-  /* ---------- decode & sample ---------- */
-  async function decodeToBitmap(fileOrBlob){
-    const blob = fileOrBlob instanceof Blob ? fileOrBlob : new Blob([fileOrBlob]);
-    const bmp = await createImageBitmap(blob);
-    return bmp;
+  async function loadModel() {
+    if (faceModel) return;
+    // Use @tensorflow-models/blazeface via dynamic import to avoid CSP eval issues
+    try {
+      const mod = await import("https://esm.sh/@tensorflow-models/blazeface@0.0.7");
+      faceModel = await mod.load(); // lightweight
+      logEvt("detect",{blazefaceReady:true});
+    } catch (e) {
+      logEvt("error",{model:e.message||String(e)});
+    }
   }
-  async function handleFile(file){
-    setProgress(12, 'Decoding photo…');
-    baseBitmap = await decodeToBitmap(file);
-    drawPreview(baseBitmap);
-    el('detect').disabled = false;
-    el('analyze').disabled = false;
-    log('detect', { file: file.name || 'blob', w: baseBitmap.width, h: baseBitmap.height });
+
+  // ===== Decoding images =====
+  async function decodeToBitmapFromBlob(blob) {
+    // prefer createImageBitmap (fast, avoids DOM img decode quirk on some Android)
+    try {
+      const bmp = await createImageBitmap(blob);
+      return bmp;
+    } catch {
+      // fallback to DOM Image
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.decoding = "async";
+      img.crossOrigin = "anonymous";
+      await new Promise((res, rej)=>{
+        img.onload=()=>res();
+        img.onerror=()=>rej(new Error("decode error"));
+        img.src=url;
+      });
+      const bmp = await createImageBitmap(img);
+      URL.revokeObjectURL(url);
+      return bmp;
+    }
   }
-  async function loadSample(){
-    setProgress(10, 'Fetching sample…');
-    // primary Unsplash
-    const u1 = 'https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1024&auto=format&fit=crop';
-    // backup face (different image)
-    const u2 = 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=1024&auto=format&fit=crop';
-    try{
-      const res = await fetch(u1, { cache: 'no-store' });
-      if (!res.ok) throw new Error('HTTP '+res.status);
+
+  async function loadSample() {
+    const u = "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1024&auto=format&fit=crop";
+    try {
+      const res = await fetch(u, { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
       const blob = await res.blob();
-      baseBitmap = await decodeToBitmap(blob);
-      log('detect', { sampleImage: u1 });
-    }catch(_){
-      const res2 = await fetch(u2, { cache: 'no-store' });
-      const blob2 = await res2.blob();
-      baseBitmap = await decodeToBitmap(blob2);
-      log('detect', { sampleImage: u2, fallback:true });
+      baseBitmap = await decodeToBitmapFromBlob(blob);
+      paintBase();
+      $("detectBtn").disabled = false;
+      $("enhanceBtn").disabled = false;
+      $("reanalyzeBtn").disabled = !lastBox;
+      logEvt("detect",{sampleImage:u});
+      return true;
+    } catch(e) {
+      logEvt("error",{sample_failed:e.message||String(e)});
+      return false;
     }
-    drawPreview(baseBitmap);
-    el('detect').disabled = false;
-    el('analyze').disabled = false;
-    setProgress(18, 'Sample ready');
   }
 
-  /* ---------- fast detect (128×128 path) ---------- */
-  async function fastDetect(){
-    if (!baseBitmap) throw new Error('no_image');
-    if (!model) throw new Error('no_model');
-
-    // render current preview first (respects zoom/filters)
-    drawPreview(baseBitmap);
-
-    // downscale to model-native 128×128 to speed up
-    const s = document.createElement('canvas');
-    s.width = 128; s.height = 128;
-    const sctx = s.getContext('2d');
-    sctx.imageSmoothingEnabled = true;
-    sctx.drawImage($preview, 0,0,128,128);
-
-    const t0 = performance.now();
-    const faces = await model.estimateFaces(s, false);
-    const roughMs = Math.round(performance.now() - t0);
-
-    if (!faces || !faces.length){
-      log('error', { detect: 'no_face' });
-      return null;
+  async function setFile(file) {
+    try {
+      const blob = file instanceof Blob ? file : file?.target?.files?.[0];
+      if (!blob) return;
+      baseBitmap = await decodeToBitmapFromBlob(blob);
+      paintBase();
+      $("detectBtn").disabled = false;
+      $("enhanceBtn").disabled = false;
+      $("reanalyzeBtn").disabled = !lastBox;
+      logEvt("detect",{file: (blob.name||"upload"), w: baseBitmap.width, h: baseBitmap.height });
+    } catch(e) {
+      logEvt("error",{decode_failed:e.message||String(e)});
     }
-    // Map the box from 128 canvas -> preview canvas
-    const f = faces[0].topLeft && faces[0].bottomRight ? faces[0] : null;
-    // blazeface returns topLeft & bottomRight as [x,y]
-    const [x0,y0] = f.topLeft;
-    const [x1,y1] = f.bottomRight;
-    const scaleX = workW / 128;
-    const scaleY = workH / 128;
-    const box = {
-      x: x0 * scaleX,
-      y: y0 * scaleY,
-      width: (x1 - x0) * scaleX,
-      height: (y1 - y0) * scaleY
-    };
-    lastBox = box;
-    // redraw overlay
-    drawPreview(baseBitmap);
-    // log timings (simulate “finalDetect_ms” as same path)
-    log('detect', { roughLocate_ms: roughMs, finalDetect_ms: roughMs, box });
+  }
+
+  // ===== Detection & analysis =====
+  function setBusy(b) {
+    isBusy = b;
+    const ids = ["enhanceBtn","detectBtn","startAnalysisBtn","reanalyzeBtn","autoTestBtn","copyTestBtn","copySummaryBtn","copyJsonBtn","exportJsonBtn","copyDiagnosticsBtn","clearLogsBtn","resetBtn","sampleBtn"];
+    ids.forEach(id=>{
+      const el=$(id); if(el) el.disabled = b && id!=="copyDiagnosticsBtn" && id!=="clearLogsBtn";
+    });
+  }
+
+  function updateSessionStats() {
+    const avg = session.detectTimes.length
+      ? Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length)
+      : "—";
+    const line = [
+      `Session: ${session.detects} detects`,
+      `${session.analyses} analyses`,
+      `avg detect ${avg} ms`
+    ];
+    const el = $("sessionStats");
+    el.innerHTML = line.map(s=>`<span class="chip">${s}</span>`).join(" ") +
+      `<span class="badge" id="readinessBadge" style="display:${$("readinessBadge").style.display||'none'}">${$("readinessBadge").textContent||''}</span>`;
+  }
+
+  async function detectOnce() {
+    if (!baseBitmap) return null;
+    await initTF();
+    await loadModel();
+    const t0 = performance.now();
+    // downscale to speed predict (BlazeFace expects 128x128 or internal res; it handles resizing)
+    const box = await tf.tidy(async ()=>{
+      const input = tf.browser.fromPixels(canvas);
+      // BlazeFace returns top-left and bottom-right coords in pixels
+      const preds = await faceModel.estimateFaces(input, false);
+      if (!preds || !preds.length) return null;
+      const p = preds[0];
+      const [x1,y1] = p.topLeft;
+      const [x2,y2] = p.bottomRight;
+      return { x: x1, y: y1, width: x2-x1, height: y2-y1 };
+    });
+    const dt = Math.round(performance.now() - t0);
+
+    if (box) {
+      lastBox = box;
+      session.detects += 1;
+      session.detectTimes.push(dt);
+      drawOverlay(box);
+      logEvt("detect",{roughLocate_ms:dt, finalDetect_ms:dt, box});
+    } else {
+      logEvt("error",{detect:"no_face"});
+    }
+    updateSessionStats();
     return box;
   }
 
-  /* ---------- lightweight analysis (no extra models) ---------- */
-  function analyzeBox(){
-    if (!lastBox || !$preview.width) return null;
-    const ctx = $preview.getContext('2d');
-    const {x,y,width,height} = lastBox;
-    const crop = ctx.getImageData(Math.max(0,Math.floor(x)), Math.max(0,Math.floor(y)), Math.max(1,Math.floor(width)), Math.max(1,Math.floor(height)));
-    const data = crop.data;
-    // brightness mean & contrast stdev
-    let sum=0, sum2=0, n = data.length/4;
-    for (let i=0;i<data.length;i+=4){
-      const l = 0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2];
-      sum += l; sum2 += l*l;
+  function computeAnalysis() {
+    if (!baseBitmap || !lastBox) return null;
+    // simple image stats
+    const { width:w, height:h } = canvas;
+    const img = ctx.getImageData(0,0,w,h);
+    const d = img.data;
+    let sum=0, sum2=0;
+    // coarse brightness/contrast
+    for (let i=0;i<d.length;i+=4){
+      const lum = 0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2];
+      sum += lum; sum2 += lum*lum;
     }
+    const n = d.length/4;
     const mean = sum/n;
-    const variance = Math.max(0, sum2/n - mean*mean);
-    const stdev = Math.sqrt(variance);
+    const stdev = Math.sqrt(Math.max(0,(sum2/n) - mean*mean));
 
-    // quick Laplacian variance (very lightweight approx)
-    // sample every 4th pixel to keep UI snappy
-    const w = crop.width, h = crop.height;
-    let lapVar = 0, cnt=0;
-    for (let yy=1; yy<h-1; yy+=2){
-      for (let xx=1; xx<w-1; xx+=2){
-        const idx = (yy*w+xx)*4;
-        const L = 0.2126*data[idx] + 0.7152*data[idx+1] + 0.0722*data[idx+2];
-        const N = 0.2126*data[idx-4*w] + 0.7152*data[idx-4*w+1] + 0.0722*data[idx-4*w+2];
-        const S = 0.2126*data[idx+4*w] + 0.7152*data[idx+4*w+1] + 0.0722*data[idx+4*w+2];
-        const W = 0.2126*data[idx-4] + 0.7152*data[idx-3] + 0.0722*data[idx-2];
-        const E = 0.2126*data[idx+4] + 0.7152*data[idx+5] + 0.0722*data[idx+6];
-        const lap = (4*L) - (N+S+W+E);
-        lapVar += lap*lap;
-        cnt++;
+    // crude sharpness via Laplacian variance (downsample for speed)
+    const s = Math.max(64, Math.min(256, Math.floor(Math.min(w,h)/4)));
+    const tmp = document.createElement("canvas");
+    tmp.width=s; tmp.height=s;
+    tmp.getContext("2d").drawImage(canvas,0,0,s,s);
+    const id = tmp.getContext("2d").getImageData(0,0,s,s);
+    const g = id.data;
+    // grayscale
+    const gray = new Float32Array(s*s);
+    for (let i=0,px=0;i<g.length;i+=4,px++){
+      gray[px] = 0.2126*g[i]+0.7152*g[i+1]+0.0722*g[i+2];
+    }
+    const lap = [[0,1,0],[1,-4,1],[0,1,0]];
+    let varSum=0, varSum2=0, count=0;
+    for (let y=1;y<s-1;y++){
+      for (let x=1;x<s-1;x++){
+        let v=0; let idx=y*s+x;
+        v += lap[0][1]*gray[idx-s];
+        v += lap[1][0]*gray[idx-1];
+        v += lap[1][1]*gray[idx];
+        v += lap[1][2]*gray[idx+1];
+        v += lap[2][1]*gray[idx+s];
+        varSum += v; varSum2 += v*v; count++;
       }
     }
-    lapVar = cnt ? lapVar/cnt : 0;
+    const lapVar = (varSum2/count) - Math.pow(varSum/count,2);
 
-    const imgW = $preview.width, imgH = $preview.height;
-    const cx = x + width/2, cy = y + height/2;
-    const analysis = {
-      revision: REV,
-      timestamp: nowISO(),
-      image: { width: imgW, height: imgH },
+    const cx = lastBox.x + lastBox.width/2;
+    const cy = lastBox.y + lastBox.height/2;
+
+    const result = {
+      revision: REVISION,
+      timestamp: new Date().toISOString(),
+      image: { width:w, height:h },
       box: {
-        x: +x.toFixed(2), y: +y.toFixed(2),
-        width: +width.toFixed(2), height:+height.toFixed(2),
-        area_pct: +((width*height)/(imgW*imgH)*100).toFixed(4),
+        x: +lastBox.x.toFixed(2),
+        y: +lastBox.y.toFixed(2),
+        width: +lastBox.width.toFixed(2),
+        height: +lastBox.height.toFixed(2),
+        area_pct: +((lastBox.width*lastBox.height)/(w*h)*100).toFixed(4),
         center: { x:+cx.toFixed(2), y:+cy.toFixed(2) },
         center_offset_pct: {
-          x: +(((cx - imgW/2) / (imgW/2))*100).toFixed(2),
-          y: +(((cy - imgH/2) / (imgH/2))*100).toFixed(2)
+          x: +(((cx - w/2)/w)*100).toFixed(2),
+          y: +(((cy - h/2)/h)*100).toFixed(2)
         }
       },
       lighting: {
@@ -353,156 +513,217 @@
         contrast_stdev: +stdev.toFixed(3)
       },
       sharpness: { laplacian_variance: +lapVar.toFixed(3) },
-      orientation: imgW >= imgH ? 'landscape' : 'portrait',
-      refine: {}
+      orientation: w>=h ? "landscape" : "portrait",
+      tf: {
+        backend: (tf && tf.getBackend && tf.getBackend()) || "—",
+        version: tfVersion
+      }
     };
-    lastAnalysis = analysis;
-    $analysisCard.style.display = '';
-    $analysisBox.textContent = JSON.stringify(analysis, null, 2);
-    log('analysis', { analysis });
-    // readiness badge
-    const ok = !!(lastBox && lastAnalysis);
-    $readiness.style.display = 'inline-block';
-    $readiness.className = ok ? 'badge ready' : 'badge blocked';
-    $readiness.textContent = ok ? 'READY' : 'BLOCKED';
-    return analysis;
+    lastAnalysis = result;
+    session.analyses += 1;
+    logEvt("analysis",{analysis: result});
+    updateSessionStats();
+    $("copySummaryBtn").disabled = false;
+    $("copyJsonBtn").disabled = false;
+    $("exportJsonBtn").disabled = false;
+    return result;
   }
 
-  /* ---------- Auto‑Test ---------- */
-  async function autoTest(){
-    el('autoTest').disabled = true;
-    log('test', { step:'begin', rev: REV });
-    try{
-      // ensure frameworks & model are up
-      if (!tf?.getBackend()) await setupTF();
-      log('test', { step:'tf_present', ok: !!tf?.getBackend() });
-
-      await loadSample();
-      log('test', { step:'sample', ok: !!baseBitmap });
-
-      const box = await fastDetect();
-      log('test', { step:'detect', ok: !!box });
-
-      const a = analyzeBox();
-      log('test', { step:'analysis', ok: !!a });
-
-      const ok = !!(box && a);
-      log('test', { step:'summary', ok });
-    }catch(e){
-      log('error', { autoTest: e.message || String(e) });
-      log('test', { step:'summary', ok:false });
-    }
-    el('autoTest').disabled = false;
-  }
-
-  /* ---------- UI binds ---------- */
-  el('file').addEventListener('change', async () => {
-    const f = el('file').files?.[0];
-    if (!f) return;
-    try{
-      await handleFile(f);
-      setProgress(20, 'Photo ready');
-    }catch(e){
-      log('error', { decode_failed: e.message || String(e) });
-    }
+  // ===== UI bindings =====
+  $("zoom").addEventListener("input", e=>{
+    $("zoomLabel").textContent = (+e.target.value).toFixed(2);
+    savePref("zoom");
+    if (baseBitmap) paintBase();
   });
-  el('sample').addEventListener('click', loadSample);
-  el('detect').addEventListener('click', async () => {
-    setProgress(28, 'Detecting…');
-    const b = await fastDetect();
-    setProgress(b ? 48 : 28, b ? 'Face found' : 'No face');
+  $("bri").addEventListener("input", e=>{
+    $("briLabel").textContent = (+e.target.value).toFixed(2);
+    savePref("bri");
+    if (baseBitmap) paintBase();
   });
-  el('enhance').addEventListener('click', () => {
-    // nudge sliders up (once) for tougher images
-    const z = el('zoom'); z.value = Math.max(+z.value, 1.5);
-    const br = el('bri'); br.value = Math.max(+br.value, 1.18);
-    const co = el('con'); co.value = Math.max(+co.value, 1.25);
-    drawPreview(baseBitmap || $preview);
-    log('config', { enhance:'applied', zoom:+z.value, bri:+br.value, con:+co.value });
+  $("con").addEventListener("input", e=>{
+    $("conLabel").textContent = (+e.target.value).toFixed(2);
+    savePref("con");
+    if (baseBitmap) paintBase();
   });
-  ['zoom','bri','con'].forEach(id => {
-    el(id).addEventListener('input', () => {
-      if (baseBitmap) drawPreview(baseBitmap);
-    });
+  $("rot").addEventListener("change", ()=>{ savePref("rot"); if (baseBitmap) paintBase(); });
+  $("autoAnalyze").addEventListener("change", ()=>savePref("autoAnalyze"));
+  $("autoTestOnLoad").addEventListener("change", ()=>savePref("autoTestOnLoad"));
+  $("backendSelect").addEventListener("change", async ()=>{
+    savePref("backendSelect");
+    faceModel = null; // force reload on next detect
+    await initTF();
   });
-  el('analyze').addEventListener('click', () => {
-    setProgress(62, 'Analyzing…');
-    const a = analyzeBox();
-    setProgress(a ? 85 : 62, a ? 'Analysis ready' : 'Analysis failed');
-  });
-  el('reset').addEventListener('click', () => {
-    baseBitmap = null; lastBox = null; lastAnalysis = null;
-    $preview.width = 0; $preview.height = 0;
-    $analysisCard.style.display = 'none';
-    setProgress(0, 'idle');
-    el('detect').disabled = true;
-    el('analyze').disabled = true;
-    log('config', { reset:true });
-  });
-  el('autoTest').addEventListener('click', autoTest);
 
-  el('copyDiag').addEventListener('click', async () => {
-    try{
-      const txt = $diag.textContent || '';
-      // robust copy (Clipboard API + fallback)
-      let ok = false;
-      if (navigator.clipboard && window.isSecureContext){
-        await navigator.clipboard.writeText(txt);
-        ok = true;
-      } else {
-        const ta = document.createElement('textarea');
-        ta.value = txt;
-        ta.setAttribute('readonly','');
-        ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px';
-        document.body.appendChild(ta); ta.select();
-        ok = document.execCommand('copy');
-        ta.remove();
-      }
-      toast(ok ? 'Diagnostics copied ✓' : 'Copy failed');
-      log('config', { copyDiagnostics: ok });
-    }catch(e){
-      log('error', { copyDiagnostics: e.message || String(e) });
-      toast('Copy failed');
+  $("enhanceBtn").addEventListener("click", ()=>{
+    const z=$("zoom"); z.value=Math.max(+z.value,1.5); $("zoomLabel").textContent=(+z.value).toFixed(2);
+    const b=$("bri"); b.value=Math.max(+b.value,1.18); $("briLabel").textContent=(+b.value).toFixed(2);
+    const c=$("con"); c.value=Math.max(+c.value,1.26); $("conLabel").textContent=(+c.value).toFixed(2);
+    savePref("zoom"); savePref("bri"); savePref("con");
+    if(baseBitmap) paintBase();
+  });
+
+  $("detectBtn").addEventListener("click", async ()=>{
+    if (isBusy) return;
+    setBusy(true);
+    const t0 = performance.now();
+    await detectOnce();
+    setBusy(false);
+    if (lastBox && $("autoAnalyze").checked) {
+      $("startAnalysisBtn").click();
+    } else if (!lastBox) {
+      logEvt("error",{hint:"Try Enhance & Retry or adjust zoom/contrast."});
     }
   });
-  el('clearDiag').addEventListener('click', () => {
-    $diag.textContent = 'No diagnostics yet.';
+
+  $("reanalyzeBtn").addEventListener("click", ()=>{
+    if (!lastBox) return;
+    computeAnalysis();
   });
-  el('copyJson').addEventListener('click', async () => {
+
+  $("startAnalysisBtn").addEventListener("click", ()=>{
+    if (isBusy || !lastBox) return;
+    computeAnalysis();
+  });
+
+  $("fileInput").addEventListener("change", setFile);
+  $("sampleBtn").addEventListener("click", async ()=>{
+    setBusy(true);
+    const ok = await loadSample();
+    setBusy(false);
+    if (!ok) return;
+    if ($("autoAnalyze").checked) {
+      $("detectBtn").click();
+    }
+  });
+
+  $("copyDiagnosticsBtn").addEventListener("click", async ()=>{
+    const res = await copyTextRobust(getAllLogsText());
+    logEvt(res.ok ? "config" : "error", { copyDiagnostics: !!res.ok, via: res.via, err: res.err });
+    $("progressText").textContent = res.ok ? "Diagnostics copied" : "Copy failed";
+    setTimeout(()=>{$("progressText").textContent="";},1200);
+  });
+
+  $("clearLogsBtn").addEventListener("click", ()=>{
+    $("diagnostics").textContent = "No diagnostics yet.";
+  });
+
+  $("copySummaryBtn").addEventListener("click", async ()=>{
     if (!lastAnalysis) return;
-    const str = JSON.stringify(lastAnalysis, null, 2);
-    try{
-      if (navigator.clipboard && window.isSecureContext){
-        await navigator.clipboard.writeText(str);
-      }else{
-        const ta = document.createElement('textarea'); ta.value = str;
-        ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px';
-        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
-      }
-      toast('Analysis JSON copied ✓');
-    }catch(_){ toast('Copy failed'); }
+    const a = lastAnalysis;
+    const lines = [
+      `YorN ${a.revision} — ${new Date(a.timestamp).toLocaleString()}`,
+      `Backend: ${a.tf.backend} v${a.tf.version}`,
+      `Image: ${a.image.width}×${a.image.height}, Face area: ${a.box.area_pct.toFixed(2)}%`,
+      `Center offset: X ${a.box.center_offset_pct.x.toFixed(1)}%, Y ${a.box.center_offset_pct.y.toFixed(1)}%`,
+      `Brightness: ${a.lighting.brightness_mean.toFixed(1)}, Contrast σ: ${a.lighting.contrast_stdev.toFixed(1)}, Sharpness (LapVar): ${a.sharpness.laplacian_variance.toFixed(0)}`
+    ].join("\n");
+    const r = await copyTextRobust(lines);
+    $("progressText").textContent = r.ok ? "Summary copied" : "Copy failed";
+    setTimeout(()=>{$("progressText").textContent="";},1200);
   });
-  el('saveJson').addEventListener('click', () => {
+
+  $("copyJsonBtn").addEventListener("click", async ()=>{
     if (!lastAnalysis) return;
-    const blob = new Blob([JSON.stringify(lastAnalysis, null, 2)], {type:'application/json'});
+    const r = await copyTextRobust(JSON.stringify(lastAnalysis,null,2));
+    $("progressText").textContent = r.ok ? "Analysis JSON copied" : "Copy failed";
+    setTimeout(()=>{$("progressText").textContent="";},1200);
+  });
+
+  $("exportJsonBtn").addEventListener("click", ()=>{
+    if (!lastAnalysis) return;
+    const blob = new Blob([JSON.stringify(lastAnalysis,null,2)],{type:"application/json"});
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url; a.download = `yorn-analysis-${Date.now()}.json`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   });
 
-  /* ---------- Boot ---------- */
-  window.addEventListener('load', async () => {
-    log('config', { boot:'dom-ready', rev: REV });
-    try{
-      await setupTF();
-      log('config', { boot:'complete' });
-    }catch(e){
-      log('error', { boot_error: e.message || String(e) });
+  $("resetBtn").addEventListener("click", ()=>{
+    baseBitmap = null; lastBox = null; lastAnalysis = null;
+    session = { detects:0, analyses:0, detectTimes:[] };
+    canvas.width = 1024; canvas.height = 683; ctx.clearRect(0,0,canvas.width,canvas.height);
+    $("detectBtn").disabled = true; $("startAnalysisBtn").disabled = true; $("reanalyzeBtn").disabled = true;
+    $("copySummaryBtn").disabled = true; $("copyJsonBtn").disabled = true; $("exportJsonBtn").disabled = true;
+    updateSessionStats();
+    logEvt("config",{reset:true});
+  });
+
+  // ===== Auto Test =====
+  let __autoTestStartIdx = 0;
+  function buildAutoTestReport() {
+    const full = getAllLogsText();
+    const chunk = full.slice(__autoTestStartIdx);
+    const backendMatch = full.match(/"backend":"([^"]+)"/) || [];
+    const passes = (chunk.match(/"step":"[^"]+","ok":true/g) || []).length;
+    const errors = (chunk.match(/"type":"error"/g) || []).length;
+    const roughMs = (chunk.match(/"roughLocate_ms":(\d+)/) || [])[1];
+    const finalMs = (chunk.match(/"finalDetect_ms":(\d+)/) || [])[1];
+    const summary = `YorN ${REVISION} • TF backend: ${backendMatch[1]||"—"} • refine: ${lastAnalysis && lastAnalysis.refine ? 'yes':'no'} • passes: ${passes} • errors: ${errors} • rough: ${roughMs||'—'} ms • final: ${finalMs||'—'} ms`;
+    const lines = chunk.split('\n').filter(l => /"type":"test"|"type":"detect"|"type":"analysis"|"type":"config"|"type":"error"/.test(l));
+    return ['=== YorN Auto‑Test Report ===', summary, '', ...lines, '=== End Report ===',''].join('\n');
+  }
+
+  $("autoTestBtn").addEventListener("click", runAutoTest);
+  $("copyTestBtn").addEventListener("click", async ()=>{
+    const report = buildAutoTestReport();
+    const res = await copyTextRobust(report);
+    $("progressText").textContent = res.ok ? "Test result copied" : "Copy failed";
+    setTimeout(()=>{$("progressText").textContent="";},1200);
+  });
+
+  async function runAutoTest() {
+    if (isBusy) return;
+    setBusy(true);
+    const fullBefore = getAllLogsText();
+    __autoTestStartIdx = fullBefore.length;
+    logEvt("test",{step:"begin",rev:REVISION});
+    try {
+      // sample
+      const okS = await loadSample();
+      logEvt("test",{step:"sample",ok:!!okS});
+      if (!okS) throw new Error("sample failed");
+      // detect
+      const box = await detectOnce();
+      logEvt("test",{step:"detect",ok:!!box});
+      if (!box) throw new Error("no detect");
+      // analysis
+      const a = computeAnalysis();
+      logEvt("test",{step:"analysis",ok:!!a});
+      // readiness badge
+      const ok = !!(baseBitmap && lastBox && lastAnalysis);
+      const badge = $("readinessBadge");
+      if (badge) {
+        badge.style.display='inline-block';
+        badge.className = ok ? 'badge ready' : 'badge blocked';
+        badge.textContent = ok ? 'READY' : 'BLOCKED';
+      }
+      logEvt("test",{step:"summary",ok});
+      $("copyTestBtn").disabled = false;
+    } catch(e) {
+      logEvt("error",{autoTest:e.message||String(e)});
+    }
+    setBusy(false);
+  }
+
+  // ===== Boot =====
+  window.addEventListener("load", async ()=>{
+    loadPrefs();
+    // reflect labels
+    $("zoomLabel").textContent=(+$("zoom").value).toFixed(2);
+    $("briLabel").textContent=(+$("bri").value).toFixed(2);
+    $("conLabel").textContent=(+$("con").value).toFixed(2);
+
+    // immediate TF init (respects persisted backend)
+    await initTF();
+    updateSessionStats();
+    logEvt("config",{boot:"dom-ready",rev:REVISION});
+    logEvt("config",{boot:"complete"});
+
+    if ($("autoTestOnLoad").checked) {
+      runAutoTest();
     }
   });
-})();
 </script>
 </body>
 </html>
