@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>YorN 1.17.1-alpha</title>
+  <title>YorN 1.17.2-alpha</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     :root { --bg:#111; --panel:#1b1b1b; --card:#2a2a2a; --ink:#eee; --ok:#4caf50; --bad:#e53935; --mut:#9aa; --btn:#333;}
@@ -28,7 +28,6 @@
     .grid.cols-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
     .kpi { display:flex; gap:8px; flex-wrap:wrap }
     .pill { background:#333; border-radius:999px; padding:4px 8px; font-size:12px }
-    .ok { color:var(--ok) } .fail { color:var(--bad) }
     .hud { font-size:12px; color:var(--mut) }
     .controls { display:flex; gap:8px; flex-wrap:wrap }
     @media (max-width:640px){ .grid.cols-2 { grid-template-columns: 1fr; } }
@@ -37,7 +36,7 @@
 <body>
   <header>
     <h1>YorN</h1>
-    <div id="rev">1.17.1‑alpha</div>
+    <div id="rev">1.17.2‑alpha</div>
   </header>
 
   <main>
@@ -127,7 +126,7 @@
   </main>
 
   <script>
-    const REVISION = "1.17.1-alpha";
+    const REVISION = "1.17.2-alpha";
     const logEl = document.getElementById('log');
     const hud = document.getElementById('hud');
     const badges = document.getElementById('badges');
@@ -156,7 +155,7 @@
       }catch(_){}
     }
 
-    // Sample sources: SVG data URL first (ad‑block safe), then Unsplash, then Wiki
+    // Samples: keep SVG for boot visuals ONLY; face detection prefers photo URLs
     const SAMPLE_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" width="96" height="64">
   <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
@@ -164,52 +163,16 @@
   </linearGradient></defs>
   <rect width="96" height="64" fill="url(#g)"/>
 </svg>`);
-    const SAMPLE_URLS = [
-      SAMPLE_SVG,
+    // For detection/analysis we prefer real photos first:
+    const FACE_SAMPLE_URLS = [
       "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1024&auto=format&fit=crop",
-      "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png"
+      "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png",
+      SAMPLE_SVG // last resort (will likely fail detect, but preserves boot)
     ];
 
     let baseBitmap = null;
     let lastBox = null;
     let lastAnalysis = null;
-
-    function drawBase(rot=+rotEl.value, zoom=+zoomEl.value, bri=+briEl.value, con=+conEl.value){
-      ctx.save();
-      ctx.clearRect(0,0,stage.width,stage.height);
-      if(!baseBitmap){ ctx.restore(); return; }
-      // simple canvas adjustments: draw to tmp canvas with brightness/contrast
-      const tw = stage.width, th = stage.height;
-      const iw = baseBitmap.width, ih = baseBitmap.height;
-      // fit to canvas with zoom
-      const scale = Math.min(tw/iw, th/ih) * zoom;
-      const dw = iw*scale, dh = ih*scale;
-      const dx = (tw - dw)/2, dy = (th - dh)/2;
-
-      // rotation
-      ctx.translate(tw/2, th/2);
-      ctx.rotate((rot * Math.PI)/180);
-      ctx.translate(-tw/2, -th/2);
-
-      ctx.drawImage(baseBitmap, dx, dy, dw, dh);
-
-      // apply brightness/contrast via imageData (lightweight)
-      try{
-        const img = ctx.getImageData(0,0,tw,th);
-        const d = img.data;
-        const b = bri; const c = con;
-        // y' = c*(x-128)+128; then *b
-        for(let i=0;i<d.length;i+=4){
-          let r=d[i], g=d[i+1], b0=d[i+2];
-          r = Math.max(0, Math.min(255, (c*(r-128)+128)*b));
-          g = Math.max(0, Math.min(255, (c*(g-128)+128)*b));
-          b0= Math.max(0, Math.min(255, (c*(b0-128)+128)*b));
-          d[i]=r; d[i+1]=g; d[i+2]=b0;
-        }
-        ctx.putImageData(img,0,0);
-      }catch(_){}
-      ctx.restore();
-    }
 
     const fileInput = document.getElementById('fileInput');
     const sampleBtn = document.getElementById('sampleBtn');
@@ -223,10 +186,39 @@
 
     [rotEl,zoomEl,briEl,conEl].forEach(el=>el.addEventListener('input', ()=>drawBase()));
 
+    function drawBase(rot=+rotEl.value, zoom=+zoomEl.value, bri=+briEl.value, con=+conEl.value){
+      ctx.save();
+      ctx.clearRect(0,0,stage.width,stage.height);
+      if(!baseBitmap){ ctx.restore(); return; }
+      const tw = stage.width, th = stage.height;
+      const iw = baseBitmap.width, ih = baseBitmap.height;
+      const scale = Math.min(tw/iw, th/ih) * zoom;
+      const dw = iw*scale, dh = ih*scale;
+      const dx = (tw - dw)/2, dy = (th - dh)/2;
+
+      ctx.translate(tw/2, th/2);
+      ctx.rotate((rot * Math.PI)/180);
+      ctx.translate(-tw/2, -th/2);
+      ctx.drawImage(baseBitmap, dx, dy, dw, dh);
+
+      try{
+        const img = ctx.getImageData(0,0,tw,th);
+        const d = img.data; const b = bri; const c = con;
+        for(let i=0;i<d.length;i+=4){
+          let r=d[i], g=d[i+1], b0=d[i+2];
+          r = Math.max(0, Math.min(255, (c*(r-128)+128)*b));
+          g = Math.max(0, Math.min(255, (c*(g-128)+128)*b));
+          b0= Math.max(0, Math.min(255, (c*(b0-128)+128)*b));
+          d[i]=r; d[i+1]=g; d[i+2]=b0;
+        }
+        ctx.putImageData(img,0,0);
+      }catch(_){}
+      ctx.restore();
+    }
+
     async function decodeToBitmap(blob){
-      try {
-        if('createImageBitmap' in window) return await createImageBitmap(blob);
-      } catch(_){}
+      try { if('createImageBitmap' in window) return await createImageBitmap(blob); }
+      catch(_){}
       return new Promise((resolve, reject)=>{
         const url = URL.createObjectURL(blob);
         const img = new Image();
@@ -236,25 +228,48 @@
       });
     }
 
-    async function loadSample(){
-      for(const url of SAMPLE_URLS){
+    async function loadFromUrl(url){
+      let blob;
+      if(url.startsWith('data:')){
+        const res = await fetch(url); blob = await res.blob();
+      } else {
+        const res = await fetch(url, {cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status);
+        blob = await res.blob();
+      }
+      baseBitmap = await decodeToBitmap(blob);
+      drawBase();
+      log('detect', { sampleImage:url });
+      detectBtn.disabled = false; analyzeBtn.disabled = false;
+      return true;
+    }
+
+    // Used by the UI “Load Sample” — starts with SVG then upgrades to photo
+    async function loadSampleUI(){
+      // try SVG first (always works), then upgrade to first photo silently
+      let ok = false;
+      try { ok = await loadFromUrl(SAMPLE_SVG); } catch(e){ log('error',{sample_failed:e.message||String(e)}); }
+      // kick off a photo load in the background to get you ready for detect
+      (async ()=>{
+        for(const url of FACE_SAMPLE_URLS){
+          if(url===SAMPLE_SVG) continue;
+          try{ await loadFromUrl(url); setHUD('Sample photo ready'); break; }catch(_){}
+        }
+      })();
+      return ok;
+    }
+
+    // Used by auto‑test / detection — prefers real face samples first
+    async function loadFacePreferred(){
+      for(const url of FACE_SAMPLE_URLS){
         try{
-          let blob;
-          if(url.startsWith('data:')){
-            const res = await fetch(url); blob = await res.blob();
-          } else {
-            const res = await fetch(url, {cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status);
-            blob = await res.blob();
-          }
-          baseBitmap = await decodeToBitmap(blob);
-          drawBase();
-          log('detect', { sampleImage:url });
-          return true;
+          await loadFromUrl(url);
+          // If we just loaded the SVG, note it (we’ll retry with next source on detect failure)
+          return url;
         }catch(e){
-          log('error', { sample_failed: (e && e.message)||String(e), url });
+          log('error',{sample_failed:e.message||String(e), url});
         }
       }
-      return false;
+      return null;
     }
 
     fileInput.addEventListener('change', async ()=>{
@@ -272,9 +287,7 @@
     });
 
     sampleBtn.addEventListener('click', async ()=>{
-      const ok = await loadSample();
-      detectBtn.disabled = !ok ? true : false;
-      analyzeBtn.disabled = !ok ? true : false;
+      const ok = await loadSampleUI();
       setHUD(ok ? 'Sample loaded' : 'Sample failed');
     });
 
@@ -288,22 +301,18 @@
       log('config', { reset:true });
     });
 
-    // Face detection: native FaceDetector → BlazeFace UMD fallback
     let FaceAPI = null;
     async function ensureBlazeFace(){
       if(FaceAPI) return FaceAPI;
-      // Load TFJS + BlazeFace UMD with CSP/Adblock tolerance via jsDelivr
       const tfSrc = "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js";
       const bfSrc = "https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js";
       await importScript(tfSrc);
       await importScript(bfSrc);
-      // window.blazeface is provided by UMD
       const model = await window.blazeface.load();
       FaceAPI = { model, type:'blazeface' };
       log('detect', { blazefaceReady:true });
       return FaceAPI;
     }
-
     function importScript(src){
       return new Promise((resolve, reject)=>{
         const s=document.createElement('script');
@@ -311,306 +320,207 @@
         document.head.appendChild(s);
       });
     }
-
     function drawBox(box, color='#00e676'){
-      ctx.save();
-      ctx.strokeStyle = color; ctx.lineWidth = 3;
-      ctx.strokeRect(box.x, box.y, box.width, box.height);
-      ctx.restore();
+      ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 3;
+      ctx.strokeRect(box.x, box.y, box.width, box.height); ctx.restore();
     }
-
     function imageDataMetrics(){
-      // brightness mean, contrast stdev, sharpness (Laplacian variance)
       const img = ctx.getImageData(0,0,stage.width,stage.height);
       const d = img.data; const n = d.length/4;
-      let sum = 0, sumSq = 0;
-      for(let i=0;i<d.length;i+=4){
-        const y = (0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2]); // luma
-        sum += y; sumSq += y*y;
-      }
-      const mean = sum / n;
-      const variance = (sumSq / n) - (mean*mean);
-      const stdev = Math.sqrt(Math.max(0, variance));
-
-      // Laplacian variance (very lightweight approximation)
-      let lapVar = 0;
-      const w = stage.width, h = stage.height;
-      // sample a sparse grid for speed
-      const step = 4;
-      const gx = [0,1,0,1,-4,1,0,1,0]; // 3x3 kernel flattened
-      function Y(x,y){
-        const idx = ((y*w)+x)*4;
-        return (0.2126*d[idx] + 0.7152*d[idx+1] + 0.0722*d[idx+2])|0;
-      }
-      let acc=0, accSq=0, cnt=0;
-      for(let y=1;y<h-1;y+=step){
-        for(let x=1;x<w-1;x+=step){
-          const v =
-            gx[0]*Y(x-1,y-1)+gx[1]*Y(x,y-1)+gx[2]*Y(x+1,y-1)+
-            gx[3]*Y(x-1,y)+gx[4]*Y(x,y)+gx[5]*Y(x+1,y)+
-            gx[6]*Y(x-1,y+1)+gx[7]*Y(x,y+1)+gx[8]*Y(x+1,y+1);
-          acc += v; accSq += v*v; cnt++;
-        }
-      }
-      if(cnt>0){
-        const m = acc/cnt;
-        lapVar = (accSq/cnt) - m*m;
-      }
-      return { brightness_mean: +mean.toFixed(3), contrast_stdev: +stdev.toFixed(3), laplacian_variance: +lapVar.toFixed(3) };
+      let sum=0,sumSq=0;
+      for(let i=0;i<d.length;i+=4){ const y=(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2]); sum+=y; sumSq+=y*y; }
+      const mean=sum/n; const variance=(sumSq/n)-(mean*mean); const stdev=Math.sqrt(Math.max(0,variance));
+      let lapVar=0; const w=stage.width,h=stage.height, step=4; const k=[0,1,0,1,-4,1,0,1,0];
+      function Y(x,y){ const idx=((y*w)+x)*4; return (0.2126*d[idx]+0.7152*d[idx+1]+0.0722*d[idx+2])|0; }
+      let acc=0,accSq=0,cnt=0;
+      for(let y=1;y<h-1;y+=step){ for(let x=1;x<w-1;x+=step){
+        const v=k[0]*Y(x-1,y-1)+k[1]*Y(x,y-1)+k[2]*Y(x+1,y-1)+k[3]*Y(x-1,y)+k[4]*Y(x,y)+k[5]*Y(x+1,y)+k[6]*Y(x-1,y+1)+k[7]*Y(x,y+1)+k[8]*Y(x+1,y+1);
+        acc+=v; accSq+=v*v; cnt++;
+      }}
+      if(cnt){ const m=acc/cnt; lapVar=(accSq/cnt)-m*m; }
+      return { brightness_mean:+mean.toFixed(3), contrast_stdev:+stdev.toFixed(3), laplacian_variance:+lapVar.toFixed(3) };
     }
-
     function currentBoxToPercent(box){
-      const area = (box.width*box.height);
-      const pct = (area/(stage.width*stage.height))*100;
-      // estimate center offsets (percent from canvas center)
-      const cx = box.x + box.width/2;
-      const cy = box.y + box.height/2;
-      const offx = ((cx - stage.width/2) / (stage.width/2)) * 100;
-      const offy = ((cy - stage.height/2) / (stage.height/2)) * 100;
+      const pct=(box.width*box.height)/(stage.width*stage.height)*100;
+      const cx=box.x+box.width/2, cy=box.y+box.height/2;
+      const offx=((cx-stage.width/2)/(stage.width/2))*100;
+      const offy=((cy-stage.height/2)/(stage.height/2))*100;
       return { area_pct:+pct.toFixed(4), center:{x:+cx.toFixed(2), y:+cy.toFixed(2)}, center_offset_pct:{x:+offx.toFixed(2), y:+offy.toFixed(2)} };
-    }
-
-    // Simple mapping from detection coords (model space) to canvas coords:
-    function mapToCanvasCoords(rawBox){
-      // Our pipeline draws the image already onto stage; we’ll just assume
-      // the model returns coords relative to the drawn bitmap size/position.
-      // For BlazeFace, we run on a resized crop (we’ll pass stage snapshot), so returned boxes map 1:1.
-      return rawBox;
     }
 
     async function detect(){
       setHUD('Detecting…');
-      if(!baseBitmap){ setHUD(''); return; }
-
-      // redraw base to ensure metrics reflect UI filters
+      if(!baseBitmap){ setHUD(''); return false; }
       drawBase();
 
-      // Try native FaceDetector
       if('FaceDetector' in window){
         try{
-          const fd = new window.FaceDetector({ fastMode:true, maxDetectedFaces:1 });
-          const blob = await stage.convertToBlob ? await stage.convertToBlob() : await new Promise(r=>stage.toBlob(r));
-          const bmp = await decodeToBitmap(blob);
-          const tmp = document.createElement('canvas'); tmp.width=bmp.width; tmp.height=bmp.height;
+          const fd=new window.FaceDetector({fastMode:true,maxDetectedFaces:1});
+          const blob=await (stage.convertToBlob?stage.convertToBlob():new Promise(r=>stage.toBlob(r)));
+          const bmp=await decodeToBitmap(blob);
+          const tmp=document.createElement('canvas'); tmp.width=bmp.width; tmp.height=bmp.height;
           tmp.getContext('2d').drawImage(bmp,0,0);
-          const faces = await fd.detect(tmp);
-          if(faces && faces[0] && faces[0].boundingBox){
+          const faces=await fd.detect(tmp);
+          if(faces&&faces[0]&&faces[0].boundingBox){
             const b=faces[0].boundingBox;
-            lastBox = { x:b.x, y:b.y, width:b.width, height:b.height };
+            lastBox={x:b.x,y:b.y,width:b.width,height:b.height};
             drawBase(); drawBox(lastBox);
-            log('detect', { nativeFace:true, box:lastBox });
-            analyzeBtn.disabled = false;
-            document.getElementById('submitRow').disabled = false;
+            log('detect',{nativeFace:true,box:lastBox});
+            analyzeBtn.disabled=false; document.getElementById('submitRow').disabled=false;
             setHUD('Face detected (native)');
             return true;
           }
-        }catch(e){
-          log('error',{ nativeFaceDetector:e.message||String(e) });
-        }
+        }catch(e){ log('error',{nativeFaceDetector:e.message||String(e)}); }
       }
 
-      // BlazeFace fallback on the canvas snapshot
       try{
         const { model } = await ensureBlazeFace();
-        const blob = await new Promise(res=>stage.toBlob(res));
-        const bmp = await decodeToBitmap(blob);
-
-        // Run BlazeFace by feeding a canvas created from this snapshot
-        const c = document.createElement('canvas'); c.width=bmp.width; c.height=bmp.height;
+        const blob=await new Promise(res=>stage.toBlob(res));
+        const bmp=await decodeToBitmap(blob);
+        const c=document.createElement('canvas'); c.width=bmp.width; c.height=bmp.height;
         c.getContext('2d').drawImage(bmp,0,0);
-        const preds = await model.estimateFaces(c, false);
+        const preds=await model.estimateFaces(c,false);
         if(preds && preds[0] && preds[0].topLeft && preds[0].bottomRight){
-          const [x1,y1] = preds[0].topLeft;
-          const [x2,y2] = preds[0].bottomRight;
-          lastBox = { x:x1, y:y1, width:(x2-x1), height:(y2-y1) };
-          drawBase(); drawBox(lastBox, '#00e676');
-          log('detect', { blazeface:true, box:lastBox });
-          analyzeBtn.disabled = false;
-          document.getElementById('submitRow').disabled = false;
+          const [x1,y1]=preds[0].topLeft; const [x2,y2]=preds[0].bottomRight;
+          lastBox={x:x1,y:y1,width:(x2-x1),height:(y2-y1)};
+          drawBase(); drawBox(lastBox,'#00e676');
+          log('detect',{blazeface:true,box:lastBox});
+          analyzeBtn.disabled=false; document.getElementById('submitRow').disabled=false;
           setHUD('Face detected');
           return true;
         } else {
+          log('error',{detect:'no_face'});
           setHUD('No face found');
-          log('error', { detect:'no_face' });
         }
-      }catch(e){
-        setHUD('Detect error');
-        log('error',{ detect:e.message||String(e) });
-      }
+      }catch(e){ log('error',{detect:e.message||String(e)}); setHUD('Detect error'); }
       return false;
     }
 
     async function analyze(){
-      if(!baseBitmap || !lastBox){ setHUD('Detect first'); return; }
-      drawBase(); // ensure canvas reflects current adjustments
-      drawBox(lastBox);
-
-      const metrics = imageDataMetrics();
-      const area = currentBoxToPercent(lastBox);
-      lastAnalysis = {
-        revision: REVISION,
-        timestamp: new Date().toISOString(),
-        image: { width: stage.width, height: stage.height },
-        box: { ...lastBox, ...area },
-        lighting: { brightness_mean: metrics.brightness_mean, contrast_stdev: metrics.contrast_stdev },
-        sharpness: { laplacian_variance: metrics.laplacian_variance },
-        orientation: (stage.width>=stage.height?'landscape':'portrait'),
-        refine: {}
+      if(!baseBitmap || !lastBox){ setHUD('Detect first'); return false; }
+      drawBase(); drawBox(lastBox);
+      const metrics=imageDataMetrics(); const area=currentBoxToPercent(lastBox);
+      lastAnalysis={
+        revision:REVISION, timestamp:new Date().toISOString(),
+        image:{width:stage.width,height:stage.height},
+        box:{...lastBox,...area},
+        lighting:{brightness_mean:metrics.brightness_mean,contrast_stdev:metrics.contrast_stdev},
+        sharpness:{laplacian_variance:metrics.laplacian_variance},
+        orientation:(stage.width>=stage.height?'landscape':'portrait'),
+        refine:{}
       };
-
-      // badges
-      badges.innerHTML = '';
-      const badge = (t)=>{ const s=document.createElement('span'); s.className='pill'; s.textContent=t; badges.appendChild(s); };
-      badge(metrics.contrast_stdev>80 ? 'Contrast: high' : metrics.contrast_stdev<35 ? 'Contrast: low' : 'Contrast: ok');
-      badge(metrics.brightness_mean>170 ? 'Bright' : metrics.brightness_mean<90 ? 'Dim' : 'Brightness: ok');
-      badge(metrics.laplacian_variance>1200 ? 'Sharpness: crisp' : metrics.laplacian_variance<350 ? 'Soft' : 'Sharpness: ok');
-
-      log('analysis', { analysis:lastAnalysis });
-      setHUD('Analysis ready');
-      return true;
+      badges.innerHTML='';
+      const badge=t=>{ const s=document.createElement('span'); s.className='pill'; s.textContent=t; badges.appendChild(s); };
+      badge(metrics.contrast_stdev>80?'Contrast: high':metrics.contrast_stdev<35?'Contrast: low':'Contrast: ok');
+      badge(metrics.brightness_mean>170?'Bright':metrics.brightness_mean<90?'Dim':'Brightness: ok');
+      badge(metrics.laplacian_variance>1200?'Sharpness: crisp':metrics.laplacian_variance<350?'Soft':'Sharpness: ok');
+      log('analysis',{analysis:lastAnalysis}); setHUD('Analysis ready'); return true;
     }
 
-    detectBtn.addEventListener('click', detect);
-    analyzeBtn.addEventListener('click', analyze);
+    document.getElementById('detectBtn').addEventListener('click', detect);
+    document.getElementById('analyzeBtn').addEventListener('click', analyze);
 
-    // ===== Dataset plumbing =====
+    // ===== Dataset =====
     let dataset = JSON.parse(localStorage.getItem('yornDataset')||'[]');
     function saveDS(){ localStorage.setItem('yornDataset', JSON.stringify(dataset)); updateSummary(); }
     function updateSummary(){
-      const out = document.getElementById('dsSummary');
+      const out=document.getElementById('dsSummary');
       if(!dataset.length){ out.textContent='(no rows yet)'; return; }
-      const counts = {};
-      for(const r of dataset){
-        const k = (r.rater_age||'–')+'|'+(r.rater_sex||'–');
-        counts[k] = (counts[k]||0)+1;
-      }
-      out.textContent = 'Rows: '+dataset.length+'\n'+JSON.stringify(counts,null,2);
+      const counts={}; for(const r of dataset){ const k=(r.rater_age||'–')+'|'+(r.rater_sex||'–'); counts[k]=(counts[k]||0)+1; }
+      out.textContent='Rows: '+dataset.length+'\n'+JSON.stringify(counts,null,2);
     }
     updateSummary();
 
-    function headersForCSV(obj){
-      return Object.keys(obj);
-    }
-
-    // Submit rating -> include latest analysis fields (if present)
     document.getElementById('submitRow').addEventListener('click', ()=>{
       const row = {
-        session_id: 'sess-'+Date.now(),
-        timestamp: new Date().toISOString(),
-        photo_id: 'local',
-        box_x: lastBox?+lastBox.x.toFixed(2):0,
-        box_y: lastBox?+lastBox.y.toFixed(2):0,
-        box_w: lastBox?+lastBox.width.toFixed(2):0,
-        box_h: lastBox?+lastBox.height.toFixed(2):0,
-        face_area_pct: lastAnalysis?lastAnalysis.box.area_pct:0,
-        brightness: lastAnalysis?lastAnalysis.lighting.brightness_mean:0,
-        contrast: lastAnalysis?lastAnalysis.lighting.contrast_stdev:0,
-        sharpness: lastAnalysis?lastAnalysis.sharpness.laplacian_variance:0,
-        rater_age: document.getElementById('ageGroup').value,
-        rater_sex: document.getElementById('raterSex').value,
-        rater_region: document.getElementById('raterRegion').value,
-        rating_1to7: document.getElementById('rating').value,
-        would_follow: document.getElementById('chkFollow').checked,
-        would_hire: document.getElementById('chkHire').checked,
-        would_date: document.getElementById('chkDate').checked,
-        notes: document.getElementById('notes').value,
-        app_rev: REVISION,
-        tf_backend: (window.tf && tf.getBackend) ? tf.getBackend() : 'n/a'
+        session_id:'sess-'+Date.now(), timestamp:new Date().toISOString(),
+        photo_id:'local',
+        box_x:lastBox?+lastBox.x.toFixed(2):0, box_y:lastBox?+lastBox.y.toFixed(2):0,
+        box_w:lastBox?+lastBox.width.toFixed(2):0, box_h:lastBox?+lastBox.height.toFixed(2):0,
+        face_area_pct:lastAnalysis?lastAnalysis.box.area_pct:0,
+        brightness:lastAnalysis?lastAnalysis.lighting.brightness_mean:0,
+        contrast:lastAnalysis?lastAnalysis.lighting.contrast_stdev:0,
+        sharpness:lastAnalysis?lastAnalysis.sharpness.laplacian_variance:0,
+        rater_age:ageGroup.value, rater_sex:raterSex.value, rater_region:raterRegion.value,
+        rating_1to7:rating.value,
+        would_follow:chkFollow.checked, would_hire:chkHire.checked, would_date:chkDate.checked,
+        notes:notes.value, app_rev:REVISION, tf_backend:(window.tf&&tf.getBackend)?tf.getBackend():'n/a'
       };
-      if(!row.rater_age || !row.rater_sex || !row.rating_1to7){
-        alert('Age group, sex, and rating are required.'); return;
-      }
+      if(!row.rater_age || !row.rater_sex || !row.rating_1to7){ alert('Age group, sex, and rating are required.'); return; }
       if(!lastBox){ alert('Detect a face first.'); return; }
-      dataset.push(row); saveDS();
-      log('dataset_add', row);
-      setHUD('Rating saved');
+      dataset.push(row); saveDS(); log('dataset_add', row); setHUD('Rating saved');
     });
 
     document.getElementById('exportCSV').addEventListener('click', ()=>{
       if(!dataset.length){ alert('No rows'); return; }
-      const headers = headersForCSV(dataset[0]);
-      const rows = [ headers.join(',') ];
-      for(const r of dataset){
-        rows.push(headers.map(h=>{
-          const v = r[h]; return (typeof v==='string') ? JSON.stringify(v) : (v??'');
-        }).join(','));
-      }
-      copyText(rows.join('\n'));
-      setHUD('CSV copied');
+      const headers=Object.keys(dataset[0]); const rows=[headers.join(',')];
+      for(const r of dataset){ rows.push(headers.map(h=>typeof r[h]==='string'?JSON.stringify(r[h]):(r[h]??'')).join(',')); }
+      copyText(rows.join('\n')); setHUD('CSV copied');
     });
-
-    document.getElementById('exportJSON').addEventListener('click', ()=>{
-      copyText(JSON.stringify(dataset,null,2));
-      setHUD('JSON copied');
-    });
-
-    document.getElementById('clearDS').addEventListener('click', ()=>{
-      if(confirm('Clear dataset?')){ dataset=[]; saveDS(); }
-    });
-
-    document.getElementById('copySummary').addEventListener('click', ()=>{
-      copyText(document.getElementById('dsSummary').textContent);
-      setHUD('Summary copied');
-    });
+    document.getElementById('exportJSON').addEventListener('click', ()=>{ copyText(JSON.stringify(dataset,null,2)); setHUD('JSON copied'); });
+    document.getElementById('clearDS').addEventListener('click', ()=>{ if(confirm('Clear dataset?')){ dataset=[]; saveDS(); } });
+    document.getElementById('copySummary').addEventListener('click', ()=>{ copyText(document.getElementById('dsSummary').textContent); setHUD('Summary copied'); });
 
     // ===== Diagnostics copy buttons =====
     document.getElementById('copyDiag').addEventListener('click', ()=>copyText(logEl.textContent));
-    document.getElementById('copyAuto').addEventListener('click', ()=>{
-      const report = buildAutoTestReport();
-      copyText(report);
-      setHUD('Auto‑test copied');
-    });
+    document.getElementById('copyAuto').addEventListener('click', ()=>{ copyText(buildAutoTestReport()); setHUD('Auto‑test copied'); });
+    document.getElementById('clearLogsBtn').addEventListener('click', ()=>{ logEl.textContent='(empty)'; });
 
-    // ===== Auto‑Test =====
+    // ===== Auto‑Test (now prefers face samples & retries) =====
     async function autoTest(){
       log('test', { step:'begin', rev:REVISION });
 
-      // load sample
-      const sampleOK = await loadSample();
-      log('test', { step:'sample', ok:!!sampleOK });
-      if(!sampleOK) return;
+      // Load a photo sample first (avoid SVG)
+      const used = await loadFacePreferred();
+      const sampleOK = !!used;
+      log('test', { step:'sample', ok:sampleOK });
+      if(!sampleOK){ setHUD('Sample failed'); return; }
 
-      // detect
-      const t0 = performance.now();
-      const detOK = await detect();
-      const detMs = Math.round(performance.now()-t0);
+      // Try detect; if no face AND we used the SVG or first photo failed, rotate to next source
+      let detOK = false, detMs = 0;
+      for(let attempt=0; attempt<FACE_SAMPLE_URLS.length && !detOK; attempt++){
+        const t0 = performance.now();
+        detOK = await detect();
+        detMs = Math.round(performance.now()-t0);
+        if(!detOK){
+          // try next sample source
+          const current = FACE_SAMPLE_URLS.indexOf(used);
+          const next = FACE_SAMPLE_URLS[current+1];
+          if(next){ try{ await loadFromUrl(next); }catch(_){/*continue*/} }
+        }
+      }
       log('test', { step:'detect', ok:!!detOK, ms:detMs });
 
-      // analyze
-      const anOK = await analyze();
+      const anOK = detOK ? await analyze() : false;
       log('test', { step:'analysis', ok:!!anOK });
 
-      // dataset roundtrip
+      // dataset roundtrip (fake row)
       const before = dataset.length;
-      const fakeRow = {
+      dataset.push({
         session_id:'auto-'+Date.now(), timestamp:new Date().toISOString(),
         photo_id:'auto', box_x:1, box_y:2, box_w:3, box_h:4, face_area_pct:5,
         brightness:6, contrast:7, sharpness:8,
         rater_age:'25-29', rater_sex:'M', rater_region:'', rating_1to7:'4',
         would_follow:false, would_hire:false, would_date:false, notes:'',
-        app_rev:REVISION, tf_backend:(window.tf && tf.getBackend) ? tf.getBackend() : 'n/a'
-      };
-      dataset.push(fakeRow); saveDS();
-      const after = dataset.length;
-      const dsOK = (after === before+1);
-      log('test', { step:'dataset_write', ok:dsOK, rows:after });
+        app_rev:REVISION, tf_backend:(window.tf && tf.getBackend)?tf.getBackend():'n/a'
+      }); saveDS();
+      const dsOK = dataset.length === before+1;
+      log('test', { step:'dataset_write', ok:dsOK, rows:dataset.length });
 
       log('test', { step:'summary', ok: !!(sampleOK && detOK && anOK && dsOK) });
       setHUD('Auto‑test done');
     }
     function buildAutoTestReport(){
       const full = logEl.textContent || '';
-      const backendMatch = full.match(/"tf_backend":"([^"]+)"/) || [];
-      const detectMs = (full.match(/"step":"detect","ok":true,"ms":(\d+)/) || [])[1] || '—';
       const passes = (full.match(/"step":"[^"]+","ok":true/g) || []).length;
       const errors = (full.match(/"type":"error"/g) || []).length;
-      const summary = `=== YorN Auto‑Test Report ===
+      const detectMs = (full.match(/"step":"detect","ok":true,"ms":(\d+)/) || [])[1] || '—';
+      return `=== YorN Auto‑Test Report ===
 YorN ${REVISION} • TF backend: ${(window.tf&&tf.getBackend&&tf.getBackend())||'—'} • passes: ${passes} • errors: ${errors} • detect: ${detectMs} ms
 
 ` + full + `
 
 === End Report ===`;
-      return summary;
     }
     document.getElementById('autoTestBtn').addEventListener('click', autoTest);
 
