@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>YorN 1.16.21‑alpha (Smoke, external JS)</title>
+<link rel="preconnect" href="https://images.unsplash.com" crossorigin>
+<style>
+  :root { --bg:#0c0f14; --card:#141a22; --text:#e9eef5; --muted:#a8b3c0; --accent:#63b3ff; --ok:#19c37d; --line:#222a35; }
+  *{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  header{position:sticky;top:0;z-index:10;background:linear-gradient(180deg,rgba(12,15,20,.95),rgba(12,15,20,.65));backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+  header .row{max-width:980px;margin:0 auto;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .rev{position:fixed;right:8px;top:6px;font-size:11px;color:#93a1b1;opacity:.9;background:rgba(0,0,0,.35);padding:3px 8px;border-radius:10px;border:1px solid #2a3442}
+  .pill{background:var(--card);border:1px solid var(--line);padding:6px 10px;border-radius:999px;color:var(--muted)}
+  .wrap{max-width:980px;margin:18px auto;padding:0 16px 36px;display:grid;gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+  h2{margin:0 0 10px;font-size:16px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input[type=file]{display:none}
+  .btn{appearance:none;border:1px solid var(--line);background:#0f1520;color:var(--text);padding:8px 12px;border-radius:10px;cursor:pointer;transition:.15s transform,.15s opacity}
+  .btn:hover{transform:translateY(-1px)} .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+  .btn.ok{border-color:#1f2d24;background:#0f1b16;color:#b3f7d3}
+  .btn.accent{border-color:#1d3346;background:#102130;color:#cfe9ff}
+  .btn.warn{border-color:#3a2b0d;background:#1d1406;color:#ffd98a}
+  .select,.num{background:#0f1520;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .grid{display:grid;grid-template-columns:1fr;gap:16px}
+  @media(min-width:900px){.grid{grid-template-columns:1fr 1fr}}
+  canvas{max-width:100%;height:auto;display:block;border-radius:10px;border:1px solid var(--line);background:#0a0f15}
+  .pane{display:grid;gap:10px}
+  .kvs{display:grid;grid-template-columns:max-content 1fr;gap:6px 10px}
+  k{color:var(--muted)}
+  .bar{height:8px;background:#0f1520;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .bar>i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#63b3ff,#19c37d)}
+  .diag{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#0a0e14;border:1px solid var(--line);border-radius:10px;padding:10px;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid var(--line);color:var(--muted)}
+  .badge.ready{color:#0c2;background:#0a1a12;border-color:#163}
+  .tiny{font-size:12px;color:#a8b3c0}
+</style>
+</head>
+<body>
+<div class="rev">YorN <strong>1.16.21‑alpha</strong> • Smoke (external JS)</div>
+
+<header>
+  <div class="row">
+    <label class="btn"><input id="fileInput" type="file" accept="image/*" />Choose Photo</label>
+    <button id="sampleBtn" class="btn">Load Sample</button>
+    <button id="enhanceBtn" class="btn">Enhance & Retry</button>
+    <button id="detectBtn" class="btn accent" disabled>Detect</button>
+    <button id="startAnalysisBtn" class="btn ok" disabled>Start Analysis</button>
+    <button id="autoTestBtn" class="btn warn">Auto‑Test</button>
+    <button id="copyTestBtn" class="btn" disabled>Copy Test Report</button>
+    <span class="pill">Backend <select id="backendSel" class="select" disabled><option>none (smoke)</option></select></span>
+    <span id="readyBadge" class="badge" style="display:none;">READY</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="grid">
+    <div class="card pane">
+      <h2>Preview</h2>
+      <canvas id="preview" width="1024" height="683" aria-label="Preview canvas"></canvas>
+      <div class="row">
+        <label>Zoom <input id="zoom" type="range" min="0.8" max="2.0" step="0.01" value="1.20" class="num" style="width:160px"></label>
+        <label>Brightness <input id="bri" type="range" min="0.6" max="1.6" step="0.01" value="1.10" class="num" style="width:160px"></label>
+        <label>Contrast <input id="con" type="range" min="0.6" max="1.6" step="0.01" value="1.15" class="num" style="width:160px"></label>
+        <label>Rotate (°) <input id="rot" type="number" class="num" value="0" step="1" style="width:84px"></label>
+      </div>
+      <div class="bar" role="progressbar" aria-label="Progress"><i id="bar"></i></div>
+      <div id="progressText" class="tiny" aria-live="polite"></div>
+    </div>
+
+    <div class="card pane">
+      <h2>Diagnostics</h2>
+      <div class="row">
+        <button id="copyDiagBtn" class="btn">Copy Diagnostics</button>
+        <button id="clearLogsBtn" class="btn">Clear Logs</button>
+        <button id="resetBtn" class="btn">Reset</button>
+      </div>
+      <div id="diagnostics" class="diag">No diagnostics yet.</div>
+    </div>
+  </section>
+
+  <section id="analysisCard" class="card pane" style="display:none">
+    <h2>Analysis</h2>
+    <div class="kvs">
+      <k>Face area</k><v id="kv_area">—</v>
+      <k>Aspect ratio</k><v id="kv_aspect">—</v>
+      <k>Center offset X</k><v id="kv_offx">—</v>
+      <k>Center offset Y</k><v id="kv_offy">—</v>
+      <k>Brightness</k><v id="kv_bri">—</v>
+      <k>Contrast</k><v id="kv_con">—</v>
+      <k>Sharpness</k><v id="kv_sharp">—</v>
+      <k>Backend</k><v id="kv_backend">smoke</v>
+    </div>
+    <div class="row">
+      <button id="copyJsonBtn" class="btn">Copy JSON</button>
+      <button id="exportJsonBtn" class="btn">Download JSON</button>
+    </div>
+  </section>
+</main>
+
+<!-- External JS only; no inline script (ad blocker friendly) -->
+<script src="./app.js" defer></script>
+</body>
+</html>
