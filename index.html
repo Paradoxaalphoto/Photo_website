@@ -1,606 +1,617 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta
   name="viewport"
-  content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover"
+  content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"
 />
-<title>YorN 1.17.4-alpha</title>
+<title>YorN 1.17.5-alpha</title>
 <style>
   :root {
-    --bg: #0b0c10;
-    --panel: #111318;
-    --muted: #818597;
-    --text: #e9ecf1;
-    --accent: #70e1ff;
-    --ok: #2ecc71;
-    --warn: #ffb347;
-    --bad: #ff6b6b;
-    --chip: #1b1f27;
-    --chip-brd: #272b35;
+    --bg:#0b0f14; --card:#121821; --muted:#778196; --ink:#e7ecf3; --accent:#62d0ff;
+    --ok:#2ecc71; --warn:#f39c12; --bad:#ff5c5c;
   }
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif}
-  .wrap{max-width:980px;margin:0 auto;padding:16px}
-  h1{font-size:18px;margin:0 0 8px;display:flex;align-items:center;gap:8px}
-  .rev{font-size:12px;color:var(--muted);padding:2px 8px;border-radius:999px;background:var(--chip);border:1px solid var(--chip-brd)}
-  .row{display:flex;gap:12px;flex-wrap:wrap}
-  .card{background:var(--panel);border:1px solid var(--chip-brd);border-radius:12px;padding:12px;flex:1 1 320px;min-width:280px}
-  .controls .row > *{flex:1}
-  label{display:block;font-size:12px;color:var(--muted);margin:2px 0 6px}
-  input[type="file"]{width:100%}
-  .btn{background:#1e222b;color:var(--text);border:1px solid var(--chip-brd);padding:10px 12px;border-radius:10px;cursor:pointer}
-  .btn[disabled]{opacity:.5;cursor:not-allowed}
-  .btn.ok{border-color:#254;box-shadow:inset 0 0 0 1px #254}
-  .btn.warn{border-color:#554;box-shadow:inset 0 0 0 1px #554}
-  .btn.accent{border-color:#1f3a48;box-shadow:inset 0 0 0 1px #1f3a48}
-  .tog{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
-  .grid{display:grid;grid-template-columns:1fr;gap:12px}
-  @media(min-width:900px){ .grid{grid-template-columns:1fr 1fr} }
-  canvas, img{max-width:100%;border-radius:10px;border:1px solid var(--chip-brd)}
-  .diag{white-space:pre-wrap;background:#0e1116;border:1px solid #232835;border-radius:10px;padding:10px;max-height:280px;overflow:auto;font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-  .small{font-size:12px;color:var(--muted)}
-  .chips{display:flex;gap:6px;flex-wrap:wrap}
-  .chip{font-size:12px;color:var(--muted);padding:2px 8px;border-radius:999px;background:var(--chip);border:1px solid var(--chip-brd)}
-  .statline{display:flex;gap:10px;flex-wrap:wrap}
-  .badge{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--chip-brd);background:var(--chip);font-size:12px}
-  .badge.ready{color:#d4ffd4;border-color:#264;border-left:6px solid var(--ok)}
-  .badge.blocked{color:#ffe2d9;border-color:#642;border-left:6px solid var(--bad)}
-  .row-tight{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  html,body {margin:0;padding:0;background:var(--bg);color:var(--ink);font:400 15px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;}
+  .wrap {max-width:960px;margin:0 auto;padding:14px;}
+  h1 {font-size:18px;margin:0 0 10px 0;letter-spacing:.2px}
+  .row {display:flex;gap:10px;flex-wrap:wrap}
+  .card {background:var(--card);border-radius:12px;padding:12px;flex:1 1 300px;min-width:280px}
+  .controls {display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .controls button, .controls input[type="file"]::file-selector-button {
+    background:#1a2330;color:var(--ink);border:1px solid #273348;border-radius:10px;padding:8px 12px;cursor:pointer
+  }
+  .controls button[disabled] {opacity:.45;cursor:not-allowed}
+  .badge {display:none; padding:3px 8px;border-radius:999px;font-size:12px;border:1px solid #2c394a;color:#cfd7e6}
+  .badge.ready {background:rgba(46,204,113,.12); border-color:#2ecc71; color:#aef3c7}
+  .badge.blocked {background:rgba(255,92,92,.12); border-color:#ff5c5c; color:#ffb3b3}
+  canvas, .stage {width:100%;max-height:55vh;background:#0f141c;border-radius:10px;display:block}
+  .hud {display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:8px}
+  .tiny {font-size:12px;color:var(--muted)}
+  .kv {display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:13px}
+  .log {white-space:pre-wrap;word-break:break-word;max-height:240px;overflow:auto;background:#0e141c;padding:10px;border-radius:10px;border:1px solid #233042}
+  .progress {min-height:18px;color:#bcd0e8}
+  .veil {position:fixed;inset:0;background:rgba(11,15,20,.6);display:none;align-items:center;justify-content:center;z-index:9999}
+  .veil.show {display:flex}
+  .chip {padding:4px 8px;border:1px solid #2c394a;border-radius:999px;font-size:12px}
+  .num {font-variant-numeric:tabular-nums}
+  .inputs {display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .inputs label {display:flex;align-items:center;gap:6px;font-size:13px;color:#c7d2e2;background:#0f141c;border:1px solid #233042;padding:6px 8px;border-radius:8px}
+  .inputs input[type="range"], .inputs input[type="number"] {accent-color:var(--accent)}
+  @media (max-width:480px){
+    .row {flex-direction:column}
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>YorN <span class="rev" id="rev">1.17.4‑alpha</span></h1>
-
-  <div class="grid">
-    <!-- Left: Image + Controls -->
-    <div class="card controls">
-      <div class="row">
-        <div>
-          <label>Upload photo</label>
-          <input type="file" id="fileInput" accept="image/*" />
-        </div>
-        <div class="row-tight" style="align-self:end">
-          <button class="btn" id="sampleBtn">Load Sample</button>
-          <button class="btn" id="resetBtn">Reset</button>
-        </div>
+  <div class="row">
+    <div class="card" style="flex:2 1 420px">
+      <div class="hud">
+        <h1>YorN <span id="rev">1.17.5-alpha</span></h1>
+        <span id="readinessBadge" class="badge">READY</span>
       </div>
 
-      <div class="row">
-        <div>
-          <label>Rotate (°)</label>
-          <input type="number" id="rot" value="0" step="1" min="-180" max="180" />
-        </div>
-        <div>
-          <label>Zoom (0.8–2.0) <span class="small" id="zoomLabel">1.20</span></label>
-          <input type="range" id="zoom" min="0.8" max="2.0" step="0.01" value="1.20" />
-        </div>
-        <div>
-          <label>Brightness <span class="small" id="briLabel">1.10</span></label>
-          <input type="range" id="bri" min="0.6" max="1.6" step="0.01" value="1.10" />
-        </div>
-        <div>
-          <label>Contrast <span class="small" id="conLabel">1.15</span></label>
-          <input type="range" id="con" min="0.6" max="1.6" step="0.01" value="1.15" />
-        </div>
+      <div class="controls" style="margin:8px 0 10px">
+        <input id="fileInput" type="file" accept="image/*" />
+        <button id="sampleBtn" type="button">Load Sample</button>
+        <button id="detectBtn" type="button" disabled>Detect</button>
+        <button id="startAnalysisBtn" type="button" disabled>Start Analysis</button>
+        <button id="autoTestBtn" type="button">Auto‑Test</button>
+        <button id="copyTestBtn" type="button" disabled>Copy Test Report</button>
       </div>
 
-      <div class="row">
-        <button class="btn accent" id="enhanceBtn">Enhance & Retry</button>
-        <button class="btn" id="detectBtn" disabled>Detect</button>
-        <button class="btn ok" id="startAnalysisBtn" disabled>Start Analysis</button>
-        <button class="btn" id="reanalyzeBtn" disabled>Re‑analyze Last Crop</button>
+      <canvas id="stage" class="stage" width="1024" height="683"></canvas>
+
+      <div class="inputs">
+        <label>Rotate (°)
+          <input id="rot" type="number" step="1" value="0" style="width:64px">
+        </label>
+        <label>Zoom (0.8–2.0):
+          <input id="zoom" type="range" min="0.8" max="2.0" step="0.01" value="1.20">
+          <span id="zoomLabel" class="num">1.20</span>
+        </label>
+        <label>Brightness:
+          <input id="bri" type="range" min="0.8" max="1.6" step="0.01" value="1.10">
+          <span id="briLabel" class="num">1.10</span>
+        </label>
+        <label>Contrast:
+          <input id="con" type="range" min="0.8" max="1.6" step="0.01" value="1.15">
+          <span id="conLabel" class="num">1.15</span>
+        </label>
+        <button id="enhanceBtn" type="button" disabled>Enhance & Retry</button>
+        <button id="resetBtn" type="button">Reset</button>
       </div>
 
-      <div class="row">
-        <div class="tog">
-          <input type="checkbox" id="autoAnalyze" />
-          <label for="autoAnalyze">Auto‑analyze after detect</label>
+      <div class="hud" style="margin-top:10px">
+        <div class="tiny">
+          <span class="chip">TF: <span id="tfChip">—</span></span>
+          <span class="chip">v<span id="tfVer">—</span></span>
+          <span class="chip">Session: <span id="sessStats" class="num">0 detects • 0 analyses</span></span>
         </div>
-        <div class="tog">
-          <input type="checkbox" id="autoTestOnLoad" />
-          <label for="autoTestOnLoad">Auto‑test on load</label>
-        </div>
-        <div class="tog">
-          <label for="backendSelect">Backend:</label>
-          <select id="backendSelect">
-            <option value="auto">auto</option>
-            <option value="webgl">webgl</option>
-            <option value="wasm">wasm</option>
-            <option value="cpu">cpu</option>
-          </select>
-        </div>
+        <div class="progress" id="progressText"></div>
       </div>
-
-      <div class="row">
-        <button class="btn" id="autoTestBtn">Auto Test</button>
-        <button class="btn" id="copyTestBtn" disabled>Copy Auto‑Test Report</button>
-      </div>
-
-      <div class="statline small" id="sessionStats">
-        <span class="chip">Session: 0 detects</span>
-        <span class="chip">0 analyses</span>
-        <span class="chip">avg detect — ms</span>
-        <span class="chip" id="readinessBadge" style="display:none">READY</span>
-      </div>
-
-      <div class="small" id="progressText"></div>
     </div>
 
-    <!-- Right: Preview + Results -->
-    <div class="card">
-      <label>Preview</label>
-      <canvas id="preview" width="1024" height="683"></canvas>
-
-      <div class="row" style="margin-top:10px">
-        <button class="btn" id="copySummaryBtn" disabled>Copy Summary</button>
-        <button class="btn" id="copyJsonBtn" disabled>Copy Analysis JSON</button>
-        <button class="btn" id="exportJsonBtn" disabled>Download JSON</button>
+    <div class="card" style="flex:1 1 300px">
+      <div class="hud">
+        <strong>Diagnostics</strong>
+        <div>
+          <button id="copyDiagBtn" type="button">Copy Diagnostics</button>
+          <button id="clearLogsBtn" type="button">Clear</button>
+        </div>
       </div>
-
-      <div class="chips" style="margin-top:10px">
-        <span class="chip">Show overlays <input type="checkbox" id="showOverlay" checked/></span>
-        <span class="chip">Show HUD <input type="checkbox" id="showHud" checked/></span>
-      </div>
+      <div id="diagnostics" class="log">No diagnostics yet.</div>
     </div>
   </div>
 
-  <!-- Diagnostics -->
-  <div class="card">
-    <div class="row-tight" style="justify-content:space-between">
-      <label style="margin:0">Diagnostics</label>
-      <div class="row-tight">
-        <button class="btn" id="clearLogsBtn">Clear Logs</button>
-        <button class="btn" id="copyDiagnosticsBtn">Copy Diagnostics</button>
+  <div id="analysisCard" class="card" style="margin-top:10px; display:none">
+    <div class="hud"><strong>Analysis</strong>
+      <div>
+        <button id="copySummaryBtn" type="button">Copy Summary</button>
+        <button id="copyJsonBtn" type="button">Copy JSON</button>
+        <button id="exportJsonBtn" type="button">Download JSON</button>
       </div>
     </div>
-    <div id="diagnostics" class="diag">No diagnostics yet.</div>
+    <div class="kv" id="analysisKv"></div>
   </div>
 </div>
 
-<!-- Frameworks -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.min.js" crossorigin="anonymous"></script>
-<script>
-  // ===== Global state =====
-  const REVISION = "1.17.4-alpha";
-  const $ = id => document.getElementById(id);
-  let isBusy = false;
-  let baseBitmap = null;          // ImageBitmap of current source
-  let lastBox = null;             // {x,y,width,height}
-  let lastAnalysis = null;        // JSON result object
-  let session = { detects: 0, analyses: 0, detectTimes: [] };
+<div id="veil" class="veil"><div style="background:#0f141c;border:1px solid #223042;padding:14px 16px;border-radius:10px">
+  Working… (watchdog armed)
+</div></div>
 
-  // ===== Logging =====
-  function ts() { return new Date().toISOString(); }
-  function logEvt(type, obj) {
-    try {
-      const line = JSON.stringify({ time: ts(), type, ...obj });
-      const box = $("diagnostics");
-      if (box.textContent === "No diagnostics yet.") box.textContent = "";
-      box.textContent += (box.textContent ? "\n" : "") + line;
-      box.scrollTop = box.scrollHeight;
-    } catch (_) {}
+<!-- Frameworks -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ===== Globals ===== */
+  const REVISION = "1.17.5-alpha";
+  const $ = id => document.getElementById(id);
+  const stage = $("stage");
+  const ctx = stage.getContext("2d", {willReadFrequently:true});
+  let baseBitmap = null;
+  let faceModel = null;
+  let lastBox = null;
+  let lastAnalysis = null;
+  let isBusy = false;
+  let tfVersion = "—";
+  let __autoTestStartIdx = 0;
+
+  const session = {
+    detects: 0,
+    detectTimes: [],
+    analyses: 0
+  };
+
+  /* ===== Utils ===== */
+  function setBusy(v) {
+    isBusy = !!v;
+    $("veil").classList.toggle("show", isBusy);
+    // Disable action buttons while busy
+    ["detectBtn","startAnalysisBtn","autoTestBtn","enhanceBtn"].forEach(id=>{
+      const b=$(id); if (b) b.disabled = !!v;
+    });
   }
+
+  function logEvt(type, obj = {}) {
+    const line = JSON.stringify({ time: new Date().toISOString(), type, ...obj });
+    const box = $("diagnostics");
+    if (box.textContent === "No diagnostics yet.") box.textContent = "";
+    box.textContent += (box.textContent ? "\n" : "") + line;
+    box.scrollTop = box.scrollHeight;
+  }
+
   function getAllLogsText() {
     const el = $("diagnostics");
     return el ? (el.innerText || el.textContent || "") : "";
   }
 
-  // ===== Canvas helpers =====
-  const canvas = $("preview");
-  const ctx = canvas.getContext("2d");
-  function paintBase() {
-    if (!baseBitmap) return;
-    const rot = +$("rot").value || 0;
-    const zoom = +$("zoom").value || 1.0;
-    const bri = +$("bri").value || 1.0;
-    const con = +$("con").value || 1.0;
-
-    const iw = baseBitmap.width, ih = baseBitmap.height;
-    canvas.width = iw; canvas.height = ih;
-
-    // draw base with rotation/zoom around center
-    ctx.save();
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.translate(iw/2, ih/2);
-    ctx.rotate(rot * Math.PI/180);
-    ctx.scale(zoom, zoom);
-    ctx.drawImage(baseBitmap, -iw/2, -ih/2);
-    ctx.restore();
-
-    // simple brightness/contrast pass
-    const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
-    const d = imgData.data;
-    const cFactor = con;
-    const bShift = (bri - 1.0) * 255;
-    for (let i=0;i<d.length;i+=4){
-      d[i]   = Math.min(255, Math.max(0, d[i]  * cFactor + bShift));
-      d[i+1] = Math.min(255, Math.max(0, d[i+1]* cFactor + bShift));
-      d[i+2] = Math.min(255, Math.max(0, d[i+2]* cFactor + bShift));
-    }
-    ctx.putImageData(imgData,0,0);
-  }
-  function drawOverlay(box) {
-    if (!box || !$("showOverlay").checked) return;
-    ctx.save();
-    ctx.strokeStyle = "#70e1ff";
-    ctx.lineWidth = Math.max(2, Math.min(canvas.width, canvas.height) * 0.004);
-    ctx.strokeRect(box.x, box.y, box.width, box.height);
-    ctx.restore();
+  function setProgress(pctText, msg) {
+    $("progressText").textContent = msg || "";
   }
 
-  // ===== Copy helpers =====
   async function copyTextRobust(text) {
     if (text == null) text = "";
     try {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);
-        return { ok: true, via: "clipboard" };
+        return { ok:true, via:"clipboard" };
       }
     } catch (_) {}
     try {
       const ta = document.createElement("textarea");
       ta.value = text;
-      ta.setAttribute("readonly", "");
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      ta.style.left = "-9999px";
+      ta.setAttribute("readonly","");
+      ta.style.position="fixed"; ta.style.opacity="0"; ta.style.left="-9999px";
       document.body.appendChild(ta);
       ta.select();
       const ok = document.execCommand("copy");
       document.body.removeChild(ta);
-      if (ok) return { ok: true, via: "execCommand" };
+      if (ok) return { ok:true, via:"execCommand" };
     } catch (e) {
-      return { ok: false, via: "fallback", err: e.message || String(e) };
+      return { ok:false, via:"fallback", err:e.message || String(e) };
     }
-    return { ok: false, via: "none", err: "No clipboard available" };
+    return { ok:false, via:"none", err:"No clipboard available" };
   }
 
-  // ===== Persistence (sliders, toggles, backend) =====
-  const PERSIST_KEYS = ["rot","zoom","bri","con","autoAnalyze","autoTestOnLoad","backendSelect"];
-  function loadPrefs() {
-    try {
-      PERSIST_KEYS.forEach(k=>{
-        const v = localStorage.getItem("yorn_"+k);
-        if (v != null) {
-          const el = $(k);
-          if (!el) return;
-          if (el.type === "checkbox") el.checked = v === "1";
-          else if (el.tagName === "SELECT") el.value = v;
-          else el.value = v;
-        }
-      });
-      $("zoomLabel").textContent = (+$("zoom").value).toFixed(2);
-      $("briLabel").textContent  = (+$("bri").value).toFixed(2);
-      $("conLabel").textContent  = (+$("con").value).toFixed(2);
-    } catch(_) {}
-  }
-  function savePref(id) {
-    try {
-      const el = $(id); if (!el) return;
-      const v =
-        el.type === "checkbox" ? (el.checked ? "1" : "0") :
-        el.tagName === "SELECT" ? el.value :
-        el.value;
-      localStorage.setItem("yorn_"+id, v);
-    } catch(_) {}
+  function safeBackend() {
+    try { return (window.tf && typeof tf.getBackend === "function") ? (tf.getBackend() || "—") : "—"; }
+    catch { return "—"; }
   }
 
-  // ===== TFJS & model =====
-  let faceModel = null;   // blazeface model
-  let tfBackend = "auto";
-  let tfVersion = "—";
+  function updateTfBadges() {
+    $("tfChip").textContent = safeBackend();
+    $("tfVer").textContent = String(tfVersion || "—");
+  }
 
+  function updateSessionStats() {
+    const avg = session.detectTimes.length ? Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length) : "—";
+    $("sessStats").textContent = `${session.detects} detects • ${session.analyses} analyses`;
+    logEvt("config",{ session:`${session.detects} detects • ${session.analyses} analyses`, avg_detect_ms: avg });
+  }
+
+  function drawOverlay(box) {
+    // repaint base first
+    paintBase();
+    // draw face box
+    ctx.save();
+    ctx.strokeStyle = "#62d0ff";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(box.x, box.y, box.width, box.height);
+    ctx.restore();
+  }
+
+  /* ===== Image decode & paint ===== */
+  async function decodeBitmapFromBlob(blob) {
+    const bmp = await createImageBitmap(blob);
+    return bmp;
+  }
+
+  function paintBase() {
+    if (!baseBitmap) return;
+    const rot = parseFloat($("rot").value || "0") * Math.PI/180;
+    const zoom = parseFloat($("zoom").value || "1");
+    const bri = parseFloat($("bri").value || "1");
+    const con = parseFloat($("con").value || "1");
+
+    // draw into stage
+    ctx.save();
+    ctx.clearRect(0,0,stage.width,stage.height);
+    ctx.filter = `brightness(${bri}) contrast(${con})`;
+    ctx.translate(stage.width/2, stage.height/2);
+    ctx.rotate(rot);
+    const dw = stage.width * zoom, dh = stage.height * zoom;
+    ctx.drawImage(baseBitmap, -dw/2, -dh/2, dw, dh);
+    ctx.restore();
+    logEvt("overlay",{ painted:{ w: stage.width, h: stage.height }});
+  }
+
+  /* ===== TF / Model ===== */
   async function initTF() {
-    // backend selection
-    const want = $("backendSelect").value;
-    tfBackend = want;
-    try {
-      if (want !== "auto") {
-        await tf.setBackend(want);
-      } else {
-        // prefer webgl, then wasm, else cpu
-        try { await tf.setBackend("webgl"); }
-        catch { try { await tf.setBackend("wasm"); }
-          catch { await tf.setBackend("cpu"); } }
-      }
-      await tf.ready();
-      tfVersion = tf?.version_core || tf?.version?.tfjs || "—";
-      // WASM path (needed only if wasm is active)
-      if (tf.getBackend() === "wasm") {
-        // when using jsdelivr, TF will pick default path embedded in the script
-        // Optional: tf.wasm.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/');
-      }
-      logEvt("config",{tf_ready:true, backend: tf.getBackend(), tf_version: tfVersion});
-      // warmup
-      const t0 = performance.now();
-      await tf.tidy(()=>tf.tensor([1,2,3,4]).sum().data());
-      logEvt("config",{warmup:"ok", backend: tf.getBackend(), ms: Math.round(performance.now()-t0)});
-    } catch (e) {
-      logEvt("error",{tf_init:e.message||String(e)});
+    if (!window.tf) {
+      logEvt("error",{ tf_init:"tf not present" });
+      throw new Error("tf missing");
     }
+    // backend is selected lazily by tfjs; do nothing if already ready
+    await tf.ready();
+    tfVersion = tf?.version_core || tf?.version?.tfjs || tfVersion || "—";
+    updateTfBadges();
+    // optional warmup
+    try {
+      const t0 = performance.now();
+      await tf.setBackend(safeBackend() || "webgl");
+      await tf.ready();
+      logEvt("config",{ warmup:"ok", backend:safeBackend(), ms: Math.round(performance.now()-t0) });
+    } catch (e) {
+      logEvt("error",{ warmup:e.message || String(e) });
+    }
+    updateTfBadges();
   }
 
   async function loadModel() {
     if (faceModel) return;
-    // Use @tensorflow-models/blazeface via dynamic import to avoid CSP eval issues
     try {
-      const mod = await import("https://esm.sh/@tensorflow-models/blazeface@0.0.7");
-      faceModel = await mod.load(); // lightweight
-      logEvt("detect",{blazefaceReady:true});
+      faceModel = await blazeface.load();
+      logEvt("detect",{ blazefaceReady:true });
     } catch (e) {
-      logEvt("error",{model:e.message||String(e)});
+      logEvt("error",{ blazeface_failed:e.message || String(e) });
+      throw e;
     }
   }
 
-  // ===== Decoding images =====
-  async function decodeToBitmapFromBlob(blob) {
-    // prefer createImageBitmap (fast, avoids DOM img decode quirk on some Android)
-    try {
-      const bmp = await createImageBitmap(blob);
-      return bmp;
-    } catch {
-      // fallback to DOM Image
-      const url = URL.createObjectURL(blob);
-      const img = new Image();
-      img.decoding = "async";
-      img.crossOrigin = "anonymous";
-      await new Promise((res, rej)=>{
-        img.onload=()=>res();
-        img.onerror=()=>rej(new Error("decode error"));
-        img.src=url;
-      });
-      const bmp = await createImageBitmap(img);
-      URL.revokeObjectURL(url);
-      return bmp;
-    }
-  }
-
-  async function loadSample() {
-    const u = "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1024&auto=format&fit=crop";
-    try {
-      const res = await fetch(u, { cache: "no-store" });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const blob = await res.blob();
-      baseBitmap = await decodeToBitmapFromBlob(blob);
-      paintBase();
-      $("detectBtn").disabled = false;
-      $("enhanceBtn").disabled = false;
-      $("reanalyzeBtn").disabled = !lastBox;
-      logEvt("detect",{sampleImage:u});
-      return true;
-    } catch(e) {
-      logEvt("error",{sample_failed:e.message||String(e)});
-      return false;
-    }
-  }
-
-  async function setFile(file) {
-    try {
-      const blob = file instanceof Blob ? file : file?.target?.files?.[0];
-      if (!blob) return;
-      baseBitmap = await decodeToBitmapFromBlob(blob);
-      paintBase();
-      $("detectBtn").disabled = false;
-      $("enhanceBtn").disabled = false;
-      $("reanalyzeBtn").disabled = !lastBox;
-      logEvt("detect",{file: (blob.name||"upload"), w: baseBitmap.width, h: baseBitmap.height });
-    } catch(e) {
-      logEvt("error",{decode_failed:e.message||String(e)});
-    }
-  }
-
-  // ===== Detection & analysis =====
-  function setBusy(b) {
-    isBusy = b;
-    const ids = ["enhanceBtn","detectBtn","startAnalysisBtn","reanalyzeBtn","autoTestBtn","copyTestBtn","copySummaryBtn","copyJsonBtn","exportJsonBtn","copyDiagnosticsBtn","clearLogsBtn","resetBtn","sampleBtn"];
-    ids.forEach(id=>{
-      const el=$(id); if(el) el.disabled = b && id!=="copyDiagnosticsBtn" && id!=="clearLogsBtn";
-    });
-  }
-
-  function updateSessionStats() {
-    const avg = session.detectTimes.length
-      ? Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length)
-      : "—";
-    const line = [
-      `Session: ${session.detects} detects`,
-      `${session.analyses} analyses`,
-      `avg detect ${avg} ms`
-    ];
-    const el = $("sessionStats");
-    el.innerHTML = line.map(s=>`<span class="chip">${s}</span>`).join(" ") +
-      `<span class="badge" id="readinessBadge" style="display:${$("readinessBadge").style.display||'none'}">${$("readinessBadge").textContent||''}</span>`;
-  }
-
+  /* ===== Detection with watchdog & fallback ===== */
   async function detectOnce() {
     if (!baseBitmap) return null;
+
     await initTF();
     await loadModel();
-    const t0 = performance.now();
-    // downscale to speed predict (BlazeFace expects 128x128 or internal res; it handles resizing)
-    const box = await tf.tidy(async ()=>{
-      const input = tf.browser.fromPixels(canvas);
-      // BlazeFace returns top-left and bottom-right coords in pixels
-      const preds = await faceModel.estimateFaces(input, false);
-      if (!preds || !preds.length) return null;
-      const p = preds[0];
-      const [x1,y1] = p.topLeft;
-      const [x2,y2] = p.bottomRight;
-      return { x: x1, y: y1, width: x2-x1, height: y2-y1 };
-    });
-    const dt = Math.round(performance.now() - t0);
 
-    if (box) {
+    const runPredict = async () => {
+      return await tf.tidy(async () => {
+        const input = tf.browser.fromPixels(stage);
+        // BlazeFace UMD expects {returnTensors:false}
+        const preds = await faceModel.estimateFaces(input, false);
+        if (!preds || !preds.length) return null;
+        const p = preds[0];
+        const [x1,y1] = p.topLeft;
+        const [x2,y2] = p.bottomRight;
+        return { x:x1, y:y1, width: x2-x1, height: y2-y1 };
+      });
+    };
+
+    const timed = (ms, fn) => new Promise((resolve, reject) => {
+      let done = false;
+      const t = setTimeout(() => { if(!done){ done=true; reject(new Error("detect_timeout")); }}, ms);
+      fn().then(v => { if(!done){ done=true; clearTimeout(t); resolve(v); }})
+          .catch(e => { if(!done){ done=true; clearTimeout(t); reject(e); }});
+    });
+
+    const t0 = performance.now();
+    try {
+      let box = await timed(3000, runPredict);
+      if (!box) {
+        logEvt("error",{ detect:"no_face" });
+        return null;
+      }
+      const dt = Math.round(performance.now() - t0);
       lastBox = box;
       session.detects += 1;
       session.detectTimes.push(dt);
       drawOverlay(box);
-      logEvt("detect",{roughLocate_ms:dt, finalDetect_ms:dt, box});
-    } else {
-      logEvt("error",{detect:"no_face"});
-    }
-    updateSessionStats();
-    return box;
-  }
+      logEvt("detect",{ roughLocate_ms:dt, finalDetect_ms:dt, box });
+      updateSessionStats();
+      return box;
+    } catch (e) {
+      // auto fallback: webgl -> wasm once
+      const cur = safeBackend();
+      if (e && e.message === "detect_timeout" && cur === "webgl") {
+        logEvt("error",{ detect_timeout:true, backend:cur, fallback:"wasm_retry" });
+        try {
+          await tf.setBackend("wasm");
+          await tf.ready();
+          tfVersion = tf?.version_core || tf?.version?.tfjs || tfVersion || "—";
+          faceModel = null; // reload for wasm
+          await loadModel();
 
-  function computeAnalysis() {
-    if (!baseBitmap || !lastBox) return null;
-    // simple image stats
-    const { width:w, height:h } = canvas;
-    const img = ctx.getImageData(0,0,w,h);
-    const d = img.data;
-    let sum=0, sum2=0;
-    // coarse brightness/contrast
-    for (let i=0;i<d.length;i+=4){
-      const lum = 0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2];
-      sum += lum; sum2 += lum*lum;
-    }
-    const n = d.length/4;
-    const mean = sum/n;
-    const stdev = Math.sqrt(Math.max(0,(sum2/n) - mean*mean));
-
-    // crude sharpness via Laplacian variance (downsample for speed)
-    const s = Math.max(64, Math.min(256, Math.floor(Math.min(w,h)/4)));
-    const tmp = document.createElement("canvas");
-    tmp.width=s; tmp.height=s;
-    tmp.getContext("2d").drawImage(canvas,0,0,s,s);
-    const id = tmp.getContext("2d").getImageData(0,0,s,s);
-    const g = id.data;
-    // grayscale
-    const gray = new Float32Array(s*s);
-    for (let i=0,px=0;i<g.length;i+=4,px++){
-      gray[px] = 0.2126*g[i]+0.7152*g[i+1]+0.0722*g[i+2];
-    }
-    const lap = [[0,1,0],[1,-4,1],[0,1,0]];
-    let varSum=0, varSum2=0, count=0;
-    for (let y=1;y<s-1;y++){
-      for (let x=1;x<s-1;x++){
-        let v=0; let idx=y*s+x;
-        v += lap[0][1]*gray[idx-s];
-        v += lap[1][0]*gray[idx-1];
-        v += lap[1][1]*gray[idx];
-        v += lap[1][2]*gray[idx+1];
-        v += lap[2][1]*gray[idx+s];
-        varSum += v; varSum2 += v*v; count++;
+          const t1 = performance.now();
+          const box = await timed(3000, runPredict);
+          if (box) {
+            const dt = Math.round(performance.now() - t1);
+            lastBox = box;
+            session.detects += 1;
+            session.detectTimes.push(dt);
+            drawOverlay(box);
+            logEvt("detect",{ roughLocate_ms:dt, finalDetect_ms:dt, box });
+            updateSessionStats();
+            return box;
+          } else {
+            logEvt("error",{ detect:"no_face_after_fallback" });
+            return null;
+          }
+        } catch (e2) {
+          logEvt("error",{ detect_fallback_failed: e2.message || String(e2) });
+          return null;
+        }
+      } else {
+        logEvt("error",{ detect_exception: e.message || String(e) });
+        return null;
       }
     }
-    const lapVar = (varSum2/count) - Math.pow(varSum/count,2);
+  }
 
-    const cx = lastBox.x + lastBox.width/2;
-    const cy = lastBox.y + lastBox.height/2;
+  /* ===== Analysis ===== */
+  function computeAnalysis() {
+    if (!lastBox || !baseBitmap) return null;
+    const w = stage.width, h = stage.height;
+    const b = lastBox;
+    const area_pct = (b.width*b.height)/(w*h)*100;
+    const center = { x: b.x + b.width/2, y: b.y + b.height/2 };
+    const center_offset_pct = {
+      x: ((center.x - w/2) / (w/2)) * 100,
+      y: ((center.y - h/2) / (h/2)) * 100
+    };
+
+    // quick luminance stats
+    const img = ctx.getImageData(0,0,w,h);
+    let sum=0, n=img.data.length/4, vals=[];
+    for (let i=0;i<img.data.length;i+=4){
+      const Y = 0.2126*img.data[i] + 0.7152*img.data[i+1] + 0.0722*img.data[i+2];
+      vals.push(Y); sum += Y;
+    }
+    const mean = sum/n;
+    let v=0; for (let i=0;i<vals.length;i++){ const d=vals[i]-mean; v += d*d; }
+    const contrast = Math.sqrt(v/n);
+
+    // Laplacian variance proxy
+    // (Cheap: sample every few pixels)
+    let sharp=0, m=0;
+    const step=4;
+    for (let y=1;y<h-1;y+=step){
+      for (let x=1;x<w-1;x+=step){
+        const idx = (y*w + x)*4;
+        const c = img.data[idx];
+        const l = img.data[idx-4], r = img.data[idx+4];
+        const t = img.data[idx-4*w], bt = img.data[idx+4*w];
+        const lap = (4*c - l - r - t - bt);
+        sharp += lap*lap; m++;
+      }
+    }
+    const lapVar = m ? sharp/m : 0;
 
     const result = {
       revision: REVISION,
       timestamp: new Date().toISOString(),
       image: { width:w, height:h },
       box: {
-        x: +lastBox.x.toFixed(2),
-        y: +lastBox.y.toFixed(2),
-        width: +lastBox.width.toFixed(2),
-        height: +lastBox.height.toFixed(2),
-        area_pct: +((lastBox.width*lastBox.height)/(w*h)*100).toFixed(4),
-        center: { x:+cx.toFixed(2), y:+cy.toFixed(2) },
-        center_offset_pct: {
-          x: +(((cx - w/2)/w)*100).toFixed(2),
-          y: +(((cy - h/2)/h)*100).toFixed(2)
-        }
+        x: +b.x.toFixed(2), y:+b.y.toFixed(2),
+        width:+b.width.toFixed(2), height:+b.height.toFixed(2),
+        area_pct:+area_pct.toFixed(4),
+        center:{ x:+center.x.toFixed(2), y:+center.y.toFixed(2) },
+        center_offset_pct:{ x:+center_offset_pct.x.toFixed(2), y:+center_offset_pct.y.toFixed(2) }
       },
       lighting: {
-        brightness_mean: +mean.toFixed(3),
-        contrast_stdev: +stdev.toFixed(3)
+        brightness_mean:+mean.toFixed(3),
+        contrast_stdev:+contrast.toFixed(3)
       },
-      sharpness: { laplacian_variance: +lapVar.toFixed(3) },
+      sharpness: { laplacian_variance:+lapVar.toFixed(3) },
       orientation: w>=h ? "landscape" : "portrait",
       tf: {
-        backend: (tf && tf.getBackend && tf.getBackend()) || "—",
-        version: tfVersion
-      }
+        backend: safeBackend(),
+        version: (typeof tfVersion === 'string' && tfVersion) ? tfVersion : (tf?.version_core || tf?.version?.tfjs || "—")
+      },
+      refine: {}
     };
+
     lastAnalysis = result;
     session.analyses += 1;
-    logEvt("analysis",{analysis: result});
     updateSessionStats();
-    $("copySummaryBtn").disabled = false;
-    $("copyJsonBtn").disabled = false;
-    $("exportJsonBtn").disabled = false;
+    renderAnalysis(result);
     return result;
   }
 
-  // ===== UI bindings =====
-  $("zoom").addEventListener("input", e=>{
-    $("zoomLabel").textContent = (+e.target.value).toFixed(2);
-    savePref("zoom");
-    if (baseBitmap) paintBase();
-  });
-  $("bri").addEventListener("input", e=>{
-    $("briLabel").textContent = (+e.target.value).toFixed(2);
-    savePref("bri");
-    if (baseBitmap) paintBase();
-  });
-  $("con").addEventListener("input", e=>{
-    $("conLabel").textContent = (+e.target.value).toFixed(2);
-    savePref("con");
-    if (baseBitmap) paintBase();
-  });
-  $("rot").addEventListener("change", ()=>{ savePref("rot"); if (baseBitmap) paintBase(); });
-  $("autoAnalyze").addEventListener("change", ()=>savePref("autoAnalyze"));
-  $("autoTestOnLoad").addEventListener("change", ()=>savePref("autoTestOnLoad"));
-  $("backendSelect").addEventListener("change", async ()=>{
-    savePref("backendSelect");
-    faceModel = null; // force reload on next detect
-    await initTF();
-  });
+  function renderAnalysis(a) {
+    $("analysisCard").style.display = "";
+    const kv = $("analysisKv");
+    kv.innerHTML = `
+      <div>Revision</div><div>${a.revision}</div>
+      <div>When</div><div>${new Date(a.timestamp).toLocaleString()}</div>
+      <div>Backend</div><div>${a.tf.backend} v${a.tf.version}</div>
+      <div>Image</div><div>${a.image.width}×${a.image.height}</div>
+      <div>Face area</div><div>${a.box.area_pct.toFixed(2)} %</div>
+      <div>Center offset</div><div>X ${a.box.center_offset_pct.x.toFixed(1)} %, Y ${a.box.center_offset_pct.y.toFixed(1)} %</div>
+      <div>Brightness</div><div>${a.lighting.brightness_mean.toFixed(1)}</div>
+      <div>Contrast σ</div><div>${a.lighting.contrast_stdev.toFixed(1)}</div>
+      <div>Sharpness (LapVar)</div><div>${a.sharpness.laplacian_variance.toFixed(0)}</div>
+      <div>Orientation</div><div>${a.orientation}</div>
+    `;
+  }
+
+  /* ===== Sample & file helpers ===== */
+  async function loadSample() {
+    try {
+      const url = "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1024&auto=format&fit=crop";
+      const res = await fetch(url, { cache:"no-store" });
+      if (!res.ok) throw new Error("HTTP "+res.status);
+      const blob = await res.blob();
+      baseBitmap = await decodeBitmapFromBlob(blob);
+      paintBase();
+      $("detectBtn").disabled = false;
+      $("enhanceBtn").disabled = false;
+      logEvt("detect",{ sampleImage:url });
+      return true;
+    } catch (e) {
+      logEvt("error",{ sample_failed:e.message || String(e) });
+      return false;
+    }
+  }
+
+  /* ===== Auto-Test (always frees UI) ===== */
+  function buildAutoTestReport() {
+    const full = getAllLogsText();
+    const start = __autoTestStartIdx || 0;
+    const chunk = full.slice(start);
+
+    const backend = safeBackend();
+    const passes = (chunk.match(/"step":"[^"]+","ok":true/g) || []).length;
+    const errors = (chunk.match(/"type":"error"/g) || []).length;
+    const roughMs = (chunk.match(/"roughLocate_ms":(\d+)/) || [])[1];
+    const finalMs = (chunk.match(/"finalDetect_ms":(\d+)/) || [])[1];
+
+    const summary = `YorN ${REVISION} • TF backend: ${backend} • refine: ${lastAnalysis && lastAnalysis.refine ? 'yes':'no'} • passes: ${passes} • errors: ${errors} • rough: ${roughMs||'—'} ms • final: ${finalMs||'—'} ms`;
+    const lines = chunk.split('\n').filter(l => /"type":"test"|"type":"detect"|"type":"analysis"|"type":"config"|"type":"error"/.test(l));
+    return ['=== YorN Auto‑Test Report ===', summary, '', ...lines, '=== End Report ===',''].join('\n');
+  }
+
+  async function runAutoTest() {
+    if (isBusy) return;
+    setBusy(true);
+    const fullBefore = getAllLogsText();
+    __autoTestStartIdx = fullBefore.length;
+    logEvt("test",{step:"begin",rev:REVISION});
+
+    try {
+      const okS = await loadSample();
+      logEvt("test",{step:"sample",ok:!!okS});
+      if (!okS) throw new Error("sample_failed");
+
+      const box = await detectOnce();
+      logEvt("test",{step:"detect",ok:!!box});
+      if (!box) throw new Error("detect_failed");
+
+      const a = computeAnalysis();
+      logEvt("test",{step:"analysis",ok:!!a});
+
+      const ok = !!(baseBitmap && lastBox && lastAnalysis);
+      const badge = $("readinessBadge");
+      if (badge) {
+        badge.style.display='inline-block';
+        badge.className = ok ? 'badge ready' : 'badge blocked';
+        badge.textContent = ok ? 'READY' : 'BLOCKED';
+      }
+      logEvt("test",{step:"summary",ok});
+      $("copyTestBtn").disabled = false;
+      setProgress('', 'Auto‑Test complete');
+      setTimeout(()=>setProgress('',''), 1200);
+    } catch(e) {
+      logEvt("error",{ autoTest: e.message || String(e) });
+      $("copyTestBtn").disabled = false;
+      setProgress('', 'Auto‑Test failed');
+      setTimeout(()=>setProgress('',''), 1500);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /* ===== UI binds ===== */
+  $("zoom").addEventListener("input", (e)=>{ $("zoomLabel").textContent = (+e.target.value).toFixed(2); paintBase(); });
+  $("bri").addEventListener("input", (e)=>{ $("briLabel").textContent = (+e.target.value).toFixed(2); paintBase(); });
+  $("con").addEventListener("input", (e)=>{ $("conLabel").textContent = (+e.target.value).toFixed(2); paintBase(); });
+  $("rot").addEventListener("change", paintBase);
 
   $("enhanceBtn").addEventListener("click", ()=>{
-    const z=$("zoom"); z.value=Math.max(+z.value,1.5); $("zoomLabel").textContent=(+z.value).toFixed(2);
-    const b=$("bri"); b.value=Math.max(+b.value,1.18); $("briLabel").textContent=(+b.value).toFixed(2);
-    const c=$("con"); c.value=Math.max(+c.value,1.26); $("conLabel").textContent=(+c.value).toFixed(2);
-    savePref("zoom"); savePref("bri"); savePref("con");
-    if(baseBitmap) paintBase();
+    const z=$("zoom"); z.value = Math.max(+z.value, 1.5); $("zoomLabel").textContent=(+z.value).toFixed(2);
+    const b=$("bri"); b.value = Math.max(+b.value, 1.18); $("briLabel").textContent=(+b.value).toFixed(2);
+    const c=$("con"); c.value = Math.max(+c.value, 1.25); $("conLabel").textContent=(+c.value).toFixed(2);
+    paintBase();
+    detectOnce();
+    logEvt("config",{ enhance:"applied", zoom:+z.value, bri:+b.value, con:+c.value });
   });
 
   $("detectBtn").addEventListener("click", async ()=>{
-    if (isBusy) return;
     setBusy(true);
-    const t0 = performance.now();
-    await detectOnce();
-    setBusy(false);
-    if (lastBox && $("autoAnalyze").checked) {
-      $("startAnalysisBtn").click();
-    } else if (!lastBox) {
-      logEvt("error",{hint:"Try Enhance & Retry or adjust zoom/contrast."});
-    }
-  });
-
-  $("reanalyzeBtn").addEventListener("click", ()=>{
-    if (!lastBox) return;
-    computeAnalysis();
+    try { await detectOnce(); } finally { setBusy(false); }
   });
 
   $("startAnalysisBtn").addEventListener("click", ()=>{
-    if (isBusy || !lastBox) return;
-    computeAnalysis();
+    logEvt("analysis",{ analysisRequested:true, mode:"light" });
+    const a = computeAnalysis();
+    if (a) setProgress('', 'Analysis ready');
   });
 
-  $("fileInput").addEventListener("change", setFile);
-  $("sampleBtn").addEventListener("click", async ()=>{
-    setBusy(true);
-    const ok = await loadSample();
-    setBusy(false);
-    if (!ok) return;
-    if ($("autoAnalyze").checked) {
-      $("detectBtn").click();
+  $("resetBtn").addEventListener("click", ()=>{
+    baseBitmap = null; faceModel = null; lastBox = null; lastAnalysis = null;
+    session.detects = 0; session.detectTimes = []; session.analyses = 0;
+    ctx.clearRect(0,0,stage.width,stage.height);
+    $("detectBtn").disabled = true;
+    $("enhanceBtn").disabled = true;
+    $("startAnalysisBtn").disabled = true;
+    $("analysisCard").style.display = "none";
+    $("readinessBadge").style.display = "none";
+    setProgress('','');
+    updateSessionStats();
+    logEvt("config",{ reset:true });
+  });
+
+  $("fileInput").addEventListener("change", async ()=>{
+    if (!$("fileInput").files.length) return;
+    const f = $("fileInput").files[0];
+    try {
+      baseBitmap = await decodeBitmapFromBlob(f);
+      paintBase();
+      $("detectBtn").disabled = false;
+      $("enhanceBtn").disabled = false;
+      $("startAnalysisBtn").disabled = false;
+      logEvt("detect",{ file:f.name, w:baseBitmap.width, h:baseBitmap.height });
+    } catch (e) {
+      logEvt("error",{ decode_failed:e.message || String(e) });
     }
   });
 
-  $("copyDiagnosticsBtn").addEventListener("click", async ()=>{
-    const res = await copyTextRobust(getAllLogsText());
-    logEvt(res.ok ? "config" : "error", { copyDiagnostics: !!res.ok, via: res.via, err: res.err });
-    $("progressText").textContent = res.ok ? "Diagnostics copied" : "Copy failed";
-    setTimeout(()=>{$("progressText").textContent="";},1200);
+  $("sampleBtn").addEventListener("click", async ()=>{ await loadSample(); $("startAnalysisBtn").disabled = false; });
+
+  $("autoTestBtn").addEventListener("click", runAutoTest);
+
+  $("copyTestBtn").addEventListener("click", async ()=>{
+    try {
+      const report = buildAutoTestReport();
+      const res = await copyTextRobust(report);
+      if (res.ok) {
+        logEvt("config",{ copiedAutoTestReport:true, via:res.via, length:report.length });
+        setProgress('', 'Test result copied');
+        setTimeout(()=>setProgress('',''), 1200);
+      } else {
+        logEvt("error",{ copyAutoTestReportError: res.err || 'unknown', via:res.via });
+      }
+    } catch(e) {
+      logEvt("error",{ copyAutoTestReportException: e.message || String(e) });
+    }
+  });
+
+  $("copyDiagBtn").addEventListener("click", async ()=>{
+    const txt = getAllLogsText();
+    const res = await copyTextRobust(txt);
+    if (res.ok) {
+      setProgress('', 'Diagnostics copied');
+      setTimeout(()=>setProgress('',''), 1200);
+      logEvt("config",{ copyDiagnostics:true });
+    } else {
+      logEvt("error",{ copyDiagnosticsFailed:res.err || 'unknown' });
+    }
   });
 
   $("clearLogsBtn").addEventListener("click", ()=>{
@@ -610,9 +621,11 @@
   $("copySummaryBtn").addEventListener("click", async ()=>{
     if (!lastAnalysis) return;
     const a = lastAnalysis;
+    const tfb = (a.tf && a.tf.backend) ? a.tf.backend : safeBackend();
+    const tfv = (a.tf && a.tf.version) ? a.tf.version : (tf?.version_core || tf?.version?.tfjs || "—");
     const lines = [
       `YorN ${a.revision} — ${new Date(a.timestamp).toLocaleString()}`,
-      `Backend: ${a.tf.backend} v${a.tf.version}`,
+      `Backend: ${tfb} v${tfv}`,
       `Image: ${a.image.width}×${a.image.height}, Face area: ${a.box.area_pct.toFixed(2)}%`,
       `Center offset: X ${a.box.center_offset_pct.x.toFixed(1)}%, Y ${a.box.center_offset_pct.y.toFixed(1)}%`,
       `Brightness: ${a.lighting.brightness_mean.toFixed(1)}, Contrast σ: ${a.lighting.contrast_stdev.toFixed(1)}, Sharpness (LapVar): ${a.sharpness.laplacian_variance.toFixed(0)}`
@@ -631,99 +644,30 @@
 
   $("exportJsonBtn").addEventListener("click", ()=>{
     if (!lastAnalysis) return;
-    const blob = new Blob([JSON.stringify(lastAnalysis,null,2)],{type:"application/json"});
+    const blob = new Blob([JSON.stringify(lastAnalysis,null,2)], {type:"application/json"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `yorn-analysis-${Date.now()}.json`;
+    a.href = url;
+    a.download = `yorn-analysis-${Date.now()}.json`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   });
 
-  $("resetBtn").addEventListener("click", ()=>{
-    baseBitmap = null; lastBox = null; lastAnalysis = null;
-    session = { detects:0, analyses:0, detectTimes:[] };
-    canvas.width = 1024; canvas.height = 683; ctx.clearRect(0,0,canvas.width,canvas.height);
-    $("detectBtn").disabled = true; $("startAnalysisBtn").disabled = true; $("reanalyzeBtn").disabled = true;
-    $("copySummaryBtn").disabled = true; $("copyJsonBtn").disabled = true; $("exportJsonBtn").disabled = true;
-    updateSessionStats();
-    logEvt("config",{reset:true});
-  });
-
-  // ===== Auto Test =====
-  let __autoTestStartIdx = 0;
-  function buildAutoTestReport() {
-    const full = getAllLogsText();
-    const chunk = full.slice(__autoTestStartIdx);
-    const backendMatch = full.match(/"backend":"([^"]+)"/) || [];
-    const passes = (chunk.match(/"step":"[^"]+","ok":true/g) || []).length;
-    const errors = (chunk.match(/"type":"error"/g) || []).length;
-    const roughMs = (chunk.match(/"roughLocate_ms":(\d+)/) || [])[1];
-    const finalMs = (chunk.match(/"finalDetect_ms":(\d+)/) || [])[1];
-    const summary = `YorN ${REVISION} • TF backend: ${backendMatch[1]||"—"} • refine: ${lastAnalysis && lastAnalysis.refine ? 'yes':'no'} • passes: ${passes} • errors: ${errors} • rough: ${roughMs||'—'} ms • final: ${finalMs||'—'} ms`;
-    const lines = chunk.split('\n').filter(l => /"type":"test"|"type":"detect"|"type":"analysis"|"type":"config"|"type":"error"/.test(l));
-    return ['=== YorN Auto‑Test Report ===', summary, '', ...lines, '=== End Report ===',''].join('\n');
-  }
-
-  $("autoTestBtn").addEventListener("click", runAutoTest);
-  $("copyTestBtn").addEventListener("click", async ()=>{
-    const report = buildAutoTestReport();
-    const res = await copyTextRobust(report);
-    $("progressText").textContent = res.ok ? "Test result copied" : "Copy failed";
-    setTimeout(()=>{$("progressText").textContent="";},1200);
-  });
-
-  async function runAutoTest() {
-    if (isBusy) return;
-    setBusy(true);
-    const fullBefore = getAllLogsText();
-    __autoTestStartIdx = fullBefore.length;
-    logEvt("test",{step:"begin",rev:REVISION});
-    try {
-      // sample
-      const okS = await loadSample();
-      logEvt("test",{step:"sample",ok:!!okS});
-      if (!okS) throw new Error("sample failed");
-      // detect
-      const box = await detectOnce();
-      logEvt("test",{step:"detect",ok:!!box});
-      if (!box) throw new Error("no detect");
-      // analysis
-      const a = computeAnalysis();
-      logEvt("test",{step:"analysis",ok:!!a});
-      // readiness badge
-      const ok = !!(baseBitmap && lastBox && lastAnalysis);
-      const badge = $("readinessBadge");
-      if (badge) {
-        badge.style.display='inline-block';
-        badge.className = ok ? 'badge ready' : 'badge blocked';
-        badge.textContent = ok ? 'READY' : 'BLOCKED';
-      }
-      logEvt("test",{step:"summary",ok});
-      $("copyTestBtn").disabled = false;
-    } catch(e) {
-      logEvt("error",{autoTest:e.message||String(e)});
-    }
-    setBusy(false);
-  }
-
-  // ===== Boot =====
+  /* ===== Boot ===== */
   window.addEventListener("load", async ()=>{
-    loadPrefs();
-    // reflect labels
-    $("zoomLabel").textContent=(+$("zoom").value).toFixed(2);
-    $("briLabel").textContent=(+$("bri").value).toFixed(2);
-    $("conLabel").textContent=(+$("con").value).toFixed(2);
-
-    // immediate TF init (respects persisted backend)
-    await initTF();
-    updateSessionStats();
-    logEvt("config",{boot:"dom-ready",rev:REVISION});
-    logEvt("config",{boot:"complete"});
-
-    if ($("autoTestOnLoad").checked) {
-      runAutoTest();
+    $("rev").textContent = REVISION;
+    try {
+      await initTF();
+      logEvt("config",{ tf_ready:true, backend:safeBackend(), tf_version: tfVersion });
+      updateTfBadges();
+      logEvt("config",{ boot:"dom-ready", rev:REVISION });
+      logEvt("config",{ boot:"complete" });
+    } catch (e) {
+      logEvt("error",{ tf_init: e.message || String(e) });
     }
   });
+
+})();
 </script>
 </body>
 </html>
