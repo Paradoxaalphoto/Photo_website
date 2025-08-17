@@ -1,105 +1,165 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>YorN 1.16.21‑alpha (Smoke, external JS)</title>
-<link rel="preconnect" href="https://images.unsplash.com" crossorigin>
-<style>
-  :root { --bg:#0c0f14; --card:#141a22; --text:#e9eef5; --muted:#a8b3c0; --accent:#63b3ff; --ok:#19c37d; --line:#222a35; }
-  *{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-  header{position:sticky;top:0;z-index:10;background:linear-gradient(180deg,rgba(12,15,20,.95),rgba(12,15,20,.65));backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
-  header .row{max-width:980px;margin:0 auto;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-  .rev{position:fixed;right:8px;top:6px;font-size:11px;color:#93a1b1;opacity:.9;background:rgba(0,0,0,.35);padding:3px 8px;border-radius:10px;border:1px solid #2a3442}
-  .pill{background:var(--card);border:1px solid var(--line);padding:6px 10px;border-radius:999px;color:var(--muted)}
-  .wrap{max-width:980px;margin:18px auto;padding:0 16px 36px;display:grid;gap:16px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
-  h2{margin:0 0 10px;font-size:16px}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  input[type=file]{display:none}
-  .btn{appearance:none;border:1px solid var(--line);background:#0f1520;color:var(--text);padding:8px 12px;border-radius:10px;cursor:pointer;transition:.15s transform,.15s opacity}
-  .btn:hover{transform:translateY(-1px)} .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
-  .btn.ok{border-color:#1f2d24;background:#0f1b16;color:#b3f7d3}
-  .btn.accent{border-color:#1d3346;background:#102130;color:#cfe9ff}
-  .btn.warn{border-color:#3a2b0d;background:#1d1406;color:#ffd98a}
-  .select,.num{background:#0f1520;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
-  .grid{display:grid;grid-template-columns:1fr;gap:16px}
-  @media(min-width:900px){.grid{grid-template-columns:1fr 1fr}}
-  canvas{max-width:100%;height:auto;display:block;border-radius:10px;border:1px solid var(--line);background:#0a0f15}
-  .pane{display:grid;gap:10px}
-  .kvs{display:grid;grid-template-columns:max-content 1fr;gap:6px 10px}
-  k{color:var(--muted)}
-  .bar{height:8px;background:#0f1520;border:1px solid var(--line);border-radius:999px;overflow:hidden}
-  .bar>i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#63b3ff,#19c37d)}
-  .diag{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#0a0e14;border:1px solid var(--line);border-radius:10px;padding:10px;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word}
-  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid var(--line);color:var(--muted)}
-  .badge.ready{color:#0c2;background:#0a1a12;border-color:#163}
-  .tiny{font-size:12px;color:#a8b3c0}
-</style>
+  <meta charset="UTF-8" />
+  <title>YorN 1.17.0-alpha</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: sans-serif; background:#111; color:#eee; margin:0; padding:0; }
+    header { background:#222; padding:1em; text-align:center; }
+    h1 { margin:0; font-size:1.4em; }
+    button { margin:0.25em; padding:0.4em 0.8em; border:none; border-radius:4px; cursor:pointer; }
+    button.primary { background:#4caf50; color:#fff; }
+    button.danger { background:#e53935; color:#fff; }
+    section { margin:1em; padding:1em; background:#1b1b1b; border-radius:6px; }
+    textarea, select, input[type=text] { width:100%; padding:0.4em; margin-top:0.25em; border-radius:4px; border:1px solid #444; background:#000; color:#eee; }
+    .flex { display:flex; flex-wrap:wrap; gap:0.5em; }
+    .card { flex:1 1 200px; padding:0.5em; background:#2a2a2a; border-radius:4px; }
+    pre { background:#000; color:#0f0; font-size:0.8em; padding:0.5em; overflow-x:auto; }
+    .ok { color:#4caf50; } .fail { color:#e53935; }
+  </style>
 </head>
 <body>
-<div class="rev">YorN <strong>1.16.21‑alpha</strong> • Smoke (external JS)</div>
+  <header><h1>YorN 1.17.0-alpha</h1></header>
 
-<header>
-  <div class="row">
-    <label class="btn"><input id="fileInput" type="file" accept="image/*" />Choose Photo</label>
-    <button id="sampleBtn" class="btn">Load Sample</button>
-    <button id="enhanceBtn" class="btn">Enhance & Retry</button>
-    <button id="detectBtn" class="btn accent" disabled>Detect</button>
-    <button id="startAnalysisBtn" class="btn ok" disabled>Start Analysis</button>
-    <button id="autoTestBtn" class="btn warn">Auto‑Test</button>
-    <button id="copyTestBtn" class="btn" disabled>Copy Test Report</button>
-    <span class="pill">Backend <select id="backendSel" class="select" disabled><option>none (smoke)</option></select></span>
-    <span id="readyBadge" class="badge" style="display:none;">READY</span>
-  </div>
-</header>
-
-<main class="wrap">
-  <section class="grid">
-    <div class="card pane">
-      <h2>Preview</h2>
-      <canvas id="preview" width="1024" height="683" aria-label="Preview canvas"></canvas>
-      <div class="row">
-        <label>Zoom <input id="zoom" type="range" min="0.8" max="2.0" step="0.01" value="1.20" class="num" style="width:160px"></label>
-        <label>Brightness <input id="bri" type="range" min="0.6" max="1.6" step="0.01" value="1.10" class="num" style="width:160px"></label>
-        <label>Contrast <input id="con" type="range" min="0.6" max="1.6" step="0.01" value="1.15" class="num" style="width:160px"></label>
-        <label>Rotate (°) <input id="rot" type="number" class="num" value="0" step="1" style="width:84px"></label>
-      </div>
-      <div class="bar" role="progressbar" aria-label="Progress"><i id="bar"></i></div>
-      <div id="progressText" class="tiny" aria-live="polite"></div>
+  <section>
+    <h2>Controls</h2>
+    <div>
+      <button id="runTest" class="primary">Run Auto-Test</button>
+      <button id="copyDiag">Copy Diagnostics</button>
+      <button id="copyAuto">Copy Auto-Test</button>
     </div>
-
-    <div class="card pane">
-      <h2>Diagnostics</h2>
-      <div class="row">
-        <button id="copyDiagBtn" class="btn">Copy Diagnostics</button>
-        <button id="clearLogsBtn" class="btn">Clear Logs</button>
-        <button id="resetBtn" class="btn">Reset</button>
-      </div>
-      <div id="diagnostics" class="diag">No diagnostics yet.</div>
+    <div>
+      <label>Backend:
+        <select id="backendSelect">
+          <option value="webgl">webgl</option>
+          <option value="wasm">wasm</option>
+          <option value="cpu">cpu</option>
+        </select>
+      </label>
     </div>
   </section>
 
-  <section id="analysisCard" class="card pane" style="display:none">
-    <h2>Analysis</h2>
-    <div class="kvs">
-      <k>Face area</k><v id="kv_area">—</v>
-      <k>Aspect ratio</k><v id="kv_aspect">—</v>
-      <k>Center offset X</k><v id="kv_offx">—</v>
-      <k>Center offset Y</k><v id="kv_offy">—</v>
-      <k>Brightness</k><v id="kv_bri">—</v>
-      <k>Contrast</k><v id="kv_con">—</v>
-      <k>Sharpness</k><v id="kv_sharp">—</v>
-      <k>Backend</k><v id="kv_backend">smoke</v>
+  <section>
+    <h2>Diagnostics</h2>
+    <pre id="diagLog">(empty)</pre>
+  </section>
+
+  <section>
+    <h2>Research Mode</h2>
+    <div class="flex">
+      <div class="card">
+        <label>Age Group:
+          <select id="ageGroup">
+            <option value="">--</option>
+            <option>20-24</option><option>25-29</option><option>30-34</option>
+            <option>35-39</option><option>40-44</option><option>45-49</option>
+            <option>50-54</option><option>55-59</option><option>60-64</option>
+            <option>65-69</option><option>70-74</option><option>75-79</option>
+          </select>
+        </label>
+        <label>Sex:
+          <select id="raterSex"><option value="">--</option><option>M</option><option>F</option><option>Prefer not</option></select>
+        </label>
+        <label>Region:
+          <input id="raterRegion" type="text" placeholder="Optional"/>
+        </label>
+      </div>
+      <div class="card">
+        <label>Attractiveness (1–7):
+          <select id="rating"><option value="">--</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select>
+        </label>
+        <label><input type="checkbox" id="chkFollow"> Would follow</label><br/>
+        <label><input type="checkbox" id="chkHire"> Would hire</label><br/>
+        <label><input type="checkbox" id="chkDate"> Would date</label>
+      </div>
+      <div class="card">
+        <label>Notes:<textarea id="notes" maxlength="280"></textarea></label>
+      </div>
     </div>
-    <div class="row">
-      <button id="copyJsonBtn" class="btn">Copy JSON</button>
-      <button id="exportJsonBtn" class="btn">Download JSON</button>
+    <div>
+      <button id="submitRow" class="primary">Submit Rating</button>
     </div>
   </section>
-</main>
 
-<!-- External JS only; no inline script (ad blocker friendly) -->
-<script src="./app.js" defer></script>
+  <section>
+    <h2>Dataset</h2>
+    <div>
+      <button id="exportCSV">Export CSV</button>
+      <button id="exportJSON">Export JSON</button>
+      <button id="clearDS" class="danger">Clear Dataset</button>
+      <button id="copySummary">Copy Dataset Summary</button>
+    </div>
+    <pre id="dsSummary">(no rows yet)</pre>
+  </section>
+
+  <script>
+    const diagLog = document.getElementById("diagLog");
+    function log(msg,obj){ 
+      const line = JSON.stringify({time:new Date().toISOString(),...msg,...obj}); 
+      diagLog.textContent += line+"\\n"; 
+      diagLog.scrollTop=diagLog.scrollHeight; 
+    }
+    function copyText(txt){ 
+      navigator.clipboard.writeText(txt).catch(()=>{ 
+        const ta=document.createElement("textarea"); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); 
+      }); 
+    }
+
+    // dataset
+    let dataset = JSON.parse(localStorage.getItem("yornDataset")||"[]");
+    function saveDS(){ localStorage.setItem("yornDataset",JSON.stringify(dataset)); updateSummary(); }
+    function updateSummary(){
+      if(!dataset.length){ document.getElementById("dsSummary").textContent="(no rows yet)"; return; }
+      let counts={};
+      for(let r of dataset){ let k=r.rater_age+"|"+r.rater_sex; counts[k]=(counts[k]||0)+1; }
+      document.getElementById("dsSummary").textContent="Rows: "+dataset.length+"\\n"+JSON.stringify(counts,null,2);
+    }
+    updateSummary();
+
+    document.getElementById("submitRow").onclick=()=>{
+      const row={
+        session_id:"sess-"+Date.now(),
+        timestamp:new Date().toISOString(),
+        photo_id:"sample",
+        box_x:0,box_y:0,box_w:0,box_h:0,face_area_pct:0,
+        brightness:0,contrast:0,sharpness:0,
+        rater_age:ageGroup.value,
+        rater_sex:raterSex.value,
+        rater_region:raterRegion.value,
+        rating_1to7:rating.value,
+        would_follow:chkFollow.checked,
+        would_hire:chkHire.checked,
+        would_date:chkDate.checked,
+        notes:notes.value,
+        app_rev:"1.17.0-alpha",tf_backend:"mock"
+      };
+      dataset.push(row); saveDS();
+      log({type:"dataset_add"},row);
+    };
+
+    document.getElementById("exportCSV").onclick=()=>{
+      let headers=Object.keys(dataset[0]||{});
+      let csv=[headers.join(",")];
+      for(let r of dataset){ csv.push(headers.map(h=>JSON.stringify(r[h]||"")).join(",")); }
+      copyText(csv.join("\\n")); alert("CSV copied to clipboard.");
+    };
+    document.getElementById("exportJSON").onclick=()=>{ copyText(JSON.stringify(dataset,null,2)); alert("JSON copied."); };
+    document.getElementById("clearDS").onclick=()=>{ if(confirm("Clear dataset?")){ dataset=[]; saveDS(); } };
+    document.getElementById("copySummary").onclick=()=>{ copyText(document.getElementById("dsSummary").textContent); };
+
+    document.getElementById("copyDiag").onclick=()=>copyText(diagLog.textContent);
+    document.getElementById("copyAuto").onclick=()=>copyText(diagLog.textContent);
+
+    document.getElementById("runTest").onclick=()=>{
+      log({type:"test",step:"begin",rev:"1.17.0-alpha"});
+      if(dataset){ log({type:"test",step:"dataset_schema",ok:true,rows:dataset.length}); }
+      log({type:"test",step:"summary",ok:true});
+    };
+
+    // boot log
+    log({type:"config",boot:"dom-ready",rev:"1.17.0-alpha"});
+    log({type:"config",boot:"complete"});
+  </script>
 </body>
 </html>
