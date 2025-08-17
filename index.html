@@ -5,14 +5,34 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"/>
   <title>YorN 1.18.0-alpha</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    /* tiny inline styles for the diagnostics toolbar */
+    .diag-wrap { margin-top: 8px; background:#0f141c; border:1px solid #223042; border-radius:10px; }
+    .diag-toolbar { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid #223042; }
+    .diag-toolbar .title { font-weight:600; font-size:14px; color:#e7ecf3; }
+    .diag-toolbar .actions { display:flex; gap:8px; }
+    .diag-toolbar button { background:#1a2330; color:#e7ecf3; border:1px solid #273348; border-radius:8px; padding:6px 10px; cursor:pointer; font-size:12px; }
+    .diag-log { white-space:pre-wrap; word-break:break-word; max-height:240px; overflow:auto; padding:10px; color:#cfe1ff; }
+    .pin-on { box-shadow:0 0 0 1px #2ecc71 inset; }
+  </style>
 </head>
 <body>
   <div class="wrap">
     <header>
       <h1>YorN <span id="rev"></span></h1>
     </header>
-    <!-- full layout with cards, controls, diagnostics, analysis, etc. -->
-    <pre id="diagnostics">No diagnostics yet.</pre>
+
+    <!-- Diagnostics with Pin toggle -->
+    <section class="diag-wrap">
+      <div class="diag-toolbar">
+        <div class="title">Diagnostics</div>
+        <div class="actions">
+          <button id="pinBtn" type="button" title="Auto-follow new logs">Pin ↓</button>
+          <button id="clearBtn" type="button" title="Clear diagnostics">Clear</button>
+        </div>
+      </div>
+      <pre id="diagnostics" class="diag-log">No diagnostics yet.</pre>
+    </section>
   </div>
 
   <!-- TF + Models -->
