@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>YorN 1.16.17‑alpha</title>
+<title>YorN 1.16.18‑alpha</title>
 <style>
   :root {
-    --bg: #0c0f14; --card:#141a22; --text:#e9eef5; --muted:#a8b3c0;
-    --accent:#63b3ff; --ok:#19c37d; --warn:#fabb2d; --bad:#ff5d5d; --line:#222a35;
+    --bg:#0c0f14; --card:#141a22; --text:#e9eef5; --muted:#a8b3c0;
+    --accent:#63b3ff; --ok:#19c37d; --line:#222a35;
   }
-  *{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  *{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
   header{position:sticky;top:0;z-index:10;background:linear-gradient(180deg,rgba(12,15,20,.95),rgba(12,15,20,.65));backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
   header .row{max-width:980px;margin:0 auto;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
   .rev{position:fixed;right:8px;top:6px;font-size:11px;color:#93a1b1;opacity:.9;background:rgba(0,0,0,.35);padding:3px 8px;border-radius:10px;border:1px solid #2a3442}
@@ -27,7 +27,7 @@
   .select,.num{background:#0f1520;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
   .grid{display:grid;grid-template-columns:1fr;gap:16px}
   @media(min-width:900px){.grid{grid-template-columns:1fr 1fr}}
-  canvas,img{max-width:100%;height:auto;display:block;border-radius:10px;border:1px solid var(--line);background:#0a0f15}
+  canvas{max-width:100%;height:auto;display:block;border-radius:10px;border:1px solid var(--line);background:#0a0f15}
   .pane{display:grid;gap:10px}
   .kvs{display:grid;grid-template-columns:max-content 1fr;gap:6px 10px}
   k{color:var(--muted)}
@@ -36,11 +36,11 @@
   .diag{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#0a0e14;border:1px solid var(--line);border-radius:10px;padding:10px;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word}
   .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid var(--line);color:var(--muted)}
   .badge.ready{color:#0c2;background:#0a1a12;border-color:#163}
-  .muted{color:var(--muted)} .tiny{font-size:12px;color:var(--muted)}
+  .tiny{font-size:12px;color:#a8b3c0}
 </style>
 </head>
 <body>
-<div class="rev">YorN <strong>1.16.17‑alpha</strong></div>
+<div class="rev">YorN <strong>1.16.18‑alpha</strong></div>
 
 <header>
   <div class="row">
@@ -107,151 +107,151 @@
   </section>
 </main>
 
-<!-- Frameworks -->
+<!-- Frameworks (order matters; keep these before the app script) -->
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@3.21.0/dist/tf-backend-webgl.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-cpu@3.21.0/dist/tf-backend-cpu.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
 
 <script>
 (() => {
-  const REVISION = '1.16.17-alpha';
-  const BLAZE_SIZE = 128; // required by BlazeFace UMD
+  const REVISION='1.16.18-alpha';
+  const BLAZE_SIZE=128;
 
-  const $ = id => document.getElementById(id);
-  const sleep = ms => new Promise(r=>setTimeout(r,ms));
+  const $=id=>document.getElementById(id);
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
-  function logEvt(type, obj) {
-    const line = \`[\${new Date().toISOString()}] \${JSON.stringify({ type, ...obj })}\`;
-    const box = $('diagnostics');
-    if (box.textContent.trim() === 'No diagnostics yet.') box.textContent = '';
-    box.textContent += (box.textContent ? '\\n' : '') + line;
-    box.scrollTop = box.scrollHeight;
+  function logEvt(type,obj){
+    const line=\`[\${new Date().toISOString()}] \${JSON.stringify({type,...obj})}\`;
+    const box=$('diagnostics'); if(box.textContent.trim()==='No diagnostics yet.') box.textContent='';
+    box.textContent += (box.textContent?'\n':'') + line; box.scrollTop=box.scrollHeight;
   }
-  function setProgress(pct, text){ $('bar').style.width=Math.max(0,Math.min(100,pct))+'%'; $('progressText').textContent=text||''; }
+  function setProgress(p,t){ $('bar').style.width=Math.max(0,Math.min(100,p))+'%'; $('progressText').textContent=t||''; }
 
   let baseSource=null, model=null, lastBox=null, lastAnalysis=null;
 
   function get2d(w,h){ const c=$('preview'); c.width=w; c.height=h; return c.getContext('2d',{alpha:false,desynchronized:true}); }
-
   function composePreview(){
     if(!baseSource) return null;
     const z=+$('zoom').value||1, rot=(+$('rot').value||0)*Math.PI/180, bri=+$('bri').value||1, con=+$('con').value||1;
     const sw=baseSource.width, sh=baseSource.height;
     const dw=Math.round(Math.min(1024, sw*z)), dh=Math.round(dw*(sh/sw));
     const ctx=get2d(dw,dh); ctx.save(); ctx.filter=\`brightness(\${bri}) contrast(\${con})\`;
-    if(rot!==0){ ctx.translate(dw/2,dh/2); ctx.rotate(rot); const fit=Math.min(dw/sw, dh/sh); const rw=sw*fit, rh=sh*fit; ctx.drawImage(baseSource, -rw/2, -rh/2, rw, rh); }
-    else { ctx.drawImage(baseSource,0,0,dw,dh); }
+    if(rot!==0){ ctx.translate(dw/2,dh/2); ctx.rotate(rot); const fit=Math.min(dw/sw, dh/sh); const rw=sw*fit, rh=sh*fit; ctx.drawImage(baseSource,-rw/2,-rh/2,rw,rh); }
+    else ctx.drawImage(baseSource,0,0,dw,dh);
     ctx.restore(); return ctx.canvas;
   }
+  function drawBoxOn(canvas,box,color='#63b3ff'){ const ctx=canvas.getContext('2d'); ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=Math.max(2,canvas.width/256); ctx.shadowColor='rgba(0,0,0,.7)'; ctx.shadowBlur=6; ctx.strokeRect(box.x,box.y,box.width,box.height); ctx.restore(); }
 
-  function drawBoxOn(canvas, box, color='#63b3ff'){
-    const ctx=canvas.getContext('2d'); ctx.save();
-    ctx.strokeStyle=color; ctx.lineWidth=Math.max(2, canvas.width/256); ctx.shadowColor='rgba(0,0,0,.7)'; ctx.shadowBlur=6;
-    ctx.strokeRect(box.x, box.y, box.width, box.height); ctx.restore();
-  }
-
-  async function setBackendPreferred(){
-    const sel=$('backendSel'); const wanted=localStorage.getItem('yorn_backend')||sel.value||'wasm';
+  // --- Backend registration & selection ---
+  async function registerWasmPath(){
     try{
-      await tf.setBackend(wanted); await tf.ready(); localStorage.setItem('yorn_backend',wanted); sel.value=wanted;
+      // ensure WASM binaries path is set (tfjs 3.x)
+      if(tf?.wasm?.setWasmPaths){
+        tf.wasm.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/wasm/');
+        logEvt('config',{wasm_path:'set'});
+      }
+    }catch(e){ logEvt('error',{wasm_path:e.message||String(e)}); }
+  }
+  async function setBackendPreferred(){
+    const sel=$('backendSel');
+    const wanted=localStorage.getItem('yorn_backend')||sel.value||'wasm';
+    try{
+      if(wanted==='wasm') await registerWasmPath();
+      await tf.setBackend(wanted);
+      await tf.ready();
+      localStorage.setItem('yorn_backend',wanted);
+      sel.value=wanted;
       logEvt('config',{tf:'ready',backend:tf.getBackend(),tf_version:tf.version_core||tf.version?.tfjs});
       await warmup();
     }catch(e){
-      logEvt('error',{backend_set_failed:e.message||String(e)});
-      for(const b of ['wasm','webgl','cpu']){ if(b===wanted) continue;
-        try{ await tf.setBackend(b); await tf.ready(); sel.value=b; localStorage.setItem('yorn_backend',b);
-          logEvt('config',{tf:'ready',backend:tf.getBackend(),tf_version:tf.version_core||tf.version?.tfjs,fallback_from:wanted}); await warmup(); break;
+      logEvt('error',{backend_set_failed:e.message||String(e),wanted});
+      for(const b of ['webgl','wasm','cpu']){
+        if(b===wanted) continue;
+        try{
+          if(b==='wasm') await registerWasmPath();
+          await tf.setBackend(b); await tf.ready();
+          sel.value=b; localStorage.setItem('yorn_backend',b);
+          logEvt('config',{tf:'ready',backend:tf.getBackend(),tf_version:tf.version_core||tf.version?.tfjs,fallback_from:wanted});
+          await warmup(); break;
         }catch(_){}
       }
     }
   }
   async function warmup(){
-    try{ await tf.tidy(()=>{ const a=tf.randomUniform([1,32,32,3]); const k=tf.ones([3,3,3,8]); const c=tf.conv2d(a,k,1,'same'); return c.mean().dataSync(); });
+    try{
+      await tf.tidy(()=>{ const a=tf.randomUniform([1,32,32,3]); const k=tf.ones([3,3,3,8]); const c=tf.conv2d(a,k,1,'same'); return c.mean().dataSync(); });
       logEvt('config',{warmup:'ok',backend:tf.getBackend()});
     }catch(e){ logEvt('error',{warmup:e.message||String(e)}); }
   }
-
   $('backendSel').addEventListener('change', async ()=>{ localStorage.setItem('yorn_backend',$('backendSel').value); await setBackendPreferred(); });
 
   async function ensureModel(){
     if(model) return model;
     if(!window.blazeface){ logEvt('error',{model:'blazeface UMD missing'}); throw new Error('BlazeFace not available'); }
-    // load with defaults (internally 128x128)
-    model = await blazeface.load({ maxFaces:1 }); 
+    model = await blazeface.load({maxFaces:1}); 
     logEvt('detect',{blazefaceReady:true});
     return model;
   }
 
-  // Create a 128x128 "cover" square and return mapping back to src
-  function makeSquareCover(srcCanvas, size){
+  function makeSquareCover(srcCanvas,size){
     const sq=document.createElement('canvas'); sq.width=size; sq.height=size;
     const ctx=sq.getContext('2d');
     const sw=srcCanvas.width, sh=srcCanvas.height;
-    // cover: scale so that the shorter side fits size, then crop center
     const scale=Math.max(size/sw, size/sh);
     const dw=sw*scale, dh=sh*scale;
     const dx=(size-dw)/2, dy=(size-dh)/2;
-    ctx.drawImage(srcCanvas, dx, dy, dw, dh);
-    // mapping from square -> original
-    // originalX = (x - dx)/scale ; originalY = (y - dy)/scale
-    return { sq, map:{ dx, dy, scale } };
+    ctx.drawImage(srcCanvas,dx,dy,dw,dh);
+    return { sq, map:{dx,dy,scale} };
   }
-  function mapBoxFromSquare(box, map){
-    const inv = 1 / map.scale;
-    const x0 = (box.x - map.dx) * inv;
-    const y0 = (box.y - map.dy) * inv;
-    return { x: x0, y: y0, width: box.width * inv, height: box.height * inv };
+  function mapBoxFromSquare(box,map){
+    const inv=1/map.scale;
+    const x=(box.x-map.dx)*inv, y=(box.y-map.dy)*inv;
+    return { x, y, width:box.width*inv, height:box.height*inv };
   }
 
   async function quickDetect(){
     await ensureModel();
-    const src = composePreview(); if(!src) return null;
+    const src=composePreview(); if(!src) return null;
     setProgress(35,'Scanning…');
-    // Build 128x128 square cover for BlazeFace UMD
-    const { sq, map } = makeSquareCover(src, BLAZE_SIZE);
+    const {sq,map}=makeSquareCover(src,BLAZE_SIZE);
     try{
-      const preds = await model.estimateFaces(sq, false);
-      if(!preds || preds.length===0) return null;
-      const p = preds[0];
-      const [x0,y0] = p.topLeft; const [x1,y1] = p.bottomRight;
-      const sqBox = { x:x0, y:y0, width:(x1-x0), height:(y1-y0) };
-      const upBox = mapBoxFromSquare(sqBox, map);
-      return { box: upBox, canvas: src };
+      const preds=await model.estimateFaces(sq,false);
+      if(!preds?.length) return null;
+      const p=preds[0], [x0,y0]=p.topLeft, [x1,y1]=p.bottomRight;
+      const up=mapBoxFromSquare({x:x0,y:y0,width:(x1-x0),height:(y1-y0)},map);
+      return { box:up, canvas:src };
     }catch(e){
-      // Safety retry: some builds insist on explicit tensor
+      logEvt('error',{detect_primary:e.message||String(e)});
+      // retry with explicit tensor
       try{
-        const t = tf.tidy(()=>tf.image.resizeBilinear(tf.browser.fromPixels(sq), [BLAZE_SIZE,BLAZE_SIZE]).expandDims(0));
-        const preds = await model.estimateFaces(t, false);
-        t.dispose?.();
-        if(!preds || preds.length===0) return null;
-        const p = preds[0]; const [x0,y0]=p.topLeft, [x1,y1]=p.bottomRight;
-        const sqBox = { x:x0, y:y0, width:(x1-x0), height:(y1-y0) };
-        const upBox = mapBoxFromSquare(sqBox, map);
-        return { box: upBox, canvas: src };
-      }catch(e2){
-        logEvt('error',{detect_retry:e2.message||String(e2)});
-        throw e2;
-      }
+        const t=tf.tidy(()=>tf.image.resizeBilinear(tf.browser.fromPixels(sq),[BLAZE_SIZE,BLAZE_SIZE]).expandDims(0));
+        const preds=await model.estimateFaces(t,false); t.dispose?.();
+        if(!preds?.length) return null;
+        const p=preds[0], [x0,y0]=p.topLeft,[x1,y1]=p.bottomRight;
+        const up=mapBoxFromSquare({x:x0,y:y0,width:(x1-x0),height:(y1-y0)},map);
+        return { box:up, canvas:src };
+      }catch(e2){ logEvt('error',{detect_retry:e2.message||String(e2)}); throw e2; }
     }
   }
 
   async function detectFlow(){
     try{
       setProgress(10,'Preparing…');
-      const src = composePreview(); if(!src) return;
+      const src=composePreview(); if(!src) return;
       const t0=performance.now();
-      const res = await quickDetect();
+      const res=await quickDetect();
       if(!res){ setProgress(100,'No face found'); logEvt('detect',{finalDetect_ms:0,box:null}); return; }
-      const roughMs = Math.round(performance.now()-t0);
-      const box = res.box; lastBox = box;
-      drawBoxOn(src, box, '#63b3ff');
+      const rough=Math.round(performance.now()-t0);
+      lastBox=res.box;
+      drawBoxOn(src,lastBox,'#63b3ff');
       setProgress(65,'Face found');
-      logEvt('detect',{roughLocate_ms:roughMs, box});
-      // final == rough (no refine)
-      const t1=performance.now(); drawBoxOn(src, box, '#19c37d');
-      const finalMs = Math.round(performance.now()-t1);
-      logEvt('detect',{finalDetect_ms:finalMs, scale:BLAZE_SIZE, mirror:false, box});
+      logEvt('detect',{roughLocate_ms:rough,box:lastBox});
+      const t1=performance.now(); drawBoxOn(src,lastBox,'#19c37d');
+      logEvt('detect',{finalDetect_ms:Math.round(performance.now()-t1),scale:BLAZE_SIZE,mirror:false,box:lastBox});
       $('startAnalysisBtn').disabled=false;
-      return box;
+      return lastBox;
     }catch(e){ logEvt('error',{detect:e.message||String(e)}); }
     finally{ setProgress(100,''); setTimeout(()=>setProgress(0,''),400); }
   }
@@ -264,10 +264,12 @@
     }}
     const mean=sum/n; return Math.max(0,(sum2/n)-mean*mean);
   }
-  function computeStats(canvas, box){
-    const ctx=canvas.getContext('2d'); const sx=Math.max(0,Math.floor(box.x)); const sy=Math.max(0,Math.floor(box.y));
-    const sw=Math.min(canvas.width - sx, Math.floor(box.width)); const sh=Math.min(canvas.height - sy, Math.floor(box.height));
-    const img=ctx.getImageData(sx,sy,sw,sh); let briSum=0,briCnt=0; const gray=new Uint8Array(sw*sh); let i=0;
+  function computeStats(canvas,box){
+    const ctx=canvas.getContext('2d');
+    const sx=Math.max(0,Math.floor(box.x)), sy=Math.max(0,Math.floor(box.y));
+    const sw=Math.min(canvas.width-sx, Math.floor(box.width)), sh=Math.min(canvas.height-sy, Math.floor(box.height));
+    const img=ctx.getImageData(sx,sy,sw,sh);
+    let briSum=0,briCnt=0; const gray=new Uint8Array(sw*sh); let i=0;
     for(let p=0;p<img.data.length;p+=4){ const r=img.data[p],g=img.data[p+1],b=img.data[p+2]; const l=0.299*r+0.587*g+0.114*b; gray[i++]=l; briSum+=l; briCnt++; }
     const mean=briSum/Math.max(1,briCnt);
     let dev=0; i=0; for(let p=0;p<img.data.length;p+=4){ const l=gray[i++]; dev+=(l-mean)*(l-mean); }
@@ -305,14 +307,13 @@
   async function copyTextRobust(text){
     if(text==null) text='';
     try{ if(navigator.clipboard&&window.isSecureContext){ await navigator.clipboard.writeText(text); return {ok:true,via:'clipboard'} } }catch(_){}
-    try{ const ta=document.createElement('textarea'); ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px';
-      document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy'); document.body.removeChild(ta); if(ok) return {ok:true,via:'execCommand'} }catch(e){ return {ok:false,via:'fallback',err:e.message||String(e)} }
+    try{ const ta=document.createElement('textarea'); ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px'; document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy'); document.body.removeChild(ta); if(ok) return {ok:true,via:'execCommand'} }catch(e){ return {ok:false,via:'fallback',err:e.message||String(e)} }
     return {ok:false,via:'none',err:'No clipboard available'};
   }
   function getAllLogsText(){ const el=$('diagnostics'); return el ? (el.innerText||el.textContent||'') : '' }
   function buildAutoTestReport(){
-    const full=getAllLogsText(); const backend=(full.match(/"backend":"([^"]+)"/)||[])[1]||'—';
-    const tfv=(full.match(/"tf_version":"([^"]+)"/)||[])[1]||'—';
+    const full=getAllLogsText();
+    const backend=(full.match(/"backend":"([^"]+)"/)||[])[1]||'—';
     const refine=/\"refine\":\{/.test(full)?'yes':'no';
     const rough=(full.match(/"roughLocate_ms":(\d+)/)||[])[1]||'—';
     const final=(full.match(/"finalDetect_ms":(\d+)/)||[])[1]||'—';
@@ -323,16 +324,20 @@
     return ['=== YorN Auto‑Test Report ===', summary, '', ...lines, '=== End Report ===', ''].join('\\n');
   }
 
-  $('enhanceBtn').addEventListener('click',()=>{ const z=$('zoom'); z.value=Math.max(+z.value,1.5); const b=$('bri'); b.value=Math.max(+b.value,1.18); const c=$('con'); c.value=Math.max(+c.value,1.25); detectFlow(); });
+  // UI binds
+  $('enhanceBtn').addEventListener('click',()=>{ const z=$('zoom'); z.value=Math.max(+z.value,1.5);
+    const b=$('bri'); b.value=Math.max(+b.value,1.18); const c=$('con'); c.value=Math.max(+c.value,1.25); detectFlow(); });
   $('detectBtn').addEventListener('click',detectFlow);
   $('startAnalysisBtn').addEventListener('click',()=>{ logEvt('analysis',{analysisRequested:true,mode:'light'}); runLightAnalysis(); });
   $('clearLogsBtn').addEventListener('click',()=>{$('diagnostics').textContent='No diagnostics yet.';});
-  $('resetBtn').addEventListener('click',()=>{ baseSource=null; lastBox=null; lastAnalysis=null; $('analysisCard').style.display='none'; const ctx=get2d(1024,683); ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height); $('detectBtn').disabled=true; $('startAnalysisBtn').disabled=true; logEvt('config',{reset:true}); });
+  $('resetBtn').addEventListener('click',()=>{ baseSource=null; lastBox=null; lastAnalysis=null; $('analysisCard').style.display='none';
+    const ctx=get2d(1024,683); ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height); $('detectBtn').disabled=true; $('startAnalysisBtn').disabled=true; logEvt('config',{reset:true}); });
 
   $('fileInput').addEventListener('change', async ()=>{
     if(!$('fileInput').files.length) return;
     const f=$('fileInput').files[0]; setProgress(10,'Decoding photo…');
-    try{ baseSource=await createImageBitmap(f); composePreview(); setProgress(20,'Photo ready'); $('detectBtn').disabled=false; logEvt('detect',{fileName:f.name,size_bytes:f.size,w:baseSource.width,h:baseSource.height}); }
+    try{ baseSource=await createImageBitmap(f); composePreview(); setProgress(20,'Photo ready'); $('detectBtn').disabled=false;
+      logEvt('detect',{fileName:f.name,size_bytes:f.size,w:baseSource.width,h:baseSource.height}); }
     catch(e){ logEvt('error',{decode_failed:e.message||String(e)}); }
   });
   $('sampleBtn').addEventListener('click', async ()=>{
@@ -352,7 +357,6 @@
     if(res.ok){ logEvt('config',{copiedAutoTestReport:true,via:res.via,length:report.length}); $('progressText').textContent='Test report copied'; setTimeout(()=>$('progressText').textContent='',1200); }
     else{ logEvt('error',{copyAutoTestReportError:res.err||'unknown',via:res.via}); }
   });
-
   $('autoTestBtn').addEventListener('click', async ()=>{
     $('autoTestBtn').disabled=true; $('copyTestBtn').disabled=true;
     try{
@@ -375,16 +379,14 @@
   });
 
   for(const id of ['zoom','bri','con','rot']){
-    $(id).addEventListener('input',()=>{
-      composePreview(); if(lastBox){ drawBoxOn($('preview'), lastBox, '#63b3ff'); }
-    });
+    $(id).addEventListener('input',()=>{ composePreview(); if(lastBox) drawBoxOn($('preview'),lastBox,'#63b3ff'); });
   }
 
   window.addEventListener('DOMContentLoaded', async ()=>{
     logEvt('config',{boot:'dom-ready',rev:REVISION});
     const pref=localStorage.getItem('yorn_backend'); if(pref) $('backendSel').value=pref;
     await setBackendPreferred();
-    try{ const saved=localStorage.getItem('yorn_last_analysis'); if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}); $('analysisCard').style.display=''; } }catch(_) {}
+    try{ const saved=localStorage.getItem('yorn_last_analysis'); if(saved){ const a=JSON.parse(saved); logEvt('analysis',{restored:true,analysis:a}); $('analysisCard').style.display=''; } }catch(_){}
     logEvt('config',{boot:'complete'});
   });
 })();
