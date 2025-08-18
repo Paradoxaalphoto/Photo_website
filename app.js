@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const REVISION = "1.18.0-alpha";
+  const REVISION = "1.18.1-alpha";
   const $ = id => document.getElementById(id);
   const stage = $("stage");
   const ctx = stage.getContext("2d", { willReadFrequently: true });
@@ -9,10 +9,16 @@
   /* ===== State ===== */
   let baseBitmap=null, faceModel=null;
   let lastBox=null, lastAnalysis=null;
-  let allBoxes=[];     // NEW: multiple faces
+  let allBoxes=[];
   let isBusy=false, tfVersion="—", __autoTestStartIdx=0;
   let detectMsLast='—', detectMsAvg='—';
   const session = { detects:0, detectTimes:[], analyses:0 };
+
+  // View transform (NEW in 1.18.1)
+  let pan = { x: 0, y: 0 };
+  let isDragging = false;
+  let dragStart = { x: 0, y: 0 };
+  let panStart = { x: 0, y: 0 };
 
   // Overlay toggles
   let overlay = {
@@ -47,7 +53,7 @@
   function updateTfBadges(){ $("tfChip").textContent = safeBackend(); $("tfVer").textContent = String(tfVersion||'—'); $("perfChip").textContent = `${detectMsLast} ms • avg ${detectMsAvg} ms`; }
   function updateSessionStats(){ const avg = session.detectTimes.length ? Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length) : '—'; $("sessStats").textContent = `${session.detects} detects • ${session.analyses} analyses`; logEvt('config',{ session:`${session.detects} detects • ${session.analyses} analyses`, avg_detect_ms: avg }); }
 
-  /* ===== Error capture ===== */
+  /* ===== Errors ===== */
   window.onerror = (msg, src, line, col, err) => { logEvt("error",{ onerror:String(msg), src, line, col, stack: err && err.stack ? String(err.stack) : undefined }); };
   window.onunhandledrejection = ev => { logEvt("error",{ unhandledrejection:String(ev.reason && ev.reason.message || ev.reason || 'unknown') }); };
 
@@ -58,15 +64,20 @@
     const zoom=parseFloat($("zoom").value||"1");
     const bri=parseFloat($("bri").value||"1");
     const con=parseFloat($("con").value||"1");
+
     ctx.save();
     ctx.clearRect(0,0,stage.width,stage.height);
     ctx.filter = `brightness(${bri}) contrast(${con})`;
     ctx.translate(stage.width/2, stage.height/2);
     ctx.rotate(rot);
+
+    // NEW: apply pan (canvas pixels)
+    ctx.translate(pan.x, pan.y);
+
     const dw=stage.width*zoom, dh=stage.height*zoom;
     ctx.drawImage(baseBitmap, -dw/2, -dh/2, dw, dh);
     ctx.restore();
-    logEvt('overlay',{ painted:{w:stage.width,h:stage.height} });
+    logEvt('overlay',{ painted:{w:stage.width,h:stage.height}, pan });
   }
   function drawGuides(b){
     const w=stage.width, h=stage.height;
@@ -96,14 +107,10 @@
   }
   function drawOverlay(box){
     paintBase();
-    // draw all boxes faintly
     ctx.save(); ctx.strokeStyle="rgba(98,208,255,.35)"; ctx.lineWidth=2;
     allBoxes.forEach(b=>ctx.strokeRect(b.x,b.y,b.width,b.height));
     ctx.restore();
-    // highlight selected
-    if (box){
-      ctx.save(); ctx.strokeStyle="#62d0ff"; ctx.lineWidth=3; ctx.strokeRect(box.x, box.y, box.width, box.height); ctx.restore();
-    }
+    if (box){ ctx.save(); ctx.strokeStyle="#62d0ff"; ctx.lineWidth=3; ctx.strokeRect(box.x, box.y, box.width, box.height); ctx.restore(); }
     drawGuides(box);
   }
 
@@ -212,7 +219,6 @@
       const div = document.createElement('div'); div.className = 'thumb' + (b===lastBox?' active':'');
       const c = document.createElement('canvas'); c.width=72; c.height=72;
       const g = c.getContext('2d');
-      // crop from stage into thumb (clamped)
       const sx = Math.max(0, Math.floor(b.x));
       const sy = Math.max(0, Math.floor(b.y));
       const sw = Math.min(stage.width - sx, Math.floor(b.width));
@@ -225,7 +231,7 @@
     });
   }
 
-  /* ===== Analysis + Charts (unchanged logic) ===== */
+  /* ===== Analysis + Charts ===== */
   function clamp(n,min,max){ return Math.max(min,Math.min(max,n)); }
   function normalizeContrast(s){ return clamp((s/60)*100,0,100); }
   function normalizeSharpness(lv){ const val = Math.log10(1+lv)/Math.log10(1+5000); return clamp(val*100,0,100); }
@@ -287,14 +293,8 @@
       lighting: { brightness_mean:+mean.toFixed(3), contrast_stdev:+contrast.toFixed(3) },
       sharpness: { laplacian_variance:+lapVar.toFixed(3) },
       orientation: w>=h ? "landscape" : "portrait",
-      tf: {
-        backend: safeBackend(),
-        version: (typeof tfVersion === 'string' && tfVersion) ? tfVersion : (tf?.version_core || tf?.version?.tfjs || "—")
-      },
-      refine: {
-        scores: { brightness:normalizeBrightness(mean), contrast:normalizeContrast(contrast), sharpness:normalizeSharpness(lapVar), global:globalScore },
-        buckets
-      }
+      tf: { backend: safeBackend(), version: (typeof tfVersion === 'string' && tfVersion) ? tfVersion : (tf?.version_core || tf?.version?.tfjs || "—") },
+      refine: { scores: { brightness:brightnessScore, contrast:contrastScore, sharpness:sharpnessScore, global:globalScore }, buckets }
     };
 
     lastAnalysis = result;
@@ -396,7 +396,7 @@
     }, 'image/png');
   }
 
-  /* ===== Auto‑Test (unchanged) ===== */
+  /* ===== Auto‑Test ===== */
   function buildAutoTestReport(){
     const full=getAllLogsText(); const start=__autoTestStartIdx||0; const chunk=full.slice(start);
     const backend=safeBackend();
@@ -471,6 +471,7 @@
   $("resetBtn").addEventListener('click', ()=>{
     baseBitmap=null; faceModel=null; lastBox=null; lastAnalysis=null; allBoxes=[];
     session.detects=0; session.detectTimes=[]; session.analyses=0;
+    pan = { x: 0, y: 0 }; // NEW: reset pan
     ctx.clearRect(0,0,stage.width,stage.height);
     $("detectBtn").disabled=true; $("enhanceBtn").disabled=true; $("startAnalysisBtn").disabled=true; $("cropBtn").disabled=true;
     $("analysisCard").style.display='none'; $("readinessBadge").style.display='none';
@@ -483,6 +484,7 @@
     const f=$("fileInput").files[0];
     try{
       baseBitmap=await decodeBitmapFromBlob(f);
+      pan = { x: 0, y: 0 }; // reset view on new image
       paintBase();
       $("detectBtn").disabled=false; $("enhanceBtn").disabled=false; $("startAnalysisBtn").disabled=false;
       logEvt('detect',{file:f.name,w:baseBitmap.width,h:baseBitmap.height});
@@ -538,6 +540,7 @@
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   });
 
+  // Add missing buttons on boot (PDF/Share)
   function ensureExtraButtons(){
     const group=document.getElementById('analysisBtnGroup'); if(!group) return;
     if(!document.getElementById('exportPdfBtn')){
@@ -575,13 +578,40 @@
   $("wmCancel").addEventListener('click', closeShareModal);
   $("shareModal").addEventListener('click', (e)=>{ if(e.target.id==='shareModal') closeShareModal(); });
 
+  /* ===== Drag-to-pan + dblclick center (NEW) ===== */
+  stage.addEventListener('mousedown', (e) => {
+    if (!baseBitmap) return;
+    isDragging = true;
+    stage.classList.add('dragging');
+    dragStart = { x: e.clientX, y: e.clientY };
+    panStart = { x: pan.x, y: pan.y };
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    pan.x = panStart.x + (e.clientX - dragStart.x);
+    pan.y = panStart.y + (e.clientY - dragStart.y);
+    if (lastBox) drawOverlay(lastBox); else paintBase();
+  });
+  window.addEventListener('mouseup', () => { isDragging = false; stage.classList.remove('dragging'); });
+  stage.addEventListener('mouseleave', () => { isDragging = false; stage.classList.remove('dragging'); });
+  stage.addEventListener('dblclick', () => {
+    if (!lastBox) return;
+    const cx = lastBox.x + lastBox.width / 2;
+    const cy = lastBox.y + lastBox.height / 2;
+    pan.x -= (cx - stage.width / 2);
+    pan.y -= (cy - stage.height / 2);
+    if (lastBox) drawOverlay(lastBox); else paintBase();
+    logEvt('config', { center_on_face:true, pan });
+  });
+
   /* ===== Boot ===== */
   window.addEventListener('load', async ()=>{
     $("rev").textContent = REVISION; document.title = "YorN " + REVISION;
-    try {
-      await initTF(); logEvt('config',{tf_ready:true,backend:safeBackend(),tf_version:tfVersion});
-      logEvt('config',{boot:'dom-ready',rev:REVISION}); logEvt('config',{boot:'complete'});
-    } catch (e) { logEvt('error',{tf_init:e.message||String(e)}); }
+    try { await initTF(); logEvt('config',{tf_ready:true,backend:safeBackend(),tf_version:tfVersion}); logEvt('config',{boot:'dom-ready',rev:REVISION}); logEvt('config',{boot:'complete'}); }
+    catch (e) { logEvt('error',{tf_init:e.message||String(e)}); }
     ensureExtraButtons();
   });
+
+  // ZIP button
+  $("zipBtn").addEventListener('click', buildZip);
 })();
