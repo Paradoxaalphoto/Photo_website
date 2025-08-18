@@ -12,7 +12,7 @@
     .row {display:flex;gap:10px;flex-wrap:wrap}
     .card {background:var(--card);border-radius:12px;padding:12px;flex:1 1 300px;min-width:280px}
     .controls {display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-    .controls button, .controls input[type="file"]::file-selector-button {background:#1a2330;color:var(--ink);border:1px solid #273348;border-radius:10px;padding:8px 12px;cursor:pointer}
+    .controls button, .controls select, .controls input[type="file"]::file-selector-button {background:#1a2330;color:var(--ink);border:1px solid #273348;border-radius:10px;padding:8px 12px;cursor:pointer}
     .controls button[disabled] {opacity:.45;cursor:not-allowed}
     .badge {display:none;padding:3px 8px;border-radius:999px;font-size:12px;border:1px solid #2c394a;color:#cfd7e6}
     .badge.ready {background:rgba(46,204,113,.12);border-color:#2ecc71;color:#aef3c7}
@@ -27,9 +27,14 @@
     .veil.show {display:flex}
     .chip {padding:4px 8px;border:1px solid #2c394a;border-radius:999px;font-size:12px}
     .num {font-variant-numeric:tabular-nums}
-    .inputs {display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .inputs {display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center}
     .inputs label {display:flex;align-items:center;gap:6px;font-size:13px;color:#c7d2e2;background:#0f141c;border:1px solid #233042;padding:6px 8px;border-radius:8px}
     .inputs input[type="range"], .inputs input[type="number"] {accent-color:var(--accent)}
+    /* Face strip */
+    .facestrip {display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .thumb {width:72px;height:72px;border-radius:8px;border:1px solid #233042;overflow:hidden;background:#0f141c;cursor:pointer;position:relative}
+    .thumb.active {outline:2px solid var(--accent)}
+    .thumb canvas {width:100%;height:100%;display:block}
     /* Charts */
     .bars {margin-top:10px;display:grid;gap:8px}
     .bar {display:grid;grid-template-columns:120px 1fr 60px;align-items:center;gap:10px}
@@ -86,14 +91,25 @@
         <label><input id="guideThirds" type="checkbox"> Thirds grid</label>
         <label><input id="guideSym" type="checkbox"> Symmetry</label>
         <label><input id="guideGolden" type="checkbox"> Golden mask</label>
+
+        <select id="backendSel" title="TensorFlow.js backend">
+          <option value="">Auto</option>
+          <option value="webgl">webgl</option>
+          <option value="wasm">wasm</option>
+          <option value="cpu">cpu</option>
+        </select>
+        <button id="cropBtn" type="button" disabled>Export Face PNG</button>
         <button id="enhanceBtn" type="button" disabled>Enhance & Retry</button>
         <button id="resetBtn" type="button">Reset</button>
       </div>
+
+      <div class="facestrip" id="faceStrip" aria-label="Detected faces"></div>
 
       <div class="hud" style="margin-top:10px">
         <div class="tiny">
           <span class="chip">TF: <span id="tfChip">—</span></span>
           <span class="chip">v<span id="tfVer">—</span></span>
+          <span class="chip">Perf: <span id="perfChip" class="num">—</span></span>
           <span class="chip">Session: <span id="sessStats" class="num">0 detects • 0 analyses</span></span>
         </div>
         <div class="progress" id="progressText"></div>
