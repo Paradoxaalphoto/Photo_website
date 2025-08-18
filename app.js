@@ -1,18 +1,20 @@
 (() => {
   "use strict";
 
-  /* ===== Constants / Handles ===== */
   const REVISION = "1.18.0-alpha";
   const $ = id => document.getElementById(id);
   const stage = $("stage");
   const ctx = stage.getContext("2d", { willReadFrequently: true });
 
-  /* ===== Global State ===== */
-  let baseBitmap=null, faceModel=null, lastBox=null, lastAnalysis=null;
+  /* ===== State ===== */
+  let baseBitmap=null, faceModel=null;
+  let lastBox=null, lastAnalysis=null;
+  let allBoxes=[];     // NEW: multiple faces
   let isBusy=false, tfVersion="—", __autoTestStartIdx=0;
+  let detectMsLast='—', detectMsAvg='—';
   const session = { detects:0, detectTimes:[], analyses:0 };
 
-  // Overlays
+  // Overlay toggles
   let overlay = {
     thirds: JSON.parse(localStorage.getItem('yorn_thirds')||'false'),
     sym: JSON.parse(localStorage.getItem('yorn_sym')||'false'),
@@ -25,11 +27,7 @@
     tags: (localStorage.getItem('yorn_wm_tags') || '#YorN #AI #FaceAnalysis').split(/\s+/).filter(Boolean)
   };
 
-  // Diagnostics pin state (global so logger can read)
-  let pinFollow = true; // default ON
-  window.__yornPinFollow = pinFollow;
-
-  /* ===== Shared Diagnostics Logger ===== */
+  /* ===== Diagnostics ===== */
   function isNearBottom(el, slopPx = 16) { return el.scrollHeight - el.scrollTop - el.clientHeight <= slopPx; }
   function logDiagnostics(entry){
     const diag = $("diagnostics"); if (!diag) return;
@@ -42,14 +40,14 @@
   function logEvt(type, obj={}){ const line = JSON.stringify({ time:new Date().toISOString(), type, ...obj }); try { (window.__yornLog || logDiagnostics)(line); } catch {} }
 
   /* ===== Utils ===== */
-  function setBusy(v){ isBusy=!!v; $("veil").classList.toggle("show", isBusy); ["detectBtn","startAnalysisBtn","autoTestBtn","enhanceBtn"].forEach(id=>{ const b=$(id); if(b) b.disabled = !!v; }); }
+  function setBusy(v){ isBusy=!!v; $("veil").classList.toggle("show", isBusy); ["detectBtn","startAnalysisBtn","autoTestBtn","enhanceBtn","cropBtn"].forEach(id=>{ const b=$(id); if(b) b.disabled = !!v; }); }
   function getAllLogsText(){ const el=$("diagnostics"); return el ? (el.innerText||el.textContent||"") : ""; }
   function setProgress(_, msg){ $("progressText").textContent = msg || ""; }
   function safeBackend(){ try { return (window.tf && typeof tf.getBackend==='function') ? (tf.getBackend()||'—') : '—'; } catch { return '—'; } }
-  function updateTfBadges(){ $("tfChip").textContent = safeBackend(); $("tfVer").textContent = String(tfVersion||'—'); }
+  function updateTfBadges(){ $("tfChip").textContent = safeBackend(); $("tfVer").textContent = String(tfVersion||'—'); $("perfChip").textContent = `${detectMsLast} ms • avg ${detectMsAvg} ms`; }
   function updateSessionStats(){ const avg = session.detectTimes.length ? Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length) : '—'; $("sessStats").textContent = `${session.detects} detects • ${session.analyses} analyses`; logEvt('config',{ session:`${session.detects} detects • ${session.analyses} analyses`, avg_detect_ms: avg }); }
 
-  /* ===== Error capture to Diagnostics ===== */
+  /* ===== Error capture ===== */
   window.onerror = (msg, src, line, col, err) => { logEvt("error",{ onerror:String(msg), src, line, col, stack: err && err.stack ? String(err.stack) : undefined }); };
   window.onunhandledrejection = ev => { logEvt("error",{ unhandledrejection:String(ev.reason && ev.reason.message || ev.reason || 'unknown') }); };
 
@@ -70,9 +68,7 @@
     ctx.restore();
     logEvt('overlay',{ painted:{w:stage.width,h:stage.height} });
   }
-  function drawOverlay(box){
-    paintBase();
-    ctx.save(); ctx.strokeStyle="#62d0ff"; ctx.lineWidth=3; ctx.strokeRect(box.x, box.y, box.width, box.height); ctx.restore();
+  function drawGuides(b){
     const w=stage.width, h=stage.height;
     if (overlay.thirds){
       ctx.save(); ctx.strokeStyle="#3a99ff"; ctx.lineWidth=1; ctx.setLineDash([6,6]);
@@ -87,8 +83,8 @@
       ctx.save(); ctx.strokeStyle="#7dd3fc"; ctx.lineWidth=1.5; ctx.setLineDash([]);
       ctx.beginPath(); ctx.moveTo(w/2,0); ctx.lineTo(w/2,h); ctx.stroke(); ctx.restore();
     }
-    if (overlay.golden && box){
-      const phi=1.6180339887; const x=box.x, y=box.y, bw=box.width, bh=box.height;
+    if (overlay.golden && b){
+      const phi=1.6180339887; const x=b.x, y=b.y, bw=b.width, bh=b.height;
       const v1=x + bw*(1/phi), v2=x + bw*(1 - 1/phi);
       const h1=y + bh*(1/phi), h2=y + bh*(1 - 1/phi);
       ctx.save(); ctx.strokeStyle="#f6c16b"; ctx.lineWidth=1; ctx.setLineDash([4,4]);
@@ -97,6 +93,18 @@
       ctx.moveTo(x,h1); ctx.lineTo(x+bw,h1); ctx.moveTo(x,h2); ctx.lineTo(x+bw,h2);
       ctx.stroke(); ctx.restore();
     }
+  }
+  function drawOverlay(box){
+    paintBase();
+    // draw all boxes faintly
+    ctx.save(); ctx.strokeStyle="rgba(98,208,255,.35)"; ctx.lineWidth=2;
+    allBoxes.forEach(b=>ctx.strokeRect(b.x,b.y,b.width,b.height));
+    ctx.restore();
+    // highlight selected
+    if (box){
+      ctx.save(); ctx.strokeStyle="#62d0ff"; ctx.lineWidth=3; ctx.strokeRect(box.x, box.y, box.width, box.height); ctx.restore();
+    }
+    drawGuides(box);
   }
 
   /* ===== Image decode ===== */
@@ -109,8 +117,9 @@
     tfVersion = tf?.version_core || tf?.version?.tfjs || tfVersion || '—';
     updateTfBadges();
     try {
+      const want = $("backendSel").value || safeBackend() || 'webgl';
       const t0=performance.now();
-      await tf.setBackend(safeBackend()||'webgl');
+      await tf.setBackend(want);
       await tf.ready();
       logEvt('config',{warmup:'ok', backend:safeBackend(), ms:Math.round(performance.now()-t0)});
     } catch(e){
@@ -125,20 +134,20 @@
   }
 
   /* ===== Detection ===== */
+  function mapPred(p){
+    const [x1,y1] = p.topLeft;
+    const [x2,y2] = p.bottomRight;
+    return { x:x1, y:y1, width:x2-x1, height:y2-y1, prob: (p.probability?.[0] ?? 0) };
+  }
   async function detectOnce(){
     if(!baseBitmap) return null;
     await initTF();
     await loadModel();
+
     const runPredict = async () => {
       const input = tf.browser.fromPixels(stage);
-      try {
-        const preds = await faceModel.estimateFaces(input, false, false);
-        if(!preds || !preds.length) return null;
-        const p=preds[0];
-        const [x1,y1]=p.topLeft;
-        const [x2,y2]=p.bottomRight;
-        return { x:x1, y:y1, width:x2-x1, height:y2-y1 };
-      } finally { input.dispose?.(); }
+      try { return await faceModel.estimateFaces(input, false, false); }
+      finally { input.dispose?.(); }
     };
     const timed=(ms,fn)=>new Promise((resolve,reject)=>{
       let done=false;
@@ -146,16 +155,27 @@
       fn().then(v=>{ if(!done){ done=true; clearTimeout(t); resolve(v); }})
         .catch(e=>{ if(!done){ done=true; clearTimeout(t); reject(e); }});
     });
+
     const t0=performance.now();
     try {
-      let box = await timed(3000, runPredict);
-      if(!box){ logEvt('error',{detect:'no_face'}); return null; }
-      const dt=Math.round(performance.now()-t0);
-      lastBox=box; session.detects+=1; session.detectTimes.push(dt);
-      drawOverlay(box);
-      logEvt('detect',{roughLocate_ms:dt, finalDetect_ms:dt, box});
+      const preds = await timed(3500, runPredict);
+      if(!preds || !preds.length){ logEvt('error',{detect:'no_face'}); return null; }
+      const dt = Math.round(performance.now()-t0);
+      detectMsLast = dt;
+      session.detectTimes.push(dt);
+      detectMsAvg = Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length);
+      updateTfBadges();
+
+      allBoxes = preds.map(mapPred).sort((a,b)=>b.prob-a.prob);
+      lastBox = allBoxes[0];
+
+      session.detects += 1;
+      drawOverlay(lastBox);
+      renderFaceStrip();
+      logEvt('detect',{ roughLocate_ms:dt, finalDetect_ms:dt, faces:allBoxes.length, box:lastBox });
       updateSessionStats();
-      return box;
+      $("cropBtn").disabled = false;
+      return lastBox;
     } catch(e){
       const cur=safeBackend();
       if(e && e.message==='detect_timeout' && cur==='webgl'){
@@ -165,21 +185,47 @@
           tfVersion = tf?.version_core || tf?.version?.tfjs || tfVersion || '—';
           faceModel=null; await loadModel();
           const t1=performance.now();
-          const box=await timed(3000, runPredict);
-          if(box){
+          const preds=await timed(3500, runPredict);
+          if(preds && preds.length){
             const dt=Math.round(performance.now()-t1);
-            lastBox=box; session.detects+=1; session.detectTimes.push(dt);
-            drawOverlay(box);
-            logEvt('detect',{roughLocate_ms:dt, finalDetect_ms:dt, box});
+            detectMsLast = dt; session.detectTimes.push(dt);
+            detectMsAvg = Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length);
+            allBoxes = preds.map(mapPred).sort((a,b)=>b.prob-a.prob);
+            lastBox = allBoxes[0];
+            drawOverlay(lastBox);
+            renderFaceStrip();
+            logEvt('detect',{roughLocate_ms:dt, finalDetect_ms:dt, faces:allBoxes.length, box:lastBox});
             updateSessionStats();
-            return box;
+            $("cropBtn").disabled = false;
+            return lastBox;
           } else { logEvt('error',{detect:'no_face_after_fallback'}); return null; }
         } catch(e2){ logEvt('error',{detect_fallback_failed:e2.message||String(e2)}); return null; }
       } else { logEvt('error',{detect_exception:e.message||String(e)}); return null; }
     }
   }
 
-  /* ===== Analysis + Charts ===== */
+  /* ===== Face strip ===== */
+  function renderFaceStrip(){
+    const strip = $("faceStrip");
+    strip.innerHTML = "";
+    allBoxes.forEach((b, i) => {
+      const div = document.createElement('div'); div.className = 'thumb' + (b===lastBox?' active':'');
+      const c = document.createElement('canvas'); c.width=72; c.height=72;
+      const g = c.getContext('2d');
+      // crop from stage into thumb (clamped)
+      const sx = Math.max(0, Math.floor(b.x));
+      const sy = Math.max(0, Math.floor(b.y));
+      const sw = Math.min(stage.width - sx, Math.floor(b.width));
+      const sh = Math.min(stage.height - sy, Math.floor(b.height));
+      g.drawImage(stage, sx, sy, sw, sh, 0, 0, 72, 72);
+      div.appendChild(c);
+      div.title = `Face #${i+1} • ${(b.prob*100).toFixed(0)}%`;
+      div.onclick = () => { lastBox = b; strip.querySelectorAll('.thumb').forEach(e=>e.classList.remove('active')); div.classList.add('active'); drawOverlay(lastBox); };
+      strip.appendChild(div);
+    });
+  }
+
+  /* ===== Analysis + Charts (unchanged logic) ===== */
   function clamp(n,min,max){ return Math.max(min,Math.min(max,n)); }
   function normalizeContrast(s){ return clamp((s/60)*100,0,100); }
   function normalizeSharpness(lv){ const val = Math.log10(1+lv)/Math.log10(1+5000); return clamp(val*100,0,100); }
@@ -238,10 +284,7 @@
         center:{ x:+center.x.toFixed(2), y:+center.y.toFixed(2) },
         center_offset_pct:{ x:+center_offset_pct.x.toFixed(2), y:+center_offset_pct.y.toFixed(2) }
       },
-      lighting: {
-        brightness_mean:+mean.toFixed(3),
-        contrast_stdev:+contrast.toFixed(3)
-      },
+      lighting: { brightness_mean:+mean.toFixed(3), contrast_stdev:+contrast.toFixed(3) },
       sharpness: { laplacian_variance:+lapVar.toFixed(3) },
       orientation: w>=h ? "landscape" : "portrait",
       tf: {
@@ -249,7 +292,7 @@
         version: (typeof tfVersion === 'string' && tfVersion) ? tfVersion : (tf?.version_core || tf?.version?.tfjs || "—")
       },
       refine: {
-        scores: { brightness:brightnessScore, contrast:contrastScore, sharpness:sharpnessScore, global:globalScore },
+        scores: { brightness:normalizeBrightness(mean), contrast:normalizeContrast(contrast), sharpness:normalizeSharpness(lapVar), global:globalScore },
         buckets
       }
     };
@@ -293,16 +336,13 @@
       bucketHTML;
   }
 
-  /* ===== Social Share + Settings ===== */
+  /* ===== Share / PDF / ZIP ===== */
   async function renderShareImage(el, watermark){
     const canvas = await html2canvas(el);
     const c=canvas.getContext('2d');
-    c.save();
-    c.globalAlpha=0.45;
-    c.rotate(-Math.PI/8);
+    c.save(); c.globalAlpha=0.45; c.rotate(-Math.PI/8);
     c.font=`${Math.max(20, canvas.width*0.04)}px sans-serif`;
-    c.fillStyle="#000";
-    c.textAlign='center';
+    c.fillStyle="#000"; c.textAlign='center';
     c.fillText(watermark||'YorN • Prototype', canvas.width/2, canvas.height/2);
     c.restore();
     return canvas.toDataURL('image/png');
@@ -312,38 +352,53 @@
       const res=await fetch(dataUrl);
       const blob=await res.blob();
       const file=new File([blob],'yorn-share.png',{type:'image/png'});
-      try{
-        if(navigator.canShare({files:[file]})){
-          await navigator.share({files:[file], text:(hashtags||[]).join(' ')});
-          return;
-        }
-      } catch{}
+      try{ if(navigator.canShare({files:[file]})){ await navigator.share({files:[file], text:(hashtags||[]).join(' ')}); return; } } catch{}
     }
     const a=document.createElement('a'); a.href=dataUrl; a.download='yorn-share.png'; a.click();
   }
-  async function handleShare(){
-    if(!lastAnalysis) return;
-    const card=$("analysisCard");
-    const dataUrl = await renderShareImage(card, shareCfg.watermark);
-    await shareImage(dataUrl, shareCfg.tags);
-    logEvt('config',{ share:true, tags:shareCfg.tags });
-  }
+  async function handleShare(){ if(!lastAnalysis) return; const card=$("analysisCard"); const dataUrl = await renderShareImage(card, shareCfg.watermark); await shareImage(dataUrl, shareCfg.tags); logEvt('config',{ share:true, tags:shareCfg.tags }); }
   function openShareModal(){ $("wmText").value = shareCfg.watermark; $("wmTags").value = shareCfg.tags.join(' '); $("shareModal").classList.add('show'); }
   function closeShareModal(){ $("shareModal").classList.remove('show'); }
-  function saveShareModal(){
-    shareCfg.watermark = $("wmText").value || 'YorN • Prototype';
-    shareCfg.tags = ($("wmTags").value || '#YorN #AI #FaceAnalysis').split(/\s+/).filter(Boolean);
-    localStorage.setItem('yorn_wm_text', shareCfg.watermark);
-    localStorage.setItem('yorn_wm_tags', shareCfg.tags.join(' '));
-    closeShareModal();
-    logEvt('config',{ share_settings_saved:true, watermark:shareCfg.watermark, tags:shareCfg.tags });
+  function saveShareModal(){ shareCfg.watermark = $("wmText").value || 'YorN • Prototype'; shareCfg.tags = ($("wmTags").value || '#YorN #AI #FaceAnalysis').split(/\s+/).filter(Boolean); localStorage.setItem('yorn_wm_text', shareCfg.watermark); localStorage.setItem('yorn_wm_tags', shareCfg.tags.join(' ')); closeShareModal(); logEvt('config',{ share_settings_saved:true, watermark:shareCfg.watermark, tags:shareCfg.tags }); }
+
+  async function buildZip(){
+    try{
+      if(!window.JSZip){ throw new Error('JSZip missing'); }
+      const zip=new JSZip();
+      const [html, js] = await Promise.all([
+        fetch('index.html',{cache:'no-store'}).then(r=>r.ok?r.text():'').catch(()=> ''),
+        fetch('app.js',{cache:'no-store'}).then(r=>r.ok?r.text():'').catch(()=> '')
+      ]);
+      zip.file('index.html', html || '<!-- DOM snapshot fallback -->\n'+document.documentElement.outerHTML);
+      zip.file('app.js', js || '// Fallback: copy from editor.');
+      const blob=await zip.generateAsync({type:'blob'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`yorn-${Date.now()}.zip`; a.click();
+      logEvt('config',{zip_built:true});
+    } catch(e){ logEvt('error',{zip_build_failed:e.message||String(e)}); }
   }
 
-  /* ===== Auto‑Test ===== */
+  /* ===== Crop export ===== */
+  function exportCropPNG(){
+    if(!lastBox) return;
+    const pad = 8;
+    const sx = Math.max(0, Math.floor(lastBox.x - pad));
+    const sy = Math.max(0, Math.floor(lastBox.y - pad));
+    const sw = Math.min(stage.width - sx, Math.floor(lastBox.width + 2*pad));
+    const sh = Math.min(stage.height - sy, Math.floor(lastBox.height + 2*pad));
+    const out = document.createElement('canvas'); out.width = sw; out.height = sh;
+    out.getContext('2d').drawImage(stage, sx, sy, sw, sh, 0, 0, sw, sh);
+    out.toBlob(b=>{
+      const a=document.createElement('a');
+      a.href = URL.createObjectURL(b);
+      a.download = `yorn-face-${Date.now()}.png`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }, 'image/png');
+  }
+
+  /* ===== Auto‑Test (unchanged) ===== */
   function buildAutoTestReport(){
-    const full=getAllLogsText();
-    const start=__autoTestStartIdx||0;
-    const chunk=full.slice(start);
+    const full=getAllLogsText(); const start=__autoTestStartIdx||0; const chunk=full.slice(start);
     const backend=safeBackend();
     const passes=(chunk.match(/"step":"[^"]+","ok":true/g)||[]).length;
     const errors=(chunk.match(/"type":"error"/g)||[]).length;
@@ -354,77 +409,29 @@
     return ['=== YorN Auto‑Test Report ===', summary, '', ...lines, '=== End Report ===',''].join('\n');
   }
   async function runAutoTest(){
-    if (isBusy) return;
-    setBusy(true);
-    const fullBefore=getAllLogsText();
-    __autoTestStartIdx=fullBefore.length;
-    logEvt('test',{step:'begin',rev:REVISION});
+    if (isBusy) return; setBusy(true);
+    const fullBefore=getAllLogsText(); __autoTestStartIdx=fullBefore.length; logEvt('test',{step:'begin',rev:REVISION});
     try {
-      const okS=await loadSample();
-      logEvt('test',{step:'sample',ok:!!okS});
-      if(!okS) throw new Error('sample_failed');
-
-      const box=await detectOnce();
-      logEvt('test',{step:'detect',ok:!!box});
-      if(!box) throw new Error('detect_failed');
-
-      const a=computeAnalysis();
-      logEvt('test',{step:'analysis',ok:!!a});
-
+      const okS=await loadSample(); logEvt('test',{step:'sample',ok:!!okS}); if(!okS) throw new Error('sample_failed');
+      const box=await detectOnce(); logEvt('test',{step:'detect',ok:!!box}); if(!box) throw new Error('detect_failed');
+      const a=computeAnalysis(); logEvt('test',{step:'analysis',ok:!!a});
       const ok=!!(baseBitmap && lastBox && lastAnalysis);
-      const badge=$("readinessBadge");
-      if(badge){
-        badge.style.display='inline-block';
-        badge.className = ok ? 'badge ready' : 'badge blocked';
-        badge.textContent = ok ? 'READY' : 'BLOCKED';
-      }
-      logEvt('test',{step:'summary',ok});
-      $("copyTestBtn").disabled=false;
-      setProgress('', 'Auto‑Test complete');
-      setTimeout(()=>setProgress('',''),1200);
+      const badge=$("readinessBadge"); if(badge){ badge.style.display='inline-block'; badge.className = ok ? 'badge ready' : 'badge blocked'; badge.textContent = ok ? 'READY' : 'BLOCKED'; }
+      logEvt('test',{step:'summary',ok}); $("copyTestBtn").disabled=false; setProgress('', 'Auto‑Test complete'); setTimeout(()=>setProgress('',''),1200);
     } catch(e){
-      logEvt('error',{ autoTest: e.message || String(e) });
-      $("copyTestBtn").disabled=false;
-      setProgress('', 'Auto‑Test failed');
-      setTimeout(()=>setProgress('',''),1500);
+      logEvt('error',{ autoTest: e.message || String(e) }); $("copyTestBtn").disabled=false; setProgress('', 'Auto‑Test failed'); setTimeout(()=>setProgress('',''),1500);
     } finally { setBusy(false); }
   }
 
-  /* ===== File & Sample ===== */
+  /* ===== Sample & file ===== */
   async function loadSample(){
     try{
       const url='https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1024&auto=format&fit=crop';
-      const res=await fetch(url,{cache:'no-store'});
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      const blob=await res.blob();
-      baseBitmap=await decodeBitmapFromBlob(blob);
-      paintBase();
-      $("detectBtn").disabled=false;
-      $("enhanceBtn").disabled=false;
-      logEvt('detect',{sampleImage:url});
-      return true;
-    } catch(e){
-      logEvt('error',{sample_failed:e.message||String(e)});
-      return false;
-    }
-  }
-
-  /* ===== ZIP builder ===== */
-  async function buildZip(){
-    try{
-      if(!window.JSZip){ throw new Error('JSZip missing'); }
-      const zip=new JSZip();
-      let htmlStr=null, jsStr=null;
-      try{ const r=await fetch('index.html',{cache:'no-store'}); if(r.ok) htmlStr=await r.text(); } catch(e){ logEvt('error',{zip_fetch_index:e.message||String(e)}); }
-      try{ const r2=await fetch('app.js',{cache:'no-store'}); if(r2.ok) jsStr=await r2.text(); } catch(e){ logEvt('error',{zip_fetch_app:e.message||String(e)}); }
-      if(!htmlStr){ htmlStr='<!-- Fallback: live DOM snapshot -->\n'+document.documentElement.outerHTML; }
-      if(!jsStr){ jsStr='// Fallback: could not fetch app.js; please copy from your editor.'; }
-      zip.file('index.html', htmlStr);
-      zip.file('app.js', jsStr);
-      const blob=await zip.generateAsync({type:'blob'});
-      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`yorn-${Date.now()}.zip`; a.click();
-      logEvt('config',{zip_built:true});
-    } catch(e){ logEvt('error',{zip_build_failed:e.message||String(e)}); }
+      const res=await fetch(url,{cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status);
+      const blob=await res.blob(); baseBitmap=await decodeBitmapFromBlob(blob);
+      paintBase(); $("detectBtn").disabled=false; $("enhanceBtn").disabled=false; $("startAnalysisBtn").disabled=false;
+      logEvt('detect',{sampleImage:url}); return true;
+    } catch(e){ logEvt('error',{sample_failed:e.message||String(e)}); return false; }
   }
 
   /* ===== Bindings ===== */
@@ -438,30 +445,37 @@
   $("guideSym").addEventListener('change', e=>{ overlay.sym=!!e.target.checked; localStorage.setItem('yorn_sym', JSON.stringify(overlay.sym)); if(lastBox) drawOverlay(lastBox); });
   $("guideGolden").addEventListener('change', e=>{ overlay.golden=!!e.target.checked; localStorage.setItem('yorn_golden', JSON.stringify(overlay.golden)); if(lastBox) drawOverlay(lastBox); });
 
+  $("backendSel").addEventListener('change', async ()=>{
+    setBusy(true);
+    try {
+      faceModel = null;  // force reload
+      await initTF();    // applies backend
+      await loadModel();
+      logEvt('config',{ backend_changed_to: $("backendSel").value || 'auto', effective:safeBackend() });
+      if (baseBitmap) { drawOverlay(lastBox || null); }
+    } finally { setBusy(false); }
+  });
+
+  $("cropBtn").addEventListener('click', exportCropPNG);
+
   $("enhanceBtn").addEventListener('click', ()=>{
     const z=$("zoom"); z.value=Math.max(+z.value,1.5); $("zoomLabel").textContent=(+z.value).toFixed(2);
     const b=$("bri"); b.value=Math.max(+b.value,1.18); $("briLabel").textContent=(+b.value).toFixed(2);
     const c=$("con"); c.value=Math.max(+c.value,1.25); $("conLabel").textContent=(+c.value).toFixed(2);
-    paintBase();
-    detectOnce();
-    logEvt('config',{enhance:'applied',zoom:+z.value,bri:+b.value,con:+c.value});
+    paintBase(); detectOnce(); logEvt('config',{enhance:'applied',zoom:+z.value,bri:+b.value,con:+c.value});
   });
 
   $("detectBtn").addEventListener('click', async ()=>{ setBusy(true); try{ await detectOnce(); } finally { setBusy(false); } });
   $("startAnalysisBtn").addEventListener('click', ()=>{ logEvt('analysis',{analysisRequested:true,mode:'light'}); const a=computeAnalysis(); if(a) setProgress('','Analysis ready'); });
 
   $("resetBtn").addEventListener('click', ()=>{
-    baseBitmap=null; faceModel=null; lastBox=null; lastAnalysis=null;
+    baseBitmap=null; faceModel=null; lastBox=null; lastAnalysis=null; allBoxes=[];
     session.detects=0; session.detectTimes=[]; session.analyses=0;
     ctx.clearRect(0,0,stage.width,stage.height);
-    $("detectBtn").disabled=true;
-    $("enhanceBtn").disabled=true;
-    $("startAnalysisBtn").disabled=true;
-    $("analysisCard").style.display='none';
-    $("readinessBadge").style.display='none';
-    setProgress('','');
-    updateSessionStats();
-    logEvt('config',{reset:true});
+    $("detectBtn").disabled=true; $("enhanceBtn").disabled=true; $("startAnalysisBtn").disabled=true; $("cropBtn").disabled=true;
+    $("analysisCard").style.display='none'; $("readinessBadge").style.display='none';
+    $("faceStrip").innerHTML = "";
+    setProgress('',''); updateSessionStats(); updateTfBadges(); logEvt('config',{reset:true});
   });
 
   $("fileInput").addEventListener('change', async ()=>{
@@ -470,54 +484,27 @@
     try{
       baseBitmap=await decodeBitmapFromBlob(f);
       paintBase();
-      $("detectBtn").disabled=false;
-      $("enhanceBtn").disabled=false;
-      $("startAnalysisBtn").disabled=false;
+      $("detectBtn").disabled=false; $("enhanceBtn").disabled=false; $("startAnalysisBtn").disabled=false;
       logEvt('detect',{file:f.name,w:baseBitmap.width,h:baseBitmap.height});
-    } catch(e){
-      logEvt('error',{decode_failed:e.message||String(e)});
-    }
+    } catch(e){ logEvt('error',{decode_failed:e.message||String(e)}); }
   });
 
-  $("sampleBtn").addEventListener('click', async ()=>{ await loadSample(); $("startAnalysisBtn").disabled=false; });
+  $("sampleBtn").addEventListener('click', async ()=>{ const ok = await loadSample(); if(ok) $("startAnalysisBtn").disabled=false; });
   $("autoTestBtn").addEventListener('click', runAutoTest);
 
   $("copyTestBtn").addEventListener('click', async ()=>{
     try {
       const report=buildAutoTestReport();
-      const res=await (async (text)=>{
-        try{ if(navigator.clipboard&&window.isSecureContext){ await navigator.clipboard.writeText(text); return {ok:true,via:'clipboard'}; } }catch(_){}
-        try{ const ta=document.createElement('textarea'); ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.opacity='0'; ta.style.left='-9999px'; document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy'); document.body.removeChild(ta); if(ok) return {ok:true,via:'execCommand'}; }catch(e){ return {ok:false,via:'fallback',err:e.message||String(e)} }
-        return {ok:false,via:'none',err:'No clipboard available'};
-      })(report);
-      if(res.ok){
-        logEvt('config',{copiedAutoTestReport:true,via:res.via,length:report.length});
-        setProgress('','Test result copied');
-        setTimeout(()=>setProgress('',''),1200);
-      } else {
-        logEvt('error',{copyAutoTestReportError: res.err||'unknown', via:res.via});
-      }
-    } catch(e){
-      logEvt('error',{ copyAutoTestReportException: e.message || String(e) });
-    }
+      try{ await navigator.clipboard.writeText(report); setProgress('','Test result copied'); setTimeout(()=>setProgress('',''),1200); logEvt('config',{copiedAutoTestReport:true,length:report.length}); }
+      catch { logEvt('error',{ copyAutoTestReportError:'clipboard' }); }
+    } catch(e){ logEvt('error',{ copyAutoTestReportException:e.message||String(e) }); }
   });
 
   $("copyDiagBtn").addEventListener('click', async ()=>{
     const txt=getAllLogsText();
-    try{
-      if(navigator.clipboard && window.isSecureContext){
-        await navigator.clipboard.writeText(txt);
-        setProgress('','Diagnostics copied');
-        setTimeout(()=>setProgress('',''),1200);
-        logEvt('config',{copyDiagnostics:true});
-      } else {
-        throw new Error('no clipboard');
-      }
-    } catch {
-      logEvt('error',{ copyDiagnosticsFailed:'clipboard unavailable' });
-    }
+    try{ await navigator.clipboard.writeText(txt); setProgress('','Diagnostics copied'); setTimeout(()=>setProgress('',''),1200); logEvt('config',{copyDiagnostics:true}); }
+    catch { logEvt('error',{ copyDiagnosticsFailed:'clipboard unavailable' }); }
   });
-
   $("clearLogsBtn").addEventListener('click', ()=>{ $("diagnostics").textContent = 'No diagnostics yet.'; });
 
   $("copySummaryBtn").addEventListener('click', async ()=>{
@@ -533,36 +520,22 @@
       `Brightness: ${a.lighting.brightness_mean.toFixed(1)}, Contrast σ: ${a.lighting.contrast_stdev.toFixed(1)}, Sharpness (LapVar): ${a.sharpness.laplacian_variance.toFixed(0)}`,
       `Global: ${Math.round(a.refine.scores.global)}%`
     ].join('\n');
-    try{
-      await navigator.clipboard.writeText(lines);
-      $("progressText").textContent = "Summary copied";
-      setTimeout(()=>{$("progressText").textContent="";},1200);
-    } catch {
-      $("progressText").textContent = "Copy failed";
-      setTimeout(()=>{$("progressText").textContent="";},1200);
-    }
+    try{ await navigator.clipboard.writeText(lines); $("progressText").textContent = "Summary copied"; setTimeout(()=>{$("progressText").textContent="";},1200); }
+    catch { $("progressText").textContent = "Copy failed"; setTimeout(()=>{$("progressText").textContent="";},1200); }
   });
 
   $("copyJsonBtn").addEventListener('click', async ()=>{
     if(!lastAnalysis) return;
-    try{
-      await navigator.clipboard.writeText(JSON.stringify(lastAnalysis,null,2));
-      $("progressText").textContent = "Analysis JSON copied";
-      setTimeout(()=>{$("progressText").textContent="";},1200);
-    } catch {
-      $("progressText").textContent = "Copy failed";
-      setTimeout(()=>{$("progressText").textContent="";},1200);
-    }
+    try{ await navigator.clipboard.writeText(JSON.stringify(lastAnalysis,null,2)); $("progressText").textContent = "Analysis JSON copied"; setTimeout(()=>{$("progressText").textContent="";},1200); }
+    catch { $("progressText").textContent = "Copy failed"; setTimeout(()=>{$("progressText").textContent="";},1200); }
   });
 
   $("exportJsonBtn").addEventListener('click', ()=>{
     if(!lastAnalysis) return;
     const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url; a.download=`yorn-analysis-${Date.now()}.json`;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+    const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   });
 
   function ensureExtraButtons(){
@@ -597,9 +570,6 @@
     }
   }
 
-  // ZIP button
-  $("zipBtn").addEventListener('click', buildZip);
-
   // Modal buttons
   $("wmSave").addEventListener('click', saveShareModal);
   $("wmCancel").addEventListener('click', closeShareModal);
@@ -607,16 +577,11 @@
 
   /* ===== Boot ===== */
   window.addEventListener('load', async ()=>{
-    $("rev").textContent = REVISION;
-    document.title = "YorN " + REVISION;
+    $("rev").textContent = REVISION; document.title = "YorN " + REVISION;
     try {
-      await initTF();
-      logEvt('config',{tf_ready:true,backend:safeBackend(),tf_version:tfVersion});
-      logEvt('config',{boot:'dom-ready',rev:REVISION});
-      logEvt('config',{boot:'complete'});
-    } catch (e) {
-      logEvt('error',{tf_init:e.message||String(e)});
-    }
+      await initTF(); logEvt('config',{tf_ready:true,backend:safeBackend(),tf_version:tfVersion});
+      logEvt('config',{boot:'dom-ready',rev:REVISION}); logEvt('config',{boot:'complete'});
+    } catch (e) { logEvt('error',{tf_init:e.message||String(e)}); }
     ensureExtraButtons();
   });
 })();
