@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"/>
-  <title>YorN 1.18.0-alpha</title>
+  <title>YorN 1.18.1-alpha</title>
   <style>
     :root { --bg:#0b0f14; --card:#121821; --muted:#778196; --ink:#e7ecf3; --accent:#62d0ff; --ok:#2ecc71; --warn:#f39c12; --bad:#ff5c5c; }
     html,body {margin:0;padding:0;background:var(--bg);color:var(--ink);font:400 15px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
@@ -17,7 +17,8 @@
     .badge {display:none;padding:3px 8px;border-radius:999px;font-size:12px;border:1px solid #2c394a;color:#cfd7e6}
     .badge.ready {background:rgba(46,204,113,.12);border-color:#2ecc71;color:#aef3c7}
     .badge.blocked {background:rgba(255,92,92,.12);border-color:#ff5c5c;color:#ffb3b3}
-    canvas, .stage {width:100%;max-height:55vh;background:#0f141c;border-radius:10px;display:block}
+    canvas, .stage {width:100%;max-height:55vh;background:#0f141c;border-radius:10px;display:block;cursor:grab}
+    canvas.dragging {cursor:grabbing}
     .hud {display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:8px}
     .tiny {font-size:12px;color:var(--muted)}
     .kv {display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:13px}
@@ -94,7 +95,7 @@
 
         <select id="backendSel" title="TensorFlow.js backend">
           <option value="">Auto</option>
-          <option value="webgl">webgl</option>
+          <option value="webgl" selected>webgl</option>
           <option value="wasm">wasm</option>
           <option value="cpu">cpu</option>
         </select>
