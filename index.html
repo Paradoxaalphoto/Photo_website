@@ -17,8 +17,7 @@
     .badge {display:none;padding:3px 8px;border-radius:999px;font-size:12px;border:1px solid #2c394a;color:#cfd7e6}
     .badge.ready {background:rgba(46,204,113,.12);border-color:#2ecc71;color:#aef3c7}
     .badge.blocked {background:rgba(255,92,92,.12);border-color:#ff5c5c;color:#ffb3b3}
-    canvas, .stage {width:100%;max-height:55vh;background:#0f141c;border-radius:10px;display:block;cursor:grab}
-    canvas.dragging {cursor:grabbing}
+    canvas, .stage {width:100%;max-height:55vh;background:#0f141c;border-radius:10px;display:block}
     .hud {display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:8px}
     .tiny {font-size:12px;color:var(--muted)}
     .kv {display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:13px}
@@ -71,7 +70,7 @@
         <button id="zipBtn" type="button" title="Download index.html + app.js as zip">Download ZIP</button>
       </div>
 
-      <canvas id="stage" class="stage" width="1024" height="683"></canvas>
+      <canvas id="stage" class="stage" width="1024" height="683" title="Drag to pan • Double‑click to center"></canvas>
 
       <div class="inputs">
         <label>Rotate (°)
@@ -95,7 +94,7 @@
 
         <select id="backendSel" title="TensorFlow.js backend">
           <option value="">Auto</option>
-          <option value="webgl" selected>webgl</option>
+          <option value="webgl">webgl</option>
           <option value="wasm">wasm</option>
           <option value="cpu">cpu</option>
         </select>
@@ -110,6 +109,8 @@
         <div class="tiny">
           <span class="chip">TF: <span id="tfChip">—</span></span>
           <span class="chip">v<span id="tfVer">—</span></span>
+        </div>
+        <div class="tiny">
           <span class="chip">Perf: <span id="perfChip" class="num">—</span></span>
           <span class="chip">Session: <span id="sessStats" class="num">0 detects • 0 analyses</span></span>
         </div>
