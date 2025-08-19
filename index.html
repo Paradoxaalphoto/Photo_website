@@ -3,69 +3,180 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"/>
-  <title>YorN 1.18.1-alpha</title>
-  <link rel="stylesheet" href="style.css">
+  <title>YorN 1.18.2-alpha</title>
+  <style>
+    :root { --bg:#0b0f14; --card:#121821; --muted:#778196; --ink:#e7ecf3; --accent:#62d0ff; --ok:#2ecc71; --warn:#f39c12; --bad:#ff5c5c; }
+    html,body {margin:0;padding:0;background:var(--bg);color:var(--ink);font:400 15px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    .wrap {max-width:960px;margin:0 auto;padding:14px}
+    h1 {font-size:18px;margin:0 0 10px 0;letter-spacing:.2px}
+    .row {display:flex;gap:10px;flex-wrap:wrap}
+    .card {background:var(--card);border-radius:12px;padding:12px;flex:1 1 300px;min-width:280px}
+    .controls {display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .controls button, .controls select, .controls input[type="file"]::file-selector-button {background:#1a2330;color:var(--ink);border:1px solid #273348;border-radius:10px;padding:8px 12px;cursor:pointer}
+    .controls button[disabled] {opacity:.45;cursor:not-allowed}
+    .badge {display:none;padding:3px 8px;border-radius:999px;font-size:12px;border:1px solid #2c394a;color:#cfd7e6}
+    .badge.ready {background:rgba(46,204,113,.12);border-color:#2ecc71;color:#aef3c7}
+    .badge.blocked {background:rgba(255,92,92,.12);border-color:#ff5c5c;color:#ffb3b3}
+    canvas, .stage {width:100%;max-height:55vh;background:#0f141c;border-radius:10px;display:block}
+    .hud {display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:8px}
+    .tiny {font-size:12px;color:var(--muted)}
+    .kv {display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:13px}
+    .log {white-space:pre-wrap;word-break:break-word;max-height:240px;overflow:auto;background:#0e141c;padding:10px;border-radius:10px;border:1px solid #233042}
+    .progress {min-height:18px;color:#bcd0e8}
+    .veil {position:fixed;inset:0;background:rgba(11,15,20,.6);display:none;align-items:center;justify-content:center;z-index:9999}
+    .veil.show {display:flex}
+    .chip {padding:4px 8px;border:1px solid #2c394a;border-radius:999px;font-size:12px}
+    .num {font-variant-numeric:tabular-nums}
+    .inputs {display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center}
+    .inputs label {display:flex;align-items:center;gap:6px;font-size:13px;color:#c7d2e2;background:#0f141c;border:1px solid #233042;padding:6px 8px;border-radius:8px}
+    .inputs input[type="range"], .inputs input[type="number"] {accent-color:var(--accent)}
+    /* Face strip */
+    .facestrip {display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .thumb {width:72px;height:72px;border-radius:8px;border:1px solid #233042;overflow:hidden;background:#0f141c;cursor:pointer;position:relative}
+    .thumb.active {outline:2px solid var(--accent)}
+    .thumb canvas {width:100%;height:100%;display:block}
+    /* Charts */
+    .bars {margin-top:10px;display:grid;gap:8px}
+    .bar {display:grid;grid-template-columns:120px 1fr 60px;align-items:center;gap:10px}
+    .bar .track {height:10px;background:#111926;border:1px solid #233042;border-radius:999px;overflow:hidden}
+    .bar .fill {height:100%;background:linear-gradient(90deg,#3aa2ff,#62d0ff)}
+    /* Modal */
+    .modal {position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:9999}
+    .modal.show {display:flex}
+    .modal .panel {background:#0f141c;border:1px solid #223042;padding:14px;border-radius:10px;max-width:520px;width:92%}
+    .modal .panel h3 {margin:0 0 10px 0}
+    .modal .row {display:flex;gap:8px;flex-wrap:wrap}
+    .modal input {width:100%;background:#111926;border:1px solid #223042;color:#e7ecf3;border-radius:8px;padding:8px}
+    .modal .actions {display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+    @media (max-width:480px){ .row {flex-direction:column} }
+  </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <h1>YorN <span id="rev"></span></h1>
-    </header>
+<div class="wrap">
+  <div class="row">
+    <div class="card" style="flex:2 1 420px">
+      <div class="hud">
+        <h1>YorN <span id="rev"></span></h1>
+        <span id="readinessBadge" class="badge">READY</span>
+      </div>
 
-    <main class="layout">
-      <!-- Left card: Input + Canvas + Controls -->
-      <section class="card" id="inputCard">
-        <h2>Upload</h2>
-        <input type="file" id="fileInput" accept="image/*" />
-        <button id="sampleBtn">Load Sample</button>
-        <canvas id="photoCanvas" width="640" height="480"></canvas>
+      <div class="controls" style="margin:8px 0 10px">
+        <input id="fileInput" type="file" accept="image/*" />
+        <button id="sampleBtn" type="button">Load Sample</button>
+        <button id="detectBtn" type="button" disabled>Detect</button>
+        <button id="startAnalysisBtn" type="button" disabled>Start Analysis</button>
+        <button id="autoTestBtn" type="button">Auto‑Test</button>
+        <button id="copyTestBtn" type="button" disabled>Copy Test Report</button>
+        <button id="zipBtn" type="button" title="Download index.html + app.js as zip">Download ZIP</button>
+      </div>
 
-        <div class="controls">
-          <label><input type="checkbox" id="showThirds"> Thirds</label>
-          <label><input type="checkbox" id="showSymmetry"> Symmetry</label>
-          <label><input type="checkbox" id="showGolden"> Golden</label>
+      <canvas id="stage" class="stage" width="1024" height="683" title="Drag to pan • Double‑click to center"></canvas>
+
+      <div class="inputs">
+        <label>Rotate (°)
+          <input id="rot" type="number" step="1" value="0" style="width:64px">
+        </label>
+        <label>Zoom (0.8–2.0):
+          <input id="zoom" type="range" min="0.8" max="2.0" step="0.01" value="1.20">
+          <span id="zoomLabel" class="num">1.20</span>
+        </label>
+        <label>Brightness:
+          <input id="bri" type="range" min="0.8" max="1.6" step="0.01" value="1.10">
+          <span id="briLabel" class="num">1.10</span>
+        </label>
+        <label>Contrast:
+          <input id="con" type="range" min="0.8" max="1.6" step="0.01" value="1.15">
+          <span id="conLabel" class="num">1.15</span>
+        </label>
+        <label><input id="guideThirds" type="checkbox"> Thirds grid</label>
+        <label><input id="guideSym" type="checkbox"> Symmetry</label>
+        <label><input id="guideGolden" type="checkbox"> Golden mask</label>
+
+        <select id="backendSel" title="TensorFlow.js backend">
+          <option value="">Auto</option>
+          <option value="webgl">webgl</option>
+          <option value="wasm">wasm</option>
+          <option value="cpu">cpu</option>
+        </select>
+        <button id="cropBtn" type="button" disabled>Export Face PNG</button>
+        <button id="enhanceBtn" type="button" disabled>Enhance & Retry</button>
+        <button id="resetBtn" type="button">Reset</button>
+      </div>
+
+      <div class="facestrip" id="faceStrip" aria-label="Detected faces"></div>
+
+      <div class="hud" style="margin-top:10px">
+        <div class="tiny">
+          <span class="chip">TF: <span id="tfChip">—</span></span>
+          <span class="chip">v<span id="tfVer">—</span></span>
         </div>
+        <div class="tiny">
+          <span class="chip">Perf: <span id="perfChip" class="num">—</span></span>
+          <span class="chip">Session: <span id="sessStats" class="num">0 detects • 0 analyses</span></span>
+        </div>
+        <div class="progress" id="progressText"></div>
+      </div>
+    </div>
 
-        <div id="hud"></div>
-      </section>
-
-      <!-- Right card: Analysis Results -->
-      <section class="card" id="analysisCard">
-        <h2>Analysis</h2>
-        <div id="analysisResults">No analysis yet.</div>
-        <canvas id="chartCanvas" width="320" height="200"></canvas>
-      </section>
-    </main>
-
-    <!-- Footer with Share/Export -->
-    <footer>
-      <button id="shareBtn">Share</button>
-      <button id="shareSettingsBtn">Share Settings</button>
-      <button id="pdfBtn">Export PDF</button>
-      <button id="zipBtn">Download ZIP</button>
-    </footer>
-
-    <!-- Diagnostics -->
-    <section class="card" id="diagnosticsCard">
-      <h2>Diagnostics
-        <button id="pinBtn">Pinned ↓</button>
-        <button id="clearBtn">Clear</button>
-        <button id="copyBtn">Copy</button>
-      </h2>
-      <pre id="diagnostics">No diagnostics yet.</pre>
-    </section>
+    <div class="card" style="flex:1 1 300px">
+      <div class="hud">
+        <strong>Diagnostics</strong>
+        <div>
+          <button id="pinBtn" type="button" title="Auto-follow new logs">Pinned ↓</button>
+          <button id="copyDiagBtn" type="button">Copy Diagnostics</button>
+          <button id="clearLogsBtn" type="button">Clear</button>
+        </div>
+      </div>
+      <div id="diagnostics" class="log">No diagnostics yet.</div>
+    </div>
   </div>
 
-  <!-- TF + Models -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
+  <div id="analysisCard" class="card" style="margin-top:10px; display:none">
+    <div class="hud"><strong>Analysis</strong>
+      <div id="analysisBtnGroup">
+        <button id="copySummaryBtn" type="button">Copy Summary</button>
+        <button id="copyJsonBtn" type="button">Copy JSON</button>
+        <button id="exportJsonBtn" type="button">Download JSON</button>
+        <!-- Export PDF / Share / Settings appended by app.js -->
+      </div>
+    </div>
+    <div class="kv" id="analysisKv"></div>
+    <div class="bars" id="analysisBars"></div>
+  </div>
+</div>
 
-  <!-- Export libs -->
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<!-- Busy Veil -->
+<div id="veil" class="veil"><div style="background:#0f141c;border:1px solid #223042;padding:14px 16px;border-radius:10px">Working… (watchdog armed)</div></div>
 
-  <!-- App logic -->
-  <script src="app.js"></script>
+<!-- Share Settings Modal -->
+<div id="shareModal" class="modal">
+  <div class="panel">
+    <h3>Share Settings</h3>
+    <div class="row">
+      <label style="flex:1 1 200px">Watermark
+        <input id="wmText" type="text" placeholder="YorN • Prototype" />
+      </label>
+      <label style="flex:1 1 200px">Hashtags (space-separated)
+        <input id="wmTags" type="text" placeholder="#YorN #AI #FaceAnalysis" />
+      </label>
+    </div>
+    <div class="actions">
+      <button id="wmCancel" type="button">Cancel</button>
+      <button id="wmSave" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Frameworks -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
+
+<!-- Export libs -->
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+<!-- App logic -->
+<script src="app.js"></script>
 </body>
 </html>
