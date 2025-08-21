@@ -1,8 +1,7 @@
 (() => {
   "use strict";
 
-  const REVISION = "1.18.6-alpha";
-  // Runtime guard: catch stale app.js vs HTML expectation
+  const REVISION = "1.18.7-alpha";
   try {
     if (window.__YORN_EXPECTED_REV && window.__YORN_EXPECTED_REV !== REVISION) {
       const msg = `YorN rev mismatch: HTML expects ${window.__YORN_EXPECTED_REV}, app.js is ${REVISION}. Likely cached app.js.`;
@@ -14,111 +13,62 @@
     }
   } catch {}
 
-  // --- WASM binaries path (required for wasm backend) ---
+  // WASM binaries path
   if (window.tf && tf.wasm && typeof tf.wasm.setWasmPaths === 'function') {
     tf.wasm.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/');
   }
 
-  /* ===== Shortcuts ===== */
   const $ = id => document.getElementById(id);
   const stage = $("stage");
   const ctx = stage.getContext("2d", { willReadFrequently: true });
 
-  /* ===== State ===== */
-  let sourceBitmap=null;
-  let faceModel=null;
-  let lastBox=null, lastAnalysis=null;
+  let sourceBitmap=null, faceModel=null, lastBox=null, lastAnalysis=null;
   let allBoxes=[];
   let isBusy=false, tfVersion="—", __autoTestStartIdx=0;
   let detectMsLast='—', detectMsAvg='—';
   const session = { detects:0, detectTimes:[], analyses:0 };
 
-  // View transform
-  let pan = { x: 0, y: 0 };
-  let isDragging = false;
-  let dragStart = { x: 0, y: 0 };
-  let panStart = { x: 0, y: 0 };
+  let pan={x:0,y:0}, isDragging=false, dragStart={x:0,y:0}, panStart={x:0,y:0};
 
-  // Overlays
   let overlay = {
     thirds: JSON.parse(localStorage.getItem('yorn_thirds')||'false'),
     sym: JSON.parse(localStorage.getItem('yorn_sym')||'false'),
     golden: JSON.parse(localStorage.getItem('yorn_golden')||'false')
   };
 
-  /* ===== FPS monitor (toggleable) ===== */
-  let fps = '—';
-  let _rafId = null, _last = 0, _frames = 0, _accum = 0;
-  let fpsEnabled = true;
-  function startFPS(){
-    if (_rafId || !fpsEnabled) return;
-    _last = performance.now(); _frames = 0; _accum = 0;
-    const loop = (t) => {
-      const dt = t - _last; _last = t; _accum += dt; _frames++;
-      if (_accum >= 1000) {
-        fps = Math.round((_frames * 1000) / _accum);
-        _frames = 0; _accum = 0;
-        updateRevChip();
-        const perf = $("perfChip");
-        if (perf) {
-          perf.textContent = `${detectMsLast} ms • avg ${detectMsAvg} ms • ${fps} fps`;
-        }
-      }
-      _rafId = requestAnimationFrame(loop);
-    };
-    _rafId = requestAnimationFrame(loop);
+  let fps='—', _rafId=null, _last=0, _frames=0, _accum=0, fpsEnabled=true;
+  function startFPS(){ if(_rafId || !fpsEnabled) return; _last=performance.now(); _frames=0; _accum=0;
+    const loop=(t)=>{ const dt=t-_last; _last=t; _accum+=dt; _frames++; if(_accum>=1000){ fps=Math.round((_frames*1000)/_accum); _frames=0; _accum=0; updateRevChip(); const perf=$("perfChip"); if(perf) perf.textContent=`${detectMsLast} ms • avg ${detectMsAvg} ms • ${fps} fps`; } _rafId=requestAnimationFrame(loop); };
+    _rafId=requestAnimationFrame(loop);
   }
-  function stopFPS(){
-    if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
-    fps = '—';
-    updateRevChip();
-    const perf = $("perfChip");
-    if (perf) perf.textContent = `${detectMsLast} ms • avg ${detectMsAvg} ms`;
-  }
+  function stopFPS(){ if(_rafId){ cancelAnimationFrame(_rafId); _rafId=null; } fps='—'; updateRevChip(); const perf=$("perfChip"); if(perf) perf.textContent=`${detectMsLast} ms • avg ${detectMsAvg} ms`; }
 
-  /* ===== Diagnostics ===== */
   function isNearBottom(el, slopPx=16){ return el.scrollHeight - el.scrollTop - el.clientHeight <= slopPx; }
-  function logDiagnostics(entry){
-    const diag=$("diagnostics"); if(!diag) return;
-    const shouldStick=(window.__yornPinFollow ?? true) || isNearBottom(diag);
-    if(diag.textContent==="No diagnostics yet.") diag.textContent="";
-    diag.textContent += (diag.textContent ? "\n" : "") + entry;
-    if(shouldStick) diag.scrollTop = diag.scrollHeight;
-  }
+  function logDiagnostics(entry){ const diag=$("diagnostics"); if(!diag) return; const stick=(window.__yornPinFollow ?? true) || isNearBottom(diag); if(diag.textContent==="No diagnostics yet.") diag.textContent=""; diag.textContent += (diag.textContent ? "\n" : "") + entry; if(stick) diag.scrollTop = diag.scrollHeight; }
   window.__yornLog = window.__yornLog || logDiagnostics;
   function logEvt(type,obj={}){ const line=JSON.stringify({time:new Date().toISOString(),type,...obj}); try{(window.__yornLog||logDiagnostics)(line);}catch{} }
 
-  /* ===== Utils ===== */
-  function setBusy(v){ isBusy=!!v; $("veil").classList.toggle("show", isBusy); ["detectBtn","startAnalysisBtn","autoTestBtn","enhanceBtn","cropBtn","exportPngBtn"].forEach(id=>{ const b=$(id); if(b) b.disabled = !!v; }); }
+  function setBusy(v){ isBusy=!!v; $("veil").classList.toggle("show", isBusy); ["detectBtn","startAnalysisBtn","autoTestBtn","enhanceBtn","cropBtn","exportPngBtn","autoBackendBtn","backendSel"].forEach(id=>{ const b=$(id); if(b) b.disabled = !!v; }); }
   function getAllLogsText(){ const el=$("diagnostics"); return el ? (el.innerText||el.textContent||"") : ""; }
   function setProgress(_, msg){ $("progressText").textContent = msg || ""; }
   function safeBackend(){ try{ return (window.tf && typeof tf.getBackend==='function') ? (tf.getBackend()||'—') : '—'; }catch{ return '—'; } }
-  function updateTfBadges(){
-    const b = safeBackend();
-    $("tfChip").textContent = b;
-    $("tfVer").textContent = String(tfVersion||'—');
-    $("perfChip").textContent = `${detectMsLast} ms • avg ${detectMsAvg} ms${fpsEnabled && /\d/.test(String(fps)) ? ` • ${fps} fps` : ''}`;
-    const abl = $("activeBackendLbl"); if (abl) abl.textContent = `Active: ${b}`;
-  }
+  function updateTfBadges(){ const b=safeBackend(); $("tfChip").textContent=b; $("tfVer").textContent=String(tfVersion||'—'); $("perfChip").textContent=`${detectMsLast} ms • avg ${detectMsAvg} ms${fpsEnabled && /\d/.test(String(fps)) ? ` • ${fps} fps` : ''}`; const abl=$("activeBackendLbl"); if(abl) abl.textContent=`Active: ${b}`; }
   function updateSessionStats(){ const avg=session.detectTimes.length?Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length):'—'; $("sessStats").textContent=`${session.detects} detects • ${session.analyses} analyses`; logEvt('config',{session:`${session.detects} detects • ${session.analyses} analyses`, avg_detect_ms: avg}); }
 
-  function setRevChip(text, title) { const el = $("revChip"); if (!el) return; el.textContent = text; if (title) el.title = title; }
-  function updateRevChip() { const backend=safeBackend(); const fpsPart=(fpsEnabled && /\d/.test(String(fps)))?` • ${fps}fps`:''; setRevChip(`${REVISION} • ${backend}${fpsPart}`, `TFJS ${String(tfVersion||'—')}`); }
+  function setRevChip(text, title){ const el=$("revChip"); if(!el) return; el.textContent=text; if(title) el.title=title; }
+  function updateRevChip(){ const backend=safeBackend(); const fpsPart=(fpsEnabled && /\d/.test(String(fps)))?` • ${fps}fps`:''; setRevChip(`${REVISION} • ${backend}${fpsPart}`, `TFJS ${String(tfVersion||'—')}`); }
 
-  window.onerror = (msg,src,line,col,err)=>{ logEvt("error",{onerror:String(msg),src,line,col,stack:err&&err.stack?String(err.stack):undefined}); };
-  window.onunhandledrejection = ev => { logEvt("error",{unhandledrejection:String(ev.reason && ev.reason.message || ev.reason || 'unknown')}); };
+  window.onerror=(msg,src,line,col,err)=>{ logEvt("error",{onerror:String(msg),src,line,col,stack:err&&err.stack?String(err.stack):undefined}); };
+  window.onunhandledrejection=ev=>{ logEvt("error",{unhandledrejection:String(ev.reason && ev.reason.message || ev.reason || 'unknown')}); };
 
-  /* ===== Drawing ===== */
   function paintBase(){
-    ctx.save();
-    ctx.clearRect(0,0,stage.width,stage.height);
+    ctx.save(); ctx.clearRect(0,0,stage.width,stage.height);
     if(sourceBitmap){
       const rot=parseFloat($("rot").value||"0")*Math.PI/180;
       const zoom=parseFloat($("zoom").value||"1");
       const bri=parseFloat($("bri").value||"1");
       const con=parseFloat($("con").value||"1");
-
-      ctx.filter = `brightness(${bri}) contrast(${con})`;
+      ctx.filter=`brightness(${bri}) contrast(${con})`;
       ctx.translate(stage.width/2, stage.height/2);
       ctx.rotate(rot);
       ctx.translate(pan.x, pan.y);
@@ -126,101 +76,64 @@
       ctx.drawImage(sourceBitmap, -dw/2, -dh/2, dw, dh);
     }
     ctx.restore();
-    logEvt('overlay',{ painted:{w:stage.width,h:stage.height}, pan });
+    logEvt('overlay',{painted:{w:stage.width,h:stage.height}, pan});
   }
 
   function drawGuides(b){
-    const w=stage.width, h=stage.height;
-    if(overlay.thirds){
-      ctx.save(); ctx.strokeStyle="#3a99ff"; ctx.lineWidth=1; ctx.setLineDash([6,6]);
-      ctx.beginPath();
-      ctx.moveTo(w/3,0); ctx.lineTo(w/3,h);
-      ctx.moveTo(2*w/3,0); ctx.lineTo(2*w/3,h);
-      ctx.moveTo(0,h/3); ctx.lineTo(w,h/3);
-      ctx.moveTo(0,2*h/3); ctx.lineTo(w,2*h/3);
-      ctx.stroke(); ctx.restore();
-    }
-    if(overlay.sym){
-      ctx.save(); ctx.strokeStyle="#7dd3fc"; ctx.lineWidth=1.5; ctx.setLineDash([]);
-      ctx.beginPath(); ctx.moveTo(w/2,0); ctx.lineTo(w/2,h); ctx.stroke(); ctx.restore();
-    }
-    if(overlay.golden && b){
-      const phi=1.6180339887; const x=b.x,y=b.y,bw=b.width,bh=b.height;
-      const v1=x+bw*(1/phi), v2=x+bw*(1-1/phi);
-      const h1=y+bh*(1/phi), h2=y+bh*(1-1/phi);
-      ctx.save(); ctx.strokeStyle="#f6c16b"; ctx.lineWidth=1; ctx.setLineDash([4,4]);
-      ctx.beginPath();
-      ctx.moveTo(v1,y); ctx.lineTo(v1,y+bh); ctx.moveTo(v2,y); ctx.lineTo(v2,y+bh);
-      ctx.moveTo(x,h1); ctx.lineTo(x+bw,h1); ctx.moveTo(x,h2); ctx.lineTo(x+bw,h2);
-      ctx.stroke(); ctx.restore();
-    }
+    const w=stage.width,h=stage.height;
+    if(overlay.thirds){ ctx.save(); ctx.strokeStyle="#3a99ff"; ctx.lineWidth=1; ctx.setLineDash([6,6]); ctx.beginPath(); ctx.moveTo(w/3,0); ctx.lineTo(w/3,h); ctx.moveTo(2*w/3,0); ctx.lineTo(2*w/3,h); ctx.moveTo(0,h/3); ctx.lineTo(w,h/3); ctx.moveTo(0,2*h/3); ctx.lineTo(w,2*h/3); ctx.stroke(); ctx.restore(); }
+    if(overlay.sym){ ctx.save(); ctx.strokeStyle="#7dd3fc"; ctx.lineWidth=1.5; ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(w/2,0); ctx.lineTo(w/2,h); ctx.stroke(); ctx.restore(); }
+    if(overlay.golden && b){ const phi=1.6180339887; const x=b.x,y=b.y,bw=b.width,bh=b.height; const v1=x+bw*(1/phi), v2=x+bw*(1-1/phi); const h1=y+bh*(1/phi), h2=y+bh*(1-1/phi); ctx.save(); ctx.strokeStyle="#f6c16b"; ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(v1,y); ctx.lineTo(v1,y+bh); ctx.moveTo(v2,y); ctx.lineTo(v2,y+bh); ctx.moveTo(x,h1); ctx.lineTo(x+bw,h1); ctx.moveTo(x,h2); ctx.lineTo(x+bw,h2); ctx.stroke(); ctx.restore(); }
   }
 
   function drawOverlay(box){
     paintBase();
-    ctx.save(); ctx.strokeStyle="rgba(98,208,255,.35)"; ctx.lineWidth=2;
-    allBoxes.forEach(b=>ctx.strokeRect(b.x,b.y,b.width,b.height));
-    ctx.restore();
+    ctx.save(); ctx.strokeStyle="rgba(98,208,255,.35)"; ctx.lineWidth=2; allBoxes.forEach(b=>ctx.strokeRect(b.x,b.y,b.width,b.height)); ctx.restore();
     if(box){ ctx.save(); ctx.strokeStyle="#62d0ff"; ctx.lineWidth=3; ctx.strokeRect(box.x,box.y,box.width,box.height); ctx.restore(); }
     drawGuides(box);
   }
 
-  /* ===== TF / Model ===== */
   function getStoredBackend(){ return localStorage.getItem('yorn_backend') || ''; }
-  function setStoredBackend(v){ if (v===null || v===undefined) localStorage.removeItem('yorn_backend'); else localStorage.setItem('yorn_backend', v); }
+  function setStoredBackend(v){ if(v===null||v===undefined) localStorage.removeItem('yorn_backend'); else localStorage.setItem('yorn_backend', v); }
 
   async function initTF(){
     if(!window.tf){ logEvt('error',{tf_init:'tf not present'}); throw new Error('tf missing'); }
     await tf.ready();
     tfVersion = tf?.version_core || tf?.version?.tfjs || tfVersion || '—';
     try{
-      // Respect stored preference or current UI select
       const stored = getStoredBackend();
-      if ($("backendSel")) $("backendSel").value = stored; // reflect stored choice
+      if ($("backendSel")) $("backendSel").value = stored;
       const want = stored || ($("backendSel")?.value || '') || safeBackend() || 'webgl';
       const t0=performance.now();
-      await tf.setBackend(want);
-      await tf.ready();
-
-      // tiny warmup op to JIT kernels on new backend
-      await tf.tidy(() => tf.ones([32, 32]).square().sum().data());
-
+      await tf.setBackend(want); await tf.ready();
+      await tf.tidy(()=>tf.ones([32,32]).square().sum().data()); // tiny warmup
       logEvt('config',{warmup:'ok',backend:safeBackend(),ms:Math.round(performance.now()-t0)});
     }catch(e){ logEvt('error',{warmup:e.message||String(e)}); }
-    updateTfBadges();
-    updateRevChip();
+    updateTfBadges(); updateRevChip();
   }
-  async function loadModel(){ if(faceModel) return; try{ faceModel=await blazeface.load(); logEvt('detect',{blazefaceReady:true}); } catch(e){ logEvt('error',{blazeface_failed:e.message||String(e)}); throw e; } }
 
-  const mapPred = p => { const [x1,y1]=p.topLeft; const [x2,y2]=p.bottomRight; return {x:x1,y:y1,width:x2-x1,height:y2-y1,prob:(p.probability?.[0]??0)}; };
+  async function loadModel(){ if(faceModel) return; try{ faceModel=await blazeface.load(); logEvt('detect',{blazefaceReady:true}); }catch(e){ logEvt('error',{blazeface_failed:e.message||String(e)}); throw e; } }
+
+  const mapPred=p=>{ const [x1,y1]=p.topLeft; const [x2,y2]=p.bottomRight; return {x:x1,y:y1,width:x2-x1,height:y2-y1,prob:(p.probability?.[0]??0)}; };
 
   async function detectOnce(){
     if(!sourceBitmap) return null;
     await initTF(); await loadModel();
-
-    const runPredict = async () => {
-      const input = tf.browser.fromPixels(stage);
-      try { return await faceModel.estimateFaces(input, false, false); }
-      finally { input.dispose?.(); }
-    };
-    const timed=(ms,fn)=>new Promise((resolve,reject)=>{
-      let done=false; const t=setTimeout(()=>{ if(!done){ done=true; reject(new Error('detect_timeout')); } }, ms);
-      fn().then(v=>{ if(!done){ done=true; clearTimeout(t); resolve(v);} }).catch(e=>{ if(!done){ done=true; clearTimeout(t); reject(e);} });
-    });
+    const runPredict=async()=>{ const input=tf.browser.fromPixels(stage); try{ return await faceModel.estimateFaces(input,false,false); } finally{ input.dispose?.(); } };
+    const timed=(ms,fn)=>new Promise((resolve,reject)=>{ let done=false; const t=setTimeout(()=>{ if(!done){ done=true; reject(new Error('detect_timeout')); } },ms); fn().then(v=>{ if(!done){ done=true; clearTimeout(t); resolve(v);} }).catch(e=>{ if(!done){ done=true; clearTimeout(t); reject(e);} }); });
 
     const t0=performance.now();
     try{
       paintBase();
       const preds=await timed(3500, runPredict);
-      if(!preds || !preds.length){ logEvt('error',{detect:'no_face'}); return null; }
+      if(!preds||!preds.length){ logEvt('error',{detect:'no_face'}); return null; }
       const dt=Math.round(performance.now()-t0);
-      detectMsLast = dt; session.detectTimes.push(dt);
-      detectMsAvg = Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length);
+      detectMsLast=dt; session.detectTimes.push(dt); detectMsAvg=Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length);
       updateTfBadges();
 
       allBoxes=preds.map(mapPred).sort((a,b)=>b.prob-a.prob);
       lastBox=allBoxes[0];
-      session.detects += 1;
+      session.detects+=1;
       drawOverlay(lastBox);
       renderFaceStrip();
       logEvt('detect',{roughLocate_ms:dt,finalDetect_ms:dt,faces:allBoxes.length,box:lastBox});
@@ -232,8 +145,7 @@
       if(e && e.message==='detect_timeout' && cur==='webgl'){
         logEvt('error',{detect_timeout:true,backend:cur,fallback:'wasm_retry'});
         try{
-          await tf.setBackend('wasm'); await tf.ready();
-          await tf.tidy(() => tf.ones([32, 32]).square().sum().data());
+          await tf.setBackend('wasm'); await tf.ready(); await tf.tidy(()=>tf.ones([32,32]).square().sum().data());
           tfVersion = tf?.version_core || tf?.version?.tfjs || tfVersion || '—';
           faceModel=null; await loadModel();
           const t1=performance.now();
@@ -241,8 +153,7 @@
           const preds=await timed(3500, runPredict);
           if(preds && preds.length){
             const dt=Math.round(performance.now()-t1);
-            detectMsLast=dt; session.detectTimes.push(dt);
-            detectMsAvg=Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length);
+            detectMsLast=dt; session.detectTimes.push(dt); detectMsAvg=Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length);
             allBoxes=preds.map(mapPred).sort((a,b)=>b.prob-a.prob);
             lastBox=allBoxes[0];
             drawOverlay(lastBox); renderFaceStrip();
@@ -256,10 +167,8 @@
     }
   }
 
-  /* ===== Face strip ===== */
   function renderFaceStrip(){
-    const strip=$("faceStrip");
-    strip.innerHTML="";
+    const strip=$("faceStrip"); strip.innerHTML="";
     allBoxes.forEach((b,i)=>{
       const div=document.createElement('div'); div.className='thumb'+(b===lastBox?' active':'');
       const c=document.createElement('canvas'); c.width=72; c.height=72;
@@ -274,7 +183,6 @@
     });
   }
 
-  /* ===== Analysis ===== */
   const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
   const normalizeContrast=s=>clamp((s/60)*100,0,100);
   const normalizeSharpness=lv=>{ const val=Math.log10(1+lv)/Math.log10(1+5000); return clamp(val*100,0,100); };
@@ -282,32 +190,20 @@
 
   function computeAnalysis(){
     if(!lastBox || !sourceBitmap) return null;
-    const w=stage.width,h=stage.height; const b=lastBox;
+    const w=stage.width,h=stage.height,b=lastBox;
     const area_pct=(b.width*b.height)/(w*h)*100;
     const center={x:b.x+b.width/2,y:b.y+b.height/2};
     const center_offset_pct={ x:((center.x-w/2)/(w/2))*100, y:((center.y-h/2)/(h/2))*100 };
 
     const img=ctx.getImageData(0,0,w,h);
     let sum=0, n=img.data.length/4, vals=[];
-    for(let i=0;i<img.data.length;i+=4){
-      const Y=0.2126*img.data[i]+0.7152*img.data[i+1]+0.0722*img.data[i+2];
-      vals.push(Y); sum+=Y;
-    }
+    for(let i=0;i<img.data.length;i+=4){ const Y=0.2126*img.data[i]+0.7152*img.data[i+1]+0.0722*img.data[i+2]; vals.push(Y); sum+=Y; }
     const mean=sum/n;
     let v=0; for(let i=0;i<vals.length;i++){ const d=vals[i]-mean; v+=d*d; }
     const contrast=Math.sqrt(v/n);
 
     let sharp=0,m=0; const step=4;
-    for(let y=1;y<h-1;y+=step){
-      for(let x=1;x<w-1;x+=step){
-        const idx=(y*w+x)*4;
-        const c=img.data[idx];
-        const l=img.data[idx-4], r=img.data[idx+4];
-        const t=img.data[idx-4*w], bt=img.data[idx+4*w];
-        const lap=(4*c - l - r - t - bt);
-        sharp+=lap*lap; m++;
-      }
-    }
+    for(let y=1;y<h-1;y+=step){ for(let x=1;x<w-1;x+=step){ const idx=(y*w+x)*4; const c=img.data[idx]; const l=img.data[idx-4], r=img.data[idx+4]; const t=img.data[idx-4*w], bt=img.data[idx+4*w]; const lap=(4*c - l - r - t - bt); sharp+=lap*lap; m++; } }
     const lapVar=m? sharp/m : 0;
 
     const brightnessScore=normalizeBrightness(mean);
@@ -323,42 +219,27 @@
       { region:'East Asia',     score: clamp(globalScore + (sharpnessScore-50)/10, 0, 100) },
     ];
 
-    const result = {
-      revision: REVISION,
-      timestamp: new Date().toISOString(),
-      image: { width:w, height:h },
-      box: {
-        x:+b.x.toFixed(2), y:+b.y.toFixed(2),
-        width:+b.width.toFixed(2), height:+b.height.toFixed(2),
-        area_pct:+area_pct.toFixed(4),
-        center:{ x:+center.x.toFixed(2), y:+center.y.toFixed(2) },
-        center_offset_pct:{ x:+center_offset_pct.x.toFixed(2), y:+center_offset_pct.y.toFixed(2) }
-      },
-      lighting: { brightness_mean:+mean.toFixed(3), contrast_stdev:+contrast.toFixed(3) },
-      sharpness: { laplacian_variance:+lapVar.toFixed(3) },
+    const result={ revision:REVISION, timestamp:new Date().toISOString(),
+      image:{width:w,height:h},
+      box:{ x:+b.x.toFixed(2), y:+b.y.toFixed(2), width:+b.width.toFixed(2), height:+b.height.toFixed(2),
+            area_pct:+area_pct.toFixed(4), center:{x:+center.x.toFixed(2), y:+center.y.toFixed(2)},
+            center_offset_pct:{ x:+center_offset_pct.x.toFixed(2), y:+center_offset_pct.y.toFixed(2) } },
+      lighting:{ brightness_mean:+mean.toFixed(3), contrast_stdev:+contrast.toFixed(3) },
+      sharpness:{ laplacian_variance:+lapVar.toFixed(3) },
       orientation: w>=h ? "landscape" : "portrait",
-      tf: { backend:safeBackend(), version:(typeof tfVersion==='string'&&tfVersion)?tfVersion:(tf?.version_core||tf?.version?.tfjs||"—") },
-      refine: { scores:{brightness:brightnessScore, contrast:contrastScore, sharpness:sharpnessScore, global:globalScore}, buckets }
+      tf:{ backend:safeBackend(), version:(typeof tfVersion==='string'&&tfVersion)?tfVersion:(tf?.version_core||tf?.version?.tfjs||"—") },
+      refine:{ scores:{brightness:brightnessScore, contrast:contrastScore, sharpness:sharpnessScore, global:globalScore}, buckets }
     };
 
-    lastAnalysis=result;
-    session.analyses += 1;
-    updateSessionStats();
-    renderAnalysis(result);
+    lastAnalysis=result; session.analyses+=1; updateSessionStats(); renderAnalysis(result);
     logEvt('analysis',{ ok:true, global:Math.round(globalScore) });
     return result;
   }
 
-  function barRow(label,val){
-    const pct=Math.round(val);
-    let col='var(--bad)'; if(pct>66) col='var(--ok)'; else if(pct>33) col='var(--warn)';
-    return `<div class="bar"><div>${label}</div><div class="track"><div class="fill" style="width:${pct}%;background:${col}"></div></div><div class="num">${pct}%</div></div>`;
-  }
-
+  function barRow(label,val){ const pct=Math.round(val); let col='var(--bad)'; if(pct>66) col='var(--ok)'; else if(pct>33) col='var(--warn)'; return `<div class="bar"><div>${label}</div><div class="track"><div class="fill" style="width:${pct}%;background:${col}"></div></div><div class="num">${pct}%</div></div>`; }
   function renderAnalysis(a){
     $("analysisCard").style.display="";
-    const kv=$("analysisKv");
-    kv.innerHTML = `
+    $("analysisKv").innerHTML = `
       <div>Revision</div><div>${a.revision}</div>
       <div>When</div><div>${new Date(a.timestamp).toLocaleString()}</div>
       <div>Backend</div><div>${a.tf.backend} v${a.tf.version}</div>
@@ -370,50 +251,16 @@
       <div>Sharpness (LapVar)</div><div>${a.sharpness.laplacian_variance.toFixed(0)}</div>
       <div>Orientation</div><div>${a.orientation}</div>
     `;
-    const s=a.refine?.scores || {brightness:0,contrast:0,sharpness:0,global:0};
+    const s=a.refine?.scores||{brightness:0,contrast:0,sharpness:0,global:0};
     const bucketHTML=(a.refine?.buckets||[]).map(b=>barRow(b.region,b.score)).join('');
-    $("analysisBars").innerHTML =
-      barRow('Brightness', s.brightness) +
-      barRow('Contrast',   s.contrast) +
-      barRow('Sharpness',  s.sharpness) +
-      barRow('Global',     s.global) +
-      '<hr style="border:0;border-top:1px solid #223042">' +
-      bucketHTML;
+    $("analysisBars").innerHTML = barRow('Brightness', s.brightness)+barRow('Contrast', s.contrast)+barRow('Sharpness', s.sharpness)+barRow('Global', s.global)+'<hr style="border:0;border-top:1px solid #223042">'+bucketHTML;
   }
 
-  /* ===== Export overlay PNG ===== */
-  function exportOverlayPNG(){
-    stage.toBlob(blob=>{
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(blob);
-      a.download=`yorn-overlay-${Date.now()}.png`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    }, 'image/png');
-  }
+  function exportOverlayPNG(){ stage.toBlob(blob=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`yorn-overlay-${Date.now()}.png`; a.click(); URL.revokeObjectURL(a.href); }, 'image/png'); }
+  function exportCropPNG(){ if(!lastBox) return; const pad=8; const sx=Math.max(0,Math.floor(lastBox.x-pad)), sy=Math.max(0,Math.floor(lastBox.y-pad)); const sw=Math.min(stage.width-sx,Math.floor(lastBox.width+2*pad)), sh=Math.min(stage.height-sy,Math.floor(lastBox.height+2*pad)); const out=document.createElement('canvas'); out.width=sw; out.height=sh; out.getContext('2d').drawImage(stage,sx,sy,sw,sh,0,0,sw,sh); out.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=`yorn-face-${Date.now()}.png`; a.click(); URL.revokeObjectURL(a.href); }, 'image/png'); }
 
-  /* ===== Crop export ===== */
-  function exportCropPNG(){
-    if(!lastBox) return;
-    const pad=8;
-    const sx=Math.max(0,Math.floor(lastBox.x-pad));
-    const sy=Math.max(0,Math.floor(lastBox.y-pad));
-    const sw=Math.min(stage.width-sx,Math.floor(lastBox.width+2*pad));
-    const sh=Math.min(stage.height-sy,Math.floor(lastBox.height+2*pad));
-    const out=document.createElement('canvas'); out.width=sw; out.height=sh;
-    out.getContext('2d').drawImage(stage,sx,sy,sw,sh,0,0,sw,sh);
-    out.toBlob(b=>{
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(b);
-      a.download=`yorn-face-${Date.now()}.png`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    }, 'image/png');
-  }
-
-  /* ===== Auto‑Test ===== */
   function buildAutoTestReport(){
-    const full=getAllLogsText(); const start=__autoTestStartIdx||0; const chunk=full.slice(start);
+    const full=getAllLogsText(), start=__autoTestStartIdx||0, chunk=full.slice(start);
     const backend=safeBackend();
     const passes=(chunk.match(/"step":"[^"]+","ok":true/g)||[]).length;
     const errors=(chunk.match(/"type":"error"/g)||[]).length;
@@ -433,92 +280,82 @@
       const ok=!!(sourceBitmap && lastBox && lastAnalysis);
       const badge=$("readinessBadge"); if(badge){ badge.style.display='inline-block'; badge.className = ok ? 'badge ready' : 'badge blocked'; badge.textContent = ok ? 'READY' : 'BLOCKED'; }
       logEvt('test',{step:'summary',ok}); $("copyTestBtn").disabled=false; setProgress('', 'Auto‑Test complete'); setTimeout(()=>setProgress('',''),1200);
-    }catch(e){
-      logEvt('error',{ autoTest: e.message || String(e) }); $("copyTestBtn").disabled=false; setProgress('', 'Auto‑Test failed'); setTimeout(()=>setProgress('',''),1500);
+    }catch(e){ logEvt('error',{ autoTest: e.message || String(e) }); $("copyTestBtn").disabled=false; setProgress('', 'Auto‑Test failed'); setTimeout(()=>setProgress('',''),1500);
     }finally{ setBusy(false); }
   }
 
-  /* ===== Sample & file ===== */
   async function decodeBitmapFromBlob(blob){ return await createImageBitmap(blob); }
-  async function setSourceBitmapFromBlob(blob){
-    sourceBitmap = await decodeBitmapFromBlob(blob);
-    pan = { x: 0, y: 0 };
-    paintBase();
-    $("detectBtn").disabled=false; $("enhanceBtn").disabled=false; $("startAnalysisBtn").disabled=false; $("exportPngBtn").disabled=false;
-  }
-  async function loadSample(){
-    try{
-      const url='https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1024&auto=format&fit=crop';
-      const res=await fetch(url,{cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status);
-      const blob=await res.blob(); await setSourceBitmapFromBlob(blob);
-      logEvt('detect',{sampleImage:url}); return true;
-    }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}); return false; }
-  }
+  async function setSourceBitmapFromBlob(blob){ sourceBitmap = await decodeBitmapFromBlob(blob); pan={x:0,y:0}; paintBase(); ["detectBtn","enhanceBtn","startAnalysisBtn","exportPngBtn"].forEach(id=>$(id).disabled=false); }
+  async function loadSample(){ try{ const url='https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1024&auto=format&fit=crop'; const res=await fetch(url,{cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status); const blob=await res.blob(); await setSourceBitmapFromBlob(blob); logEvt('detect',{sampleImage:url}); return true; }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}); return false; } }
 
-  /* ===== Mouse interactions ===== */
+  // Mouse & wheel interactions
   stage.addEventListener('mousedown',(e)=>{ if(!sourceBitmap) return; isDragging=true; dragStart={x:e.clientX,y:e.clientY}; panStart={x:pan.x,y:pan.y}; });
   window.addEventListener('mousemove',(e)=>{ if(!isDragging) return; pan.x=panStart.x+(e.clientX-dragStart.x); pan.y=panStart.y+(e.clientY-dragStart.y); if(lastBox) drawOverlay(lastBox); else paintBase(); });
   window.addEventListener('mouseup',()=>{ isDragging=false; });
   stage.addEventListener('mouseleave',()=>{ isDragging=false; });
+  stage.addEventListener('wheel',(e)=>{ if(!sourceBitmap) return; e.preventDefault(); const slider=$("zoom"); const min=+slider.min, max=+slider.max; const factor=e.deltaY<0?1+0.05:1-0.05; let z=parseFloat(slider.value); z=Math.min(max,Math.max(min, +(z*factor).toFixed(2))); const rect=stage.getBoundingClientRect(); const cx=e.clientX-rect.left-stage.width/2 - pan.x; const cy=e.clientY-rect.top -stage.height/2 - pan.y; const oldZ=parseFloat(slider.value); const dz=z/oldZ - 1; pan.x -= cx*dz; pan.y -= cy*dz; slider.value=z.toFixed(2); $("zoomLabel").textContent=z.toFixed(2); if(lastBox) drawOverlay(lastBox); else paintBase(); }, {passive:false});
+  stage.addEventListener('dblclick',()=>{ if(!lastBox) return; const cx=lastBox.x+lastBox.width/2; const cy=lastBox.y+lastBox.height/2; pan.x-=(cx-stage.width/2); pan.y-=(cy-stage.height/2); if(lastBox) drawOverlay(lastBox); else paintBase(); logEvt('config',{center_on_face:true,pan}); });
 
-  // Wheel-to-zoom (cursor-centric)
-  stage.addEventListener('wheel', (e)=>{
-    if(!sourceBitmap) return;
-    e.preventDefault();
-    const slider=$("zoom");
-    const min=+slider.min, max=+slider.max;
-    const factor = e.deltaY < 0 ? 1+0.05 : 1-0.05;
-    let z = parseFloat(slider.value);
-    z = Math.min(max, Math.max(min, +(z*factor).toFixed(2)));
+  // Overlay toggles
+  $("guideThirds").checked=overlay.thirds; $("guideSym").checked=overlay.sym; $("guideGolden").checked=overlay.golden;
+  $("guideThirds").addEventListener('change',e=>{ overlay.thirds=!!e.target.checked; localStorage.setItem('yorn_thirds',JSON.stringify(overlay.thirds)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
+  $("guideSym").addEventListener('change',e=>{ overlay.sym=!!e.target.checked; localStorage.setItem('yorn_sym',JSON.stringify(overlay.sym)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
+  $("guideGolden").addEventListener('change',e=>{ overlay.golden=!!e.target.checked; localStorage.setItem('yorn_golden',JSON.stringify(overlay.golden)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
 
-    const rect=stage.getBoundingClientRect();
-    const cx = e.clientX - rect.left - stage.width/2 - pan.x;
-    const cy = e.clientY - rect.top  - stage.height/2 - pan.y;
-    const oldZ = parseFloat(slider.value);
-    const dz = z/oldZ - 1;
-    pan.x -= cx * dz;
-    pan.y -= cy * dz;
-
-    slider.value = z.toFixed(2);
-    $("zoomLabel").textContent = z.toFixed(2);
-    if(lastBox) drawOverlay(lastBox); else paintBase();
-  }, { passive:false });
-
-  stage.addEventListener('dblclick',()=>{
-    if(!lastBox) return;
-    const cx=lastBox.x + lastBox.width/2;
-    const cy=lastBox.y + lastBox.height/2;
-    pan.x -= (cx - stage.width/2);
-    pan.y -= (cy - stage.height/2);
-    if(lastBox) drawOverlay(lastBox); else paintBase();
-    logEvt('config',{center_on_face:true,pan});
+  // Backend selector (manual)
+  $("backendSel").addEventListener('change', async (e)=>{
+    const val=e.target.value||''; setStoredBackend(val); setBusy(true);
+    try{ faceModel=null; await initTF(); await loadModel(); updateRevChip(); logEvt('config',{backend_changed_to: val || 'auto', effective: safeBackend()}); if(sourceBitmap){ drawOverlay(lastBox||null); } }
+    finally{ setBusy(false); }
   });
 
-  /* ===== Bindings ===== */
-  $("zoom").addEventListener('input', e=>{ $("zoomLabel").textContent=(+e.target.value).toFixed(2); paintBase(); if(lastBox) drawOverlay(lastBox); });
-  $("bri").addEventListener('input', e=>{ $("briLabel").textContent=(+e.target.value).toFixed(2); paintBase(); if(lastBox) drawOverlay(lastBox); });
-  $("con").addEventListener('input', e=>{ $("conLabel").textContent=(+e.target.value).toFixed(2); paintBase(); if(lastBox) drawOverlay(lastBox); });
-  $("rot").addEventListener('change', ()=>{ paintBase(); if(lastBox) drawOverlay(lastBox); });
-
-  $("guideThirds").checked=overlay.thirds; $("guideSym").checked=overlay.sym; $("guideGolden").checked=overlay.golden;
-  $("guideThirds").addEventListener('change', e=>{ overlay.thirds=!!e.target.checked; localStorage.setItem('yorn_thirds', JSON.stringify(overlay.thirds)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
-  $("guideSym").addEventListener('change', e=>{ overlay.sym=!!e.target.checked; localStorage.setItem('yorn_sym', JSON.stringify(overlay.sym)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
-  $("guideGolden").addEventListener('change', e=>{ overlay.golden=!!e.target.checked; localStorage.setItem('yorn_golden', JSON.stringify(overlay.golden)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
-
-  // Backend selector: persists choice, re-inits TF/model, updates label
-  $("backendSel").addEventListener('change', async (e)=>{
-    const val = e.target.value || '';
-    setStoredBackend(val);
-    setBusy(true);
+  // Auto-backend benchmark button
+  $("autoBackendBtn").addEventListener('click', async ()=>{
+    if(isBusy) return;
+    setBusy(true); setProgress('', 'Benchmarking backends…');
+    const backends = ['webgl','wasm','cpu'];
+    const results = [];
+    const snapshot = async () => {
+      // ensure we have something to run against
+      if (!sourceBitmap) { await loadSample(); paintBase(); }
+      // one quick predict timing
+      const t0=performance.now();
+      const input=tf.browser.fromPixels(stage);
+      let preds=null;
+      try { preds = await faceModel.estimateFaces(input,false,false); }
+      finally { input.dispose?.(); }
+      return Math.round(performance.now()-t0);
+    };
     try {
-      faceModel = null;                 // force re-load for new backend
-      await initTF();                   // sets backend and warms up
-      await loadModel();                // load model on the chosen backend
-      updateRevChip();
-      logEvt('config',{backend_changed_to: val || 'auto', effective: safeBackend()});
-      if(sourceBitmap){ drawOverlay(lastBox||null); }
+      for (const b of backends) {
+        try {
+          const tStart = performance.now();
+          await tf.setBackend(b); await tf.ready();
+          await tf.tidy(()=>tf.ones([32,32]).square().sum().data()); // warmup
+          faceModel=null; await loadModel();
+          const detectMs = await snapshot();
+          const totalMs = Math.round(performance.now()-tStart);
+          results.push({ backend:b, detectMs, totalMs });
+          logEvt('config',{ bench_backend:b, detect_ms:detectMs, total_ms:totalMs });
+        } catch (e) {
+          logEvt('error',{ bench_backend_error:b, err: e.message || String(e) });
+        }
+      }
+      results.sort((a,b)=>a.detectMs - b.detectMs);
+      const winner = results[0];
+      if (winner) {
+        setStoredBackend(winner.backend);
+        if ($("backendSel")) $("backendSel").value = winner.backend;
+        faceModel=null; await initTF(); await loadModel();
+        logEvt('config',{ bench_winner:winner.backend, results });
+        setProgress('', `Auto (bench): ${winner.backend} • ${winner.detectMs} ms`);
+        if(sourceBitmap){ drawOverlay(lastBox||null); }
+      } else {
+        setProgress('', 'Auto (bench): no usable backend');
+      }
     } finally {
       setBusy(false);
+      setTimeout(()=>setProgress('',''), 1200);
     }
   });
 
@@ -606,25 +443,13 @@
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   });
 
-  // FPS toggle binding
-  $("fpsToggle").addEventListener('change', (e)=>{
-    fpsEnabled = !!e.target.checked;
-    if (fpsEnabled) startFPS(); else stopFPS();
-  });
+  $("fpsToggle").addEventListener('change',(e)=>{ fpsEnabled=!!e.target.checked; if(fpsEnabled) startFPS(); else stopFPS(); });
 
-  /* ===== Boot ===== */
   window.addEventListener('load', async ()=>{
     $("rev").textContent = REVISION; document.title = "YorN " + REVISION;
-    // set backend selector to stored value on boot
-    const stored = getStoredBackend();
-    if ($("backendSel")) $("backendSel").value = stored;
-    updateRevChip();
-    if (fpsEnabled) startFPS();
-    try{
-      await initTF();
-      logEvt('config',{tf_ready:true,backend:safeBackend(),tf_version:tfVersion});
-      logEvt('config',{boot:'dom-ready',rev:REVISION});
-      logEvt('config',{boot:'complete'});
-    }catch(e){ logEvt('error',{tf_init:e.message||String(e)}); }
+    const stored = getStoredBackend(); if ($("backendSel")) $("backendSel").value = stored;
+    updateRevChip(); if (fpsEnabled) startFPS();
+    try{ await initTF(); logEvt('config',{tf_ready:true,backend:safeBackend(),tf_version:tfVersion}); logEvt('config',{boot:'dom-ready',rev:REVISION}); logEvt('config',{boot:'complete'}); }
+    catch(e){ logEvt('error',{tf_init:e.message||String(e)}); }
   });
 })();
