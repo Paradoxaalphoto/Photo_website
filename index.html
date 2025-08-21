@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"/>
-  <title>YorN 1.18.4-alpha</title>
+  <title>YorN 1.18.5-alpha</title>
   <style>
     :root { --bg:#0b0f14; --card:#121821; --muted:#778196; --ink:#e7ecf3; --accent:#62d0ff; --ok:#2ecc71; --warn:#f39c12; --bad:#ff5c5c; }
     html,body {margin:0;padding:0;background:var(--bg);color:var(--ink);font:400 15px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
@@ -14,6 +14,7 @@
     .controls {display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .controls button, .controls select, .controls input[type="file"]::file-selector-button {background:#1a2330;color:var(--ink);border:1px solid #273348;border-radius:10px;padding:8px 12px;cursor:pointer}
     .controls button[disabled] {opacity:.45;cursor:not-allowed}
+    .controls label {display:flex;gap:6px;align-items:center}
     .badge {display:none;padding:3px 8px;border-radius:999px;font-size:12px;border:1px solid #2c394a;color:#cfd7e6}
     .badge.ready {background:rgba(46,204,113,.12);border-color:#2ecc71;color:#aef3c7}
     .badge.blocked {background:rgba(255,92,92,.12);border-color:#ff5c5c;color:#ffb3b3}
@@ -63,6 +64,16 @@
         <label title="Show live FPS" style="margin-left:auto">
           <input id="fpsToggle" type="checkbox" checked> FPS
         </label>
+        <!-- Backend selector (restored) -->
+        <label title="TensorFlow.js backend">
+          Backend:
+          <select id="backendSel">
+            <option value="">Auto</option>
+            <option value="webgl">webgl</option>
+            <option value="wasm">wasm</option>
+            <option value="cpu">cpu</option>
+          </select>
+        </label>
       </div>
 
       <canvas id="stage" class="stage" width="1024" height="683" title="Drag to pan • Wheel to zoom • Double‑click to center"></canvas>
@@ -88,12 +99,6 @@
         <label><input id="guideSym" type="checkbox"> Symmetry</label>
         <label><input id="guideGolden" type="checkbox"> Golden mask</label>
 
-        <select id="backendSel" title="TensorFlow.js backend">
-          <option value="">Auto</option>
-          <option value="webgl">webgl</option>
-          <option value="wasm">wasm</option>
-          <option value="cpu">cpu</option>
-        </select>
         <button id="cropBtn" type="button" disabled>Export Face PNG</button>
         <button id="enhanceBtn" type="button" disabled>Enhance & Retry</button>
         <button id="resetBtn" type="button">Reset</button>
@@ -143,18 +148,18 @@
 <div id="veil" class="veil"><div style="background:#0f141c;border:1px solid #223042;padding:14px 16px;border-radius:10px">Working… (watchdog armed)</div></div>
 
 <!-- Runtime rev assertion so cache bugs are obvious -->
-<script>window.__YORN_EXPECTED_REV="1.18.4-alpha";</script>
+<script>window.__YORN_EXPECTED_REV="1.18.5-alpha";</script>
 
 <!-- Frameworks -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
 
-<!-- Optional export libs (safe to leave; no extra files) -->
+<!-- Optional export libs -->
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
 <!-- App logic (cache-busted) -->
-<script src="app.js?v=1.18.4-alpha"></script>
+<script src="app.js?v=1.18.5-alpha"></script>
 </body>
 </html>
