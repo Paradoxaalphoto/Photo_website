@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const REVISION = "1.18.4-alpha";
+  const REVISION = "1.18.5-alpha";
   // Runtime guard: catch stale app.js vs HTML expectation
   try {
     if (window.__YORN_EXPECTED_REV && window.__YORN_EXPECTED_REV !== REVISION) {
@@ -53,12 +53,10 @@
       if (_accum >= 1000) {
         fps = Math.round((_frames * 1000) / _accum);
         _frames = 0; _accum = 0;
-        updateRevChip(); // live update
+        updateRevChip();
         const perf = $("perfChip");
         if (perf) {
-          const last = detectMsLast;
-          const avg  = detectMsAvg;
-          perf.textContent = `${last} ms • avg ${avg} ms • ${fps} fps`;
+          perf.textContent = `${detectMsLast} ms • avg ${detectMsAvg} ms • ${fps} fps`;
         }
       }
       _rafId = requestAnimationFrame(loop);
@@ -70,11 +68,7 @@
     fps = '—';
     updateRevChip();
     const perf = $("perfChip");
-    if (perf) {
-      const last = detectMsLast;
-      const avg  = detectMsAvg;
-      perf.textContent = `${last} ms • avg ${avg} ms`;
-    }
+    if (perf) perf.textContent = `${detectMsLast} ms • avg ${detectMsAvg} ms`;
   }
 
   /* ===== Diagnostics ===== */
@@ -97,17 +91,8 @@
   function updateTfBadges(){ $("tfChip").textContent = safeBackend(); $("tfVer").textContent = String(tfVersion||'—'); $("perfChip").textContent = `${detectMsLast} ms • avg ${detectMsAvg} ms${fpsEnabled && /\d/.test(String(fps)) ? ` • ${fps} fps` : ''}`; }
   function updateSessionStats(){ const avg=session.detectTimes.length?Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length):'—'; $("sessStats").textContent=`${session.detects} detects • ${session.analyses} analyses`; logEvt('config',{session:`${session.detects} detects • ${session.analyses} analyses`, avg_detect_ms: avg}); }
 
-  function setRevChip(text, title) {
-    const el = $("revChip");
-    if (!el) return;
-    el.textContent = text;
-    if (title) el.title = title;
-  }
-  function updateRevChip() {
-    const backend = safeBackend();
-    const fpsPart = (fpsEnabled && /\d/.test(String(fps))) ? ` • ${fps}fps` : '';
-    setRevChip(`${REVISION} • ${backend}${fpsPart}`, `TFJS ${String(tfVersion || '—')}`);
-  }
+  function setRevChip(text, title) { const el = $("revChip"); if (!el) return; el.textContent = text; if (title) el.title = title; }
+  function updateRevChip() { const backend=safeBackend(); const fpsPart=(fpsEnabled && /\d/.test(String(fps)))?` • ${fps}fps`:''; setRevChip(`${REVISION} • ${backend}${fpsPart}`, `TFJS ${String(tfVersion||'—')}`); }
 
   window.onerror = (msg,src,line,col,err)=>{ logEvt("error",{onerror:String(msg),src,line,col,stack:err&&err.stack?String(err.stack):undefined}); };
   window.onunhandledrejection = ev => { logEvt("error",{unhandledrejection:String(ev.reason && ev.reason.message || ev.reason || 'unknown')}); };
@@ -170,6 +155,9 @@
   }
 
   /* ===== TF / Model ===== */
+  function getStoredBackend(){ return localStorage.getItem('yorn_backend') || ''; }
+  function setStoredBackend(v){ if (v===null || v===undefined) localStorage.removeItem('yorn_backend'); else localStorage.setItem('yorn_backend', v); }
+
   async function initTF(){
     if(!window.tf){ logEvt('error',{tf_init:'tf not present'}); throw new Error('tf missing'); }
     await tf.ready();
@@ -177,7 +165,10 @@
     updateTfBadges();
     updateRevChip();
     try{
-      const want = $("backendSel").value || safeBackend() || 'webgl';
+      // Respect stored preference or current UI select
+      const stored = getStoredBackend();
+      if ($("backendSel")) $("backendSel").value = stored; // reflect stored choice
+      const want = stored || ($("backendSel")?.value || '') || safeBackend() || 'webgl';
       const t0=performance.now();
       await tf.setBackend(want);
       await tf.ready();
@@ -499,7 +490,22 @@
   $("guideSym").addEventListener('change', e=>{ overlay.sym=!!e.target.checked; localStorage.setItem('yorn_sym', JSON.stringify(overlay.sym)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
   $("guideGolden").addEventListener('change', e=>{ overlay.golden=!!e.target.checked; localStorage.setItem('yorn_golden', JSON.stringify(overlay.golden)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
 
-  $("backendSel").addEventListener('change', async ()=>{ setBusy(true); try{ faceModel=null; await initTF(); await loadModel(); updateRevChip(); logEvt('config',{backend_changed_to:$("backendSel").value||'auto',effective:safeBackend()}); if(sourceBitmap){ drawOverlay(lastBox||null); } } finally { setBusy(false); } });
+  // Backend selector (restored) — persists choice, re-inits TF/model
+  $("backendSel").addEventListener('change', async (e)=>{
+    const val = e.target.value || '';
+    setStoredBackend(val);
+    setBusy(true);
+    try {
+      faceModel = null;                 // force re-load for new backend
+      await initTF();                   // sets backend and warms up
+      await loadModel();                // load model on the chosen backend
+      updateRevChip();
+      logEvt('config',{backend_changed_to: val || 'auto', effective: safeBackend()});
+      if(sourceBitmap){ drawOverlay(lastBox||null); }
+    } finally {
+      setBusy(false);
+    }
+  });
 
   $("cropBtn").addEventListener('click', exportCropPNG);
   $("exportPngBtn").addEventListener('click', exportOverlayPNG);
@@ -594,11 +600,16 @@
   /* ===== Boot ===== */
   window.addEventListener('load', async ()=>{
     $("rev").textContent = REVISION; document.title = "YorN " + REVISION;
+    // set backend selector to stored value on boot
+    const stored = getStoredBackend();
+    if ($("backendSel")) $("backendSel").value = stored;
     updateRevChip();
     if (fpsEnabled) startFPS();
     try{
-      await initTF(); logEvt('config',{tf_ready:true,backend:safeBackend(),tf_version:tfVersion});
-      logEvt('config',{boot:'dom-ready',rev:REVISION}); logEvt('config',{boot:'complete'});
+      await initTF();
+      logEvt('config',{tf_ready:true,backend:safeBackend(),tf_version:tfVersion});
+      logEvt('config',{boot:'dom-ready',rev:REVISION});
+      logEvt('config',{boot:'complete'});
     }catch(e){ logEvt('error',{tf_init:e.message||String(e)}); }
   });
 })();
