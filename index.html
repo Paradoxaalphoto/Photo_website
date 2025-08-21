@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"/>
-  <title>YorN 1.18.7-alpha</title>
+  <title>YorN 1.18.8-alpha</title>
   <style>
     :root { --bg:#0b0f14; --card:#121821; --muted:#778196; --ink:#e7ecf3; --accent:#62d0ff; --ok:#2ecc71; --warn:#f39c12; --bad:#ff5c5c; }
     html,body {margin:0;padding:0;background:var(--bg);color:var(--ink);font:400 15px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
@@ -99,6 +99,16 @@
         <label><input id="guideThirds" type="checkbox"> Thirds grid</label>
         <label><input id="guideSym" type="checkbox"> Symmetry</label>
         <label><input id="guideGolden" type="checkbox"> Golden mask</label>
+        <label><input id="guideLandmarks" type="checkbox"> Landmarks</label>
+
+        <label title="Limit UI update cadence; ready for live-detect loop">
+          FPS cap:
+          <select id="fpsCapSel">
+            <option value="0">Unlimited</option>
+            <option value="60">60</option>
+            <option value="30">30</option>
+          </select>
+        </label>
 
         <button id="cropBtn" type="button" disabled>Export Face PNG</button>
         <button id="enhanceBtn" type="button" disabled>Enhance & Retry</button>
@@ -149,7 +159,7 @@
 <div id="veil" class="veil"><div style="background:#0f141c;border:1px solid #223042;padding:14px 16px;border-radius:10px">Working… (watchdog armed)</div></div>
 
 <!-- Runtime rev assertion so cache bugs are obvious -->
-<script>window.__YORN_EXPECTED_REV="1.18.7-alpha";</script>
+<script>window.__YORN_EXPECTED_REV="1.18.8-alpha";</script>
 
 <!-- Frameworks -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
@@ -163,6 +173,6 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
 <!-- App logic (cache-busted) -->
-<script src="app.js?v=1.18.7-alpha"></script>
+<script src="app.js?v=1.18.8-alpha"></script>
 </body>
 </html>
