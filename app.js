@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const REVISION = "1.18.7-alpha";
+  const REVISION = "1.18.8-alpha";
   try {
     if (window.__YORN_EXPECTED_REV && window.__YORN_EXPECTED_REV !== REVISION) {
       const msg = `YorN rev mismatch: HTML expects ${window.__YORN_EXPECTED_REV}, app.js is ${REVISION}. Likely cached app.js.`;
@@ -33,9 +33,11 @@
   let overlay = {
     thirds: JSON.parse(localStorage.getItem('yorn_thirds')||'false'),
     sym: JSON.parse(localStorage.getItem('yorn_sym')||'false'),
-    golden: JSON.parse(localStorage.getItem('yorn_golden')||'false')
+    golden: JSON.parse(localStorage.getItem('yorn_golden')||'false'),
+    landmarks: JSON.parse(localStorage.getItem('yorn_landmarks')||'false')
   };
 
+  /* ===== FPS monitor ===== */
   let fps='—', _rafId=null, _last=0, _frames=0, _accum=0, fpsEnabled=true;
   function startFPS(){ if(_rafId || !fpsEnabled) return; _last=performance.now(); _frames=0; _accum=0;
     const loop=(t)=>{ const dt=t-_last; _last=t; _accum+=dt; _frames++; if(_accum>=1000){ fps=Math.round((_frames*1000)/_accum); _frames=0; _accum=0; updateRevChip(); const perf=$("perfChip"); if(perf) perf.textContent=`${detectMsLast} ms • avg ${detectMsAvg} ms • ${fps} fps`; } _rafId=requestAnimationFrame(loop); };
@@ -43,24 +45,41 @@
   }
   function stopFPS(){ if(_rafId){ cancelAnimationFrame(_rafId); _rafId=null; } fps='—'; updateRevChip(); const perf=$("perfChip"); if(perf) perf.textContent=`${detectMsLast} ms • avg ${detectMsAvg} ms`; }
 
+  /* ===== FPS cap (UI cadence / future live-detect cadence) ===== */
+  let fpsCap = +(localStorage.getItem('yorn_fps_cap') || 0); // 0 = unlimited
+  let _capRaf = null, _capLast = 0;
+  function capLoop(ts){
+    if(!fpsEnabled) return;
+    if(!fpsCap || ts - _capLast >= (1000 / fpsCap)){
+      _capLast = ts;
+      const perf=$("perfChip");
+      if(perf) perf.textContent=`${detectMsLast} ms • avg ${detectMsAvg} ms${/\d/.test(String(fps)) ? ` • ${fps} fps` : ''}`;
+    }
+    _capRaf = requestAnimationFrame(capLoop);
+  }
+  function startCap(){ if(_capRaf) return; _capLast = performance.now(); _capRaf = requestAnimationFrame(capLoop); }
+  function stopCap(){ if(_capRaf){ cancelAnimationFrame(_capRaf); _capRaf=null; } }
+
+  /* ===== Diagnostics ===== */
   function isNearBottom(el, slopPx=16){ return el.scrollHeight - el.scrollTop - el.clientHeight <= slopPx; }
   function logDiagnostics(entry){ const diag=$("diagnostics"); if(!diag) return; const stick=(window.__yornPinFollow ?? true) || isNearBottom(diag); if(diag.textContent==="No diagnostics yet.") diag.textContent=""; diag.textContent += (diag.textContent ? "\n" : "") + entry; if(stick) diag.scrollTop = diag.scrollHeight; }
   window.__yornLog = window.__yornLog || logDiagnostics;
   function logEvt(type,obj={}){ const line=JSON.stringify({time:new Date().toISOString(),type,...obj}); try{(window.__yornLog||logDiagnostics)(line);}catch{} }
 
+  /* ===== Utils ===== */
   function setBusy(v){ isBusy=!!v; $("veil").classList.toggle("show", isBusy); ["detectBtn","startAnalysisBtn","autoTestBtn","enhanceBtn","cropBtn","exportPngBtn","autoBackendBtn","backendSel"].forEach(id=>{ const b=$(id); if(b) b.disabled = !!v; }); }
   function getAllLogsText(){ const el=$("diagnostics"); return el ? (el.innerText||el.textContent||"") : ""; }
   function setProgress(_, msg){ $("progressText").textContent = msg || ""; }
   function safeBackend(){ try{ return (window.tf && typeof tf.getBackend==='function') ? (tf.getBackend()||'—') : '—'; }catch{ return '—'; } }
-  function updateTfBadges(){ const b=safeBackend(); $("tfChip").textContent=b; $("tfVer").textContent=String(tfVersion||'—'); $("perfChip").textContent=`${detectMsLast} ms • avg ${detectMsAvg} ms${fpsEnabled && /\d/.test(String(fps)) ? ` • ${fps} fps` : ''}`; const abl=$("activeBackendLbl"); if(abl) abl.textContent=`Active: ${b}`; }
+  function updateTfBadges(){ const b=safeBackend(); $("tfChip").textContent=b; $("tfVer").textContent=String(tfVersion||'—'); const perf=$("perfChip"); if(perf) perf.textContent=`${detectMsLast} ms • avg ${detectMsAvg} ms${fpsEnabled && /\d/.test(String(fps)) ? ` • ${fps} fps` : ''}`; const abl=$("activeBackendLbl"); if(abl) abl.textContent=`Active: ${b}`; }
   function updateSessionStats(){ const avg=session.detectTimes.length?Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length):'—'; $("sessStats").textContent=`${session.detects} detects • ${session.analyses} analyses`; logEvt('config',{session:`${session.detects} detects • ${session.analyses} analyses`, avg_detect_ms: avg}); }
-
   function setRevChip(text, title){ const el=$("revChip"); if(!el) return; el.textContent=text; if(title) el.title=title; }
   function updateRevChip(){ const backend=safeBackend(); const fpsPart=(fpsEnabled && /\d/.test(String(fps)))?` • ${fps}fps`:''; setRevChip(`${REVISION} • ${backend}${fpsPart}`, `TFJS ${String(tfVersion||'—')}`); }
 
   window.onerror=(msg,src,line,col,err)=>{ logEvt("error",{onerror:String(msg),src,line,col,stack:err&&err.stack?String(err.stack):undefined}); };
   window.onunhandledrejection=ev=>{ logEvt("error",{unhandledrejection:String(ev.reason && ev.reason.message || ev.reason || 'unknown')}); };
 
+  /* ===== Drawing ===== */
   function paintBase(){
     ctx.save(); ctx.clearRect(0,0,stage.width,stage.height);
     if(sourceBitmap){
@@ -86,13 +105,32 @@
     if(overlay.golden && b){ const phi=1.6180339887; const x=b.x,y=b.y,bw=b.width,bh=b.height; const v1=x+bw*(1/phi), v2=x+bw*(1-1/phi); const h1=y+bh*(1/phi), h2=y+bh*(1-1/phi); ctx.save(); ctx.strokeStyle="#f6c16b"; ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(v1,y); ctx.lineTo(v1,y+bh); ctx.moveTo(v2,y); ctx.lineTo(v2,y+bh); ctx.moveTo(x,h1); ctx.lineTo(x+bw,h1); ctx.moveTo(x,h2); ctx.lineTo(x+bw,h2); ctx.stroke(); ctx.restore(); }
   }
 
+  /* ===== Landmarks ===== */
+  function drawLandmarks(ctxRef, preds){
+    const list = Array.isArray(preds) ? preds : [preds];
+    ctxRef.save();
+    ctxRef.fillStyle = "#ffbf66";
+    for(const p of list){
+      const lm = p.landmarks || p.keypoints || [];
+      for(const pt of lm){
+        const [x,y] = Array.isArray(pt) ? pt : [pt.x, pt.y];
+        if (typeof x === 'number' && typeof y === 'number') {
+          ctxRef.beginPath(); ctxRef.arc(x, y, 2.2, 0, Math.PI*2); ctxRef.fill();
+        }
+      }
+    }
+    ctxRef.restore();
+  }
+
   function drawOverlay(box){
     paintBase();
     ctx.save(); ctx.strokeStyle="rgba(98,208,255,.35)"; ctx.lineWidth=2; allBoxes.forEach(b=>ctx.strokeRect(b.x,b.y,b.width,b.height)); ctx.restore();
     if(box){ ctx.save(); ctx.strokeStyle="#62d0ff"; ctx.lineWidth=3; ctx.strokeRect(box.x,box.y,box.width,box.height); ctx.restore(); }
+    if (overlay.landmarks) drawLandmarks(ctx, allBoxes);
     drawGuides(box);
   }
 
+  /* ===== TF / Model ===== */
   function getStoredBackend(){ return localStorage.getItem('yorn_backend') || ''; }
   function setStoredBackend(v){ if(v===null||v===undefined) localStorage.removeItem('yorn_backend'); else localStorage.setItem('yorn_backend', v); }
 
@@ -114,7 +152,9 @@
 
   async function loadModel(){ if(faceModel) return; try{ faceModel=await blazeface.load(); logEvt('detect',{blazefaceReady:true}); }catch(e){ logEvt('error',{blazeface_failed:e.message||String(e)}); throw e; } }
 
-  const mapPred=p=>{ const [x1,y1]=p.topLeft; const [x2,y2]=p.bottomRight; return {x:x1,y:y1,width:x2-x1,height:y2-y1,prob:(p.probability?.[0]??0)}; };
+  const mapPred=p=>{ const [x1,y1]=p.topLeft; const [x2,y2]=p.bottomRight;
+    return { x:x1, y:y1, width:x2-x1, height:y2-y1, prob:(p.probability?.[0]??0), landmarks: p.landmarks || p.keypoints || [] };
+  };
 
   async function detectOnce(){
     if(!sourceBitmap) return null;
@@ -138,7 +178,7 @@
       renderFaceStrip();
       logEvt('detect',{roughLocate_ms:dt,finalDetect_ms:dt,faces:allBoxes.length,box:lastBox});
       updateSessionStats();
-      $("cropBtn").disabled=false; $("exportPngBtn").disabled=false;
+      ["cropBtn","exportPngBtn"].forEach(id=>$(id).disabled=false);
       return lastBox;
     }catch(e){
       const cur=safeBackend();
@@ -159,7 +199,7 @@
             drawOverlay(lastBox); renderFaceStrip();
             logEvt('detect',{roughLocate_ms:dt,finalDetect_ms:dt,faces:allBoxes.length,box:lastBox});
             updateSessionStats();
-            $("cropBtn").disabled=false; $("exportPngBtn").disabled=false;
+            ["cropBtn","exportPngBtn"].forEach(id=>$(id).disabled=false);
             return lastBox;
           } else { logEvt('error',{detect:'no_face_after_fallback'}); return null; }
         }catch(e2){ logEvt('error',{detect_fallback_failed:e2.message||String(e2)}); return null; }
@@ -167,6 +207,7 @@
     }
   }
 
+  /* ===== Face strip ===== */
   function renderFaceStrip(){
     const strip=$("faceStrip"); strip.innerHTML="";
     allBoxes.forEach((b,i)=>{
@@ -183,6 +224,7 @@
     });
   }
 
+  /* ===== Analysis ===== */
   const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
   const normalizeContrast=s=>clamp((s/60)*100,0,100);
   const normalizeSharpness=lv=>{ const val=Math.log10(1+lv)/Math.log10(1+5000); return clamp(val*100,0,100); };
@@ -256,9 +298,11 @@
     $("analysisBars").innerHTML = barRow('Brightness', s.brightness)+barRow('Contrast', s.contrast)+barRow('Sharpness', s.sharpness)+barRow('Global', s.global)+'<hr style="border:0;border-top:1px solid #223042">'+bucketHTML;
   }
 
+  /* ===== Export helpers ===== */
   function exportOverlayPNG(){ stage.toBlob(blob=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`yorn-overlay-${Date.now()}.png`; a.click(); URL.revokeObjectURL(a.href); }, 'image/png'); }
   function exportCropPNG(){ if(!lastBox) return; const pad=8; const sx=Math.max(0,Math.floor(lastBox.x-pad)), sy=Math.max(0,Math.floor(lastBox.y-pad)); const sw=Math.min(stage.width-sx,Math.floor(lastBox.width+2*pad)), sh=Math.min(stage.height-sy,Math.floor(lastBox.height+2*pad)); const out=document.createElement('canvas'); out.width=sw; out.height=sh; out.getContext('2d').drawImage(stage,sx,sy,sw,sh,0,0,sw,sh); out.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=`yorn-face-${Date.now()}.png`; a.click(); URL.revokeObjectURL(a.href); }, 'image/png'); }
 
+  /* ===== Auto‑Test ===== */
   function buildAutoTestReport(){
     const full=getAllLogsText(), start=__autoTestStartIdx||0, chunk=full.slice(start);
     const backend=safeBackend();
@@ -284,11 +328,12 @@
     }finally{ setBusy(false); }
   }
 
+  /* ===== Image I/O ===== */
   async function decodeBitmapFromBlob(blob){ return await createImageBitmap(blob); }
   async function setSourceBitmapFromBlob(blob){ sourceBitmap = await decodeBitmapFromBlob(blob); pan={x:0,y:0}; paintBase(); ["detectBtn","enhanceBtn","startAnalysisBtn","exportPngBtn"].forEach(id=>$(id).disabled=false); }
   async function loadSample(){ try{ const url='https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1024&auto=format&fit=crop'; const res=await fetch(url,{cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status); const blob=await res.blob(); await setSourceBitmapFromBlob(blob); logEvt('detect',{sampleImage:url}); return true; }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}); return false; } }
 
-  // Mouse & wheel interactions
+  /* ===== Interactions ===== */
   stage.addEventListener('mousedown',(e)=>{ if(!sourceBitmap) return; isDragging=true; dragStart={x:e.clientX,y:e.clientY}; panStart={x:pan.x,y:pan.y}; });
   window.addEventListener('mousemove',(e)=>{ if(!isDragging) return; pan.x=panStart.x+(e.clientX-dragStart.x); pan.y=panStart.y+(e.clientY-dragStart.y); if(lastBox) drawOverlay(lastBox); else paintBase(); });
   window.addEventListener('mouseup',()=>{ isDragging=false; });
@@ -297,10 +342,11 @@
   stage.addEventListener('dblclick',()=>{ if(!lastBox) return; const cx=lastBox.x+lastBox.width/2; const cy=lastBox.y+lastBox.height/2; pan.x-=(cx-stage.width/2); pan.y-=(cy-stage.height/2); if(lastBox) drawOverlay(lastBox); else paintBase(); logEvt('config',{center_on_face:true,pan}); });
 
   // Overlay toggles
-  $("guideThirds").checked=overlay.thirds; $("guideSym").checked=overlay.sym; $("guideGolden").checked=overlay.golden;
+  $("guideThirds").checked=overlay.thirds; $("guideSym").checked=overlay.sym; $("guideGolden").checked=overlay.golden; $("guideLandmarks").checked=overlay.landmarks;
   $("guideThirds").addEventListener('change',e=>{ overlay.thirds=!!e.target.checked; localStorage.setItem('yorn_thirds',JSON.stringify(overlay.thirds)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
   $("guideSym").addEventListener('change',e=>{ overlay.sym=!!e.target.checked; localStorage.setItem('yorn_sym',JSON.stringify(overlay.sym)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
   $("guideGolden").addEventListener('change',e=>{ overlay.golden=!!e.target.checked; localStorage.setItem('yorn_golden',JSON.stringify(overlay.golden)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
+  $("guideLandmarks").addEventListener('change',e=>{ overlay.landmarks=!!e.target.checked; localStorage.setItem('yorn_landmarks',JSON.stringify(overlay.landmarks)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
 
   // Backend selector (manual)
   $("backendSel").addEventListener('change', async (e)=>{
@@ -316,14 +362,10 @@
     const backends = ['webgl','wasm','cpu'];
     const results = [];
     const snapshot = async () => {
-      // ensure we have something to run against
       if (!sourceBitmap) { await loadSample(); paintBase(); }
-      // one quick predict timing
       const t0=performance.now();
       const input=tf.browser.fromPixels(stage);
-      let preds=null;
-      try { preds = await faceModel.estimateFaces(input,false,false); }
-      finally { input.dispose?.(); }
+      let preds=null; try { preds = await faceModel.estimateFaces(input,false,false); } finally { input.dispose?.(); }
       return Math.round(performance.now()-t0);
     };
     try {
@@ -443,13 +485,29 @@
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   });
 
-  $("fpsToggle").addEventListener('change',(e)=>{ fpsEnabled=!!e.target.checked; if(fpsEnabled) startFPS(); else stopFPS(); });
+  // FPS toggle + cap selector
+  $("fpsToggle").addEventListener('change',(e)=>{ fpsEnabled=!!e.target.checked; if(fpsEnabled){ startFPS(); startCap(); } else { stopFPS(); stopCap(); } });
+  const fpsCapSel = $("fpsCapSel");
+  if (fpsCapSel) {
+    fpsCapSel.value = String(fpsCap || 0);
+    fpsCapSel.addEventListener('change', (e)=>{
+      fpsCap = +e.target.value || 0;
+      localStorage.setItem('yorn_fps_cap', String(fpsCap));
+      stopCap(); startCap();
+    });
+  }
 
+  /* ===== Boot ===== */
   window.addEventListener('load', async ()=>{
     $("rev").textContent = REVISION; document.title = "YorN " + REVISION;
     const stored = getStoredBackend(); if ($("backendSel")) $("backendSel").value = stored;
-    updateRevChip(); if (fpsEnabled) startFPS();
-    try{ await initTF(); logEvt('config',{tf_ready:true,backend:safeBackend(),tf_version:tfVersion}); logEvt('config',{boot:'dom-ready',rev:REVISION}); logEvt('config',{boot:'complete'}); }
-    catch(e){ logEvt('error',{tf_init:e.message||String(e)}); }
+    updateRevChip();
+    if (fpsEnabled) { startFPS(); startCap(); }
+    try{
+      await initTF();
+      logEvt('config',{tf_ready:true,backend:safeBackend(),tf_version:tfVersion});
+      logEvt('config',{boot:'dom-ready',rev:REVISION});
+      logEvt('config',{boot:'complete'});
+    }catch(e){ logEvt('error',{tf_init:e.message||String(e)}); }
   });
 })();
