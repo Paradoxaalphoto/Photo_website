@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const REVISION = "1.18.5-alpha";
+  const REVISION = "1.18.6-alpha";
   // Runtime guard: catch stale app.js vs HTML expectation
   try {
     if (window.__YORN_EXPECTED_REV && window.__YORN_EXPECTED_REV !== REVISION) {
@@ -13,6 +13,11 @@
       document.addEventListener('DOMContentLoaded', () => document.body.appendChild(note));
     }
   } catch {}
+
+  // --- WASM binaries path (required for wasm backend) ---
+  if (window.tf && tf.wasm && typeof tf.wasm.setWasmPaths === 'function') {
+    tf.wasm.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/');
+  }
 
   /* ===== Shortcuts ===== */
   const $ = id => document.getElementById(id);
@@ -88,7 +93,13 @@
   function getAllLogsText(){ const el=$("diagnostics"); return el ? (el.innerText||el.textContent||"") : ""; }
   function setProgress(_, msg){ $("progressText").textContent = msg || ""; }
   function safeBackend(){ try{ return (window.tf && typeof tf.getBackend==='function') ? (tf.getBackend()||'—') : '—'; }catch{ return '—'; } }
-  function updateTfBadges(){ $("tfChip").textContent = safeBackend(); $("tfVer").textContent = String(tfVersion||'—'); $("perfChip").textContent = `${detectMsLast} ms • avg ${detectMsAvg} ms${fpsEnabled && /\d/.test(String(fps)) ? ` • ${fps} fps` : ''}`; }
+  function updateTfBadges(){
+    const b = safeBackend();
+    $("tfChip").textContent = b;
+    $("tfVer").textContent = String(tfVersion||'—');
+    $("perfChip").textContent = `${detectMsLast} ms • avg ${detectMsAvg} ms${fpsEnabled && /\d/.test(String(fps)) ? ` • ${fps} fps` : ''}`;
+    const abl = $("activeBackendLbl"); if (abl) abl.textContent = `Active: ${b}`;
+  }
   function updateSessionStats(){ const avg=session.detectTimes.length?Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length):'—'; $("sessStats").textContent=`${session.detects} detects • ${session.analyses} analyses`; logEvt('config',{session:`${session.detects} detects • ${session.analyses} analyses`, avg_detect_ms: avg}); }
 
   function setRevChip(text, title) { const el = $("revChip"); if (!el) return; el.textContent = text; if (title) el.title = title; }
@@ -162,8 +173,6 @@
     if(!window.tf){ logEvt('error',{tf_init:'tf not present'}); throw new Error('tf missing'); }
     await tf.ready();
     tfVersion = tf?.version_core || tf?.version?.tfjs || tfVersion || '—';
-    updateTfBadges();
-    updateRevChip();
     try{
       // Respect stored preference or current UI select
       const stored = getStoredBackend();
@@ -172,6 +181,10 @@
       const t0=performance.now();
       await tf.setBackend(want);
       await tf.ready();
+
+      // tiny warmup op to JIT kernels on new backend
+      await tf.tidy(() => tf.ones([32, 32]).square().sum().data());
+
       logEvt('config',{warmup:'ok',backend:safeBackend(),ms:Math.round(performance.now()-t0)});
     }catch(e){ logEvt('error',{warmup:e.message||String(e)}); }
     updateTfBadges();
@@ -219,7 +232,9 @@
       if(e && e.message==='detect_timeout' && cur==='webgl'){
         logEvt('error',{detect_timeout:true,backend:cur,fallback:'wasm_retry'});
         try{
-          await tf.setBackend('wasm'); await tf.ready(); tfVersion = tf?.version_core || tf?.version?.tfjs || tfVersion || '—';
+          await tf.setBackend('wasm'); await tf.ready();
+          await tf.tidy(() => tf.ones([32, 32]).square().sum().data());
+          tfVersion = tf?.version_core || tf?.version?.tfjs || tfVersion || '—';
           faceModel=null; await loadModel();
           const t1=performance.now();
           paintBase();
@@ -490,7 +505,7 @@
   $("guideSym").addEventListener('change', e=>{ overlay.sym=!!e.target.checked; localStorage.setItem('yorn_sym', JSON.stringify(overlay.sym)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
   $("guideGolden").addEventListener('change', e=>{ overlay.golden=!!e.target.checked; localStorage.setItem('yorn_golden', JSON.stringify(overlay.golden)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
 
-  // Backend selector (restored) — persists choice, re-inits TF/model
+  // Backend selector: persists choice, re-inits TF/model, updates label
   $("backendSel").addEventListener('change', async (e)=>{
     const val = e.target.value || '';
     setStoredBackend(val);
