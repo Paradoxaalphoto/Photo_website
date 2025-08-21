@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"/>
-  <title>YorN 1.18.3-alpha</title>
+  <title>YorN 1.18.4-alpha</title>
   <style>
     :root { --bg:#0b0f14; --card:#121821; --muted:#778196; --ink:#e7ecf3; --accent:#62d0ff; --ok:#2ecc71; --warn:#f39c12; --bad:#ff5c5c; }
     html,body {margin:0;padding:0;background:var(--bg);color:var(--ink);font:400 15px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
@@ -38,13 +38,6 @@
     .bar {display:grid;grid-template-columns:120px 1fr 48px;align-items:center;gap:10px}
     .bar .track {height:10px;background:#111926;border:1px solid #233042;border-radius:999px;overflow:hidden}
     .bar .fill {height:100%}
-    .modal {position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:9999}
-    .modal.show {display:flex}
-    .modal .panel {background:#0f141c;border:1px solid #223042;padding:14px;border-radius:10px;max-width:520px;width:92%}
-    .modal .panel h3 {margin:0 0 10px 0}
-    .modal .row {display:flex;gap:8px;flex-wrap:wrap}
-    .modal input {width:100%;background:#111926;border:1px solid #223042;color:#e7ecf3;border-radius:8px;padding:8px}
-    .modal .actions {display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
     @media (max-width:480px){ .row {flex-direction:column} }
   </style>
 </head>
@@ -55,6 +48,7 @@
       <div class="hud">
         <h1>YorN <span id="rev"></span></h1>
         <span id="readinessBadge" class="badge">READY</span>
+        <span class="chip" id="revChip">—</span>
       </div>
 
       <div class="controls" style="margin:8px 0 10px">
@@ -66,6 +60,9 @@
         <button id="copyTestBtn" type="button" disabled>Copy Test Report</button>
         <button id="exportPngBtn" type="button" disabled title="Export current canvas (image + guides + boxes)">Export Overlay PNG</button>
         <button id="zipBtn" type="button" title="Download index.html + app.js as zip">Download ZIP</button>
+        <label title="Show live FPS" style="margin-left:auto">
+          <input id="fpsToggle" type="checkbox" checked> FPS
+        </label>
       </div>
 
       <canvas id="stage" class="stage" width="1024" height="683" title="Drag to pan • Wheel to zoom • Double‑click to center"></canvas>
@@ -86,6 +83,7 @@
           <input id="con" type="range" min="0.8" max="1.6" step="0.01" value="1.15">
           <span id="conLabel" class="num">1.15</span>
         </label>
+
         <label><input id="guideThirds" type="checkbox"> Thirds grid</label>
         <label><input id="guideSym" type="checkbox"> Symmetry</label>
         <label><input id="guideGolden" type="checkbox"> Golden mask</label>
@@ -144,34 +142,19 @@
 
 <div id="veil" class="veil"><div style="background:#0f141c;border:1px solid #223042;padding:14px 16px;border-radius:10px">Working… (watchdog armed)</div></div>
 
-<div id="shareModal" class="modal">
-  <div class="panel">
-    <h3>Share Settings</h3>
-    <div class="row">
-      <label style="flex:1 1 200px">Watermark
-        <input id="wmText" type="text" placeholder="YorN • Prototype" />
-      </label>
-      <label style="flex:1 1 200px">Hashtags (space-separated)
-        <input id="wmTags" type="text" placeholder="#YorN #AI #FaceAnalysis" />
-      </label>
-    </div>
-    <div class="actions">
-      <button id="wmCancel" type="button">Cancel</button>
-      <button id="wmSave" type="button">Save</button>
-    </div>
-  </div>
-</div>
+<!-- Runtime rev assertion so cache bugs are obvious -->
+<script>window.__YORN_EXPECTED_REV="1.18.4-alpha";</script>
 
 <!-- Frameworks -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
 
-<!-- Export libs -->
+<!-- Optional export libs (safe to leave; no extra files) -->
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-<!-- App logic -->
-<script src="app.js"></script>
+<!-- App logic (cache-busted) -->
+<script src="app.js?v=1.18.4-alpha"></script>
 </body>
 </html>
