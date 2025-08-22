@@ -40,6 +40,22 @@
       .metrics .label { color:#444; font-size:12px; }
       .metrics .val { text-align:right; font-variant-numeric:tabular-nums; }
     </style>
+<script>
+  (function(){
+    const banner = () => document.getElementById('offline-banner');
+    function update() {
+      if (navigator.onLine) {
+        if (banner()) banner().style.display = 'none';
+      } else {
+        if (banner()) banner().style.display = 'flex';
+      }
+    }
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    // Initial state
+    document.addEventListener('DOMContentLoaded', update);
+  })();
+</script>
   </head>
   <body>
   <div id="offline-banner" style="
