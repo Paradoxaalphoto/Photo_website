@@ -153,3 +153,134 @@ export default function App() {
       { name: "Jaw Width", value: +(n.jawWidth * 100).toFixed(1) },
     ];
   }, [metrics]);
+// Draw overlays on canvas
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !img) return;
+    const ctx = canvas.getContext("2d");
+    const W = 640;
+    const H = Math.round((img.height / img.width) * W);
+    canvas.width = W;
+    canvas.height = H;
+
+    // draw image
+    ctx.clearRect(0, 0, W, H);
+    ctx.drawImage(img, 0, 0, W, H);
+
+    if (!landmarks || !showOverlays) return;
+
+    // points helper
+    const p2c = (p) => ({ x: p.x * W, y: p.y * H });
+    const dots = Object.values(landmarks).map(p2c);
+
+    // draw dots
+    ctx.fillStyle = "#10b981"; // emerald
+    for (const d of dots) {
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // midline
+    ctx.strokeStyle = "#3b82f6"; // blue
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(W / 2, 0);
+    ctx.lineTo(W / 2, H);
+    ctx.stroke();
+
+    // connect a few features
+    const drawLine = (a, b, color = "#ef4444") => {
+      const A = p2c(landmarks[a]);
+      const B = p2c(landmarks[b]);
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(A.x, A.y);
+      ctx.lineTo(B.x, B.y);
+      ctx.stroke();
+    };
+    drawLine("leftZygion", "rightZygion", "#f59e0b");
+    drawLine("leftEyeOuter", "leftEyeInner", "#8b5cf6");
+    drawLine("rightEyeInner", "rightEyeOuter", "#8b5cf6");
+    drawLine("noseLeft", "noseRight", "#10b981");
+    drawLine("mouthLeft", "mouthRight", "#ef4444");
+    drawLine("faceTop", "chin", "#3b82f6");
+  }, [img, landmarks, showOverlays]);
+
+  const runDemo = async () => {
+    setBusy(true);
+    setNote("Demo analysis using built-in landmarks.");
+    try {
+      setLandmarks(demoLandmarks);
+      const m = computeMetrics(demoLandmarks);
+      setMetrics(m);
+      if (!src) {
+        // inject a placeholder if user hasn't uploaded
+        const placeholder =
+          "data:image/svg+xml;utf8," +
+          encodeURIComponent(
+            `<svg xmlns='http://www.w3.org/2000/svg' width='800' height='1000'>
+              <rect width='100%' height='100%' fill='white'/>
+              <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='28' fill='#333'>YorN Demo Placeholder</text>
+            </svg>`
+          );
+        setSrc(placeholder);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const analyze = async () => {
+    if (!img) {
+      setNote("Upload a photo or try Demo.");
+      return;
+    }
+    setBusy(true);
+    setNote("Loading face model (local, device-only)…");
+    try {
+      const tfcore = await import("@tensorflow/tfjs-core");
+      await import("@tensorflow/tfjs-backend-webgl");
+      await tfcore.setBackend("webgl");
+      const fLd = await import("@tensorflow-models/face-landmarks-detection");
+      const mp = fLd.SupportedModels.MediaPipeFaceMesh;
+      const detector = await fLd.createDetector(mp, {
+        runtime: "tfjs",
+        refineLandmarks: true,
+      });
+      const temp = document.createElement("canvas");
+      const tctx = temp.getContext("2d");
+      temp.width = img.width;
+      temp.height = img.height;
+      tctx.drawImage(img, 0, 0);
+      const faces = await detector.estimateFaces(temp, { flipHorizontal: false });
+      if (!faces?.length) throw new Error("No face detected");
+      const f = faces[0];
+      const get = (i) => ({ x: f.keypoints[i].x / img.width, y: f.keypoints[i].y / img.height });
+      const lm = {
+        faceTop: get(10),
+        chin: get(152),
+        leftZygion: get(234),
+        rightZygion: get(454),
+        leftEyeOuter: get(130),
+        leftEyeInner: get(133),
+        rightEyeInner: get(362),
+        rightEyeOuter: get(263),
+        noseTip: get(1),
+        noseLeft: get(97),
+        noseRight: get(326),
+        mouthLeft: get(61),
+        mouthRight: get(291),
+        browLine: get(105),
+      };
+      setLandmarks(lm);
+      setMetrics(computeMetrics(lm));
+      setNote("Analysis complete.");
+    } catch (err) {
+      console.warn("Analyzer fallback:", err);
+      setNote("Model unavailable here. Showing Demo metrics instead.");
+      await runDemo();
+    } finally {
+      setBusy(false);
+    }
+  };
