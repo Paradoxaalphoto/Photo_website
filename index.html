@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>YorN — Prototype (2-file)</title>
 
+<link rel="manifest" href="/Photo_website/manifest.webmanifest" />
+<script>
+  if ('serviceWorker' in navigator) {
+    addEventListener('load', () => navigator.serviceWorker.register('/Photo_website/sw.js').catch(()=>{}));
+  }
+</script>
     <!-- React & Babel (no build step) -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
