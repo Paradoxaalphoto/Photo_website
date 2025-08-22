@@ -5,12 +5,10 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>YorN — Prototype (2-file)</title>
 
-<link rel="manifest" href="/Photo_website/manifest.webmanifest" />
-<script>
-  if ('serviceWorker' in navigator) {
-    addEventListener('load', () => navigator.serviceWorker.register('/Photo_website/sw.js').catch(()=>{}));
-  }
-</script>
+    <!-- Theme + PWA -->
+    <meta name="theme-color" content="#111111" />
+    <link rel="manifest" href="/Photo_website/manifest.webmanifest" />
+
     <!-- React & Babel (no build step) -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -39,36 +37,48 @@
       .metrics .row { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; }
       .metrics .label { color:#444; font-size:12px; }
       .metrics .val { text-align:right; font-variant-numeric:tabular-nums; }
-    </style>
-<script>
-  (function(){
-    const banner = () => document.getElementById('offline-banner');
-    function update() {
-      if (navigator.onLine) {
-        if (banner()) banner().style.display = 'none';
-      } else {
-        if (banner()) banner().style.display = 'flex';
+      /* offline banner */
+      #offline-banner {
+        position:fixed; left:0; right:0; top:0; z-index:9999;
+        display:none; justify-content:center; align-items:center;
+        background:#111; color:#fff; padding:10px 14px;
+        font-size:14px; text-align:center;
       }
-    }
-    window.addEventListener('online', update);
-    window.addEventListener('offline', update);
-    // Initial state
-    document.addEventListener('DOMContentLoaded', update);
-  })();
-</script>
+      body.offline-pad { padding-top:46px; }
+    </style>
+
+    <!-- Service Worker + Offline Banner logic -->
+    <script>
+      // Register service worker (paths scoped to /Photo_website/)
+      if ('serviceWorker' in navigator) {
+        addEventListener('load', () => {
+          navigator.serviceWorker.register('/Photo_website/sw.js').catch(()=>{});
+        });
+      }
+
+      // Simple online/offline banner toggle
+      (function(){
+        function update() {
+          const b = document.getElementById('offline-banner');
+          if (!b) return;
+          if (navigator.onLine) {
+            b.style.display = 'none';
+            document.body.classList.remove('offline-pad');
+          } else {
+            b.style.display = 'flex';
+            document.body.classList.add('offline-pad');
+          }
+        }
+        window.addEventListener('online', update);
+        window.addEventListener('offline', update);
+        document.addEventListener('DOMContentLoaded', update);
+      })();
+    </script>
   </head>
   <body>
-  <div id="offline-banner" style="
-      position:fixed;left:0;right:0;top:0;z-index:9999;
-      display:none;justify-content:center;align-items:center;
-      background:#111;color:#fff;padding:10px 14px;
-      font-size:14px; text-align:center;">
-    You’re offline — showing cached app. Some features may be unavailable.
-  </div>
+    <!-- Offline banner -->
+    <div id="offline-banner">You’re offline — showing cached app. Some features may be unavailable.</div>
 
-  <header class="header"> ... </header>
-  <div id="root" class="wrap"></div>
-  <!-- rest of your page -->
     <header class="header">
       <div class="header-inner">
         <div>YorN • Prototype • v1.18.0-alpha</div>
