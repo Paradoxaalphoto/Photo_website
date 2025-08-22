@@ -284,3 +284,225 @@ export default function App() {
       setBusy(false);
     }
   };
+const exportPDF = () => {
+    if (!flags.pdfExport || !metrics) return;
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const margin = 40;
+    let y = margin;
+
+    doc.setFontSize(18);
+    doc.text(`YorN Report — ${VERSION}`, margin, y);
+    y += 10;
+    doc.setFontSize(11);
+    doc.text("Prototype (no branding) — device-local analysis", margin, (y += 18));
+
+    // Image (canvas) snapshot
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const imgData = canvas.toDataURL("image/png");
+      const maxW = 520;
+      const ratio = canvas.height / canvas.width;
+      const w = maxW;
+      const h = w * ratio;
+      doc.addImage(imgData, "PNG", margin, (y += 12), w, h);
+      y += h + 8;
+    }
+
+    // Metrics
+    const n = metrics.normalized;
+    const rows = [
+      ["Symmetry", `${(n.symmetry * 100).toFixed(1)}%`],
+      ["fWHR", `${(n.fWHR * 100).toFixed(1)}%`],
+      ["Golden (Face)", `${(n.goldenFace * 100).toFixed(1)}%`],
+      ["Golden (Mouth)", `${(n.goldenMouth * 100).toFixed(1)}%`],
+      ["Eye Distance", `${(n.eyeDistance * 100).toFixed(1)}%`],
+      ["Jaw Width", `${(n.jawWidth * 100).toFixed(1)}%`],
+    ];
+
+    doc.setFontSize(13);
+    doc.text("Key Metrics", margin, (y += 22));
+    doc.setFontSize(11);
+    const colX = [margin, margin + 240];
+    rows.forEach((r, i) => {
+      const yy = y + i * 18 + 14;
+      doc.text(r[0], colX[0], yy);
+      doc.text(r[1], colX[1], yy);
+    });
+    y += rows.length * 18 + 16;
+
+    // Raw JSON (landmarks + metrics)
+    if (flags.rawDataToggle) {
+      doc.setFontSize(13);
+      doc.text("Raw Data (landmarks + metrics)", margin, (y += 22));
+      doc.setFontSize(9);
+      const raw = {
+        version: VERSION,
+        landmarks,
+        metrics,
+      };
+      const rawText = JSON.stringify(raw, null, 2);
+      const lines = doc.splitTextToSize(rawText, 520);
+      const maxLines = 40; // keep tidy in prototype
+      doc.text(lines.slice(0, maxLines), margin, (y += 16));
+    }
+
+    doc.save(`YorN_Report_${Date.now()}.pdf`);
+  };
+
+  const shareResults = async () => {
+    if (!flags.webShare || !metrics) return;
+    try {
+      const canvas = canvasRef.current;
+      const blob = await new Promise((res) => canvas.toBlob(res));
+      const files = blob ? [new File([blob], "yorn.png", { type: "image/png" })] : [];
+      const text = `YorN alpha metrics: ${chartData.map((r) => `${r.name} ${(r.value).toFixed(1)}%`).join(" · ")}`;
+      if (navigator.share && (navigator.canShare ? navigator.canShare({ files }) : true)) {
+        await navigator.share({ title: "YorN alpha", text, files });
+      } else {
+        await navigator.clipboard.writeText(text);
+        alert("Copied summary to clipboard (Web Share not supported).");
+      }
+    } catch (e) {
+      console.warn(e);
+      alert("Sharing not supported in this environment.");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-neutral-50 text-neutral-900">
+      <header className="sticky top-0 z-10 border-b bg-white/80 backdrop-blur">
+        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Cpu className="w-5 h-5" />
+            <div className="text-sm">YorN • Prototype • v{VERSION}</div>
+          </div>
+          <div className="text-xs opacity-70">No branding • Device-local • Ottawa dev ✦</div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left: Image + overlay */}
+        <section className="lg:col-span-7">
+          <div className="bg-white rounded-2xl shadow p-4">
+            <div className="flex items-center gap-2 mb-3 text-sm">
+              <Upload className="w-4 h-4" />
+              <span>Upload a face photo (front-facing, good light). All processing stays on-device.</span>
+            </div>
+            <div className="flex gap-2 mb-3">
+              <label className="inline-flex items-center gap-2 px-3 py-2 bg-neutral-900 text-white rounded-xl cursor-pointer">
+                <Camera className="w-4 h-4" />
+                <span>Select image</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => onFile(e.target.files?.[0])}
+                />
+              </label>
+              <button
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border"
+                onClick={runDemo}
+                disabled={busy}
+              >
+                <Play className="w-4 h-4" /> Demo
+              </button>
+              <button
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border"
+                onClick={analyze}
+                disabled={busy}
+              >
+                <ImageIcon className="w-4 h-4" /> Analyze
+              </button>
+              {flags.overlays && (
+                <button
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border"
+                  onClick={() => setShowOverlays((s) => !s)}
+                >
+                  {showOverlays ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />} Overlays
+                </button>
+              )}
+              {flags.rawDataToggle && (
+                <button
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border"
+                  onClick={() => setShowRaw((s) => !s)}
+                >
+                  <FileText className="w-4 h-4" /> Raw data
+                </button>
+              )}
+            </div>
+
+            <div className="rounded-xl overflow-hidden border bg-neutral-100">
+              <canvas ref={canvasRef} className="w-full h-auto block" />
+            </div>
+
+            <div className="mt-2 text-xs text-neutral-500 min-h-[1.5rem]">{busy ? "Working…" : note}</div>
+          </div>
+        </section>
+
+        {/* Right: Metrics + actions */}
+        <section className="lg:col-span-5 flex flex-col gap-6">
+          <div className="bg-white rounded-2xl shadow p-4">
+            <div className="text-sm font-medium mb-2">
+              Key metrics (normalized)
+              <span className="text-xs font-normal opacity-60"> • higher is closer to target range</span>
+            </div>
+            <div style={{ width: "100%", height: 260 }}>
+              <ResponsiveContainer>
+                <BarChart data={chartData} margin={{ top: 8, right: 16, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" interval={0} tick={{ fontSize: 12 }} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
+                  <Tooltip formatter={(v) => `${v}%`} />
+                  <Bar dataKey="value" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            {!metrics && (
+              <div className="text-xs text-neutral-500">Upload an image and click Analyze, or try Demo.</div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-2xl shadow p-4 flex flex-wrap gap-2">
+            <button
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border disabled:opacity-50"
+              onClick={exportPDF}
+              disabled={!metrics}
+            >
+              <FileText className="w-4 h-4" /> Export PDF
+            </button>
+            <button
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border disabled:opacity-50"
+              onClick={shareResults}
+              disabled={!metrics}
+              title="Beta: shares summary text and image via Web Share when available"
+            >
+              <Share2 className="w-4 h-4" /> Share (beta)
+            </button>
+          </div>
+
+          {showRaw && (
+            <motion.pre
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-neutral-900 text-neutral-100 text-xs p-3 rounded-2xl overflow-auto max-h-[320px]"
+            >
+{JSON.stringify(
+  {
+    version: VERSION,
+    landmarks: landmarks ?? "(analyze to populate)",
+    metrics,
+  },
+  null,
+  2
+)}
+            </motion.pre>
+          )}
+        </section>
+      </main>
+
+      <footer className="mx-auto max-w-6xl p-6 text-xs text-neutral-500">
+        Built for alpha prototyping • core-only • zero branding • easy patching. Next steps: add demographic charts & desktop/Android wrappers.
+      </footer>
+    </div>
+  );
+}
