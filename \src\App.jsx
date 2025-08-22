@@ -113,3 +113,43 @@ const computeMetrics = (lm) => {
   };
   return { raw: m, normalized };
 };
+const useImage = () => {
+  const [src, setSrc] = useState(null);
+  const [img, setImg] = useState(null);
+  const onFile = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => setSrc(e.target.result);
+    reader.readAsDataURL(file);
+  };
+  useEffect(() => {
+    if (!src) return;
+    const i = new Image();
+    i.onload = () => setImg(i);
+    i.src = src;
+  }, [src]);
+  return { img, src, onFile, setSrc };
+};
+
+export default function App() {
+  const { img, src, onFile, setSrc } = useImage();
+  const canvasRef = useRef(null);
+  const [landmarks, setLandmarks] = useState(null);
+  const [metrics, setMetrics] = useState(null);
+  const [showOverlays, setShowOverlays] = useState(true);
+  const [showRaw, setShowRaw] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+
+  const chartData = useMemo(() => {
+    if (!metrics) return [];
+    const n = metrics.normalized;
+    return [
+      { name: "Symmetry", value: +(n.symmetry * 100).toFixed(1) },
+      { name: "fWHR", value: +(n.fWHR * 100).toFixed(1) },
+      { name: "Golden (Face)", value: +(n.goldenFace * 100).toFixed(1) },
+      { name: "Golden (Mouth)", value: +(n.goldenMouth * 100).toFixed(1) },
+      { name: "Eye Distance", value: +(n.eyeDistance * 100).toFixed(1) },
+      { name: "Jaw Width", value: +(n.jawWidth * 100).toFixed(1) },
+    ];
+  }, [metrics]);
