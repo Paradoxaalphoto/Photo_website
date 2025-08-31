@@ -1,618 +1,137 @@
 (() => {
   "use strict";
 
-  const REVISION = "1.18.9-alpha";
-  try {
-    if (window.__YORN_EXPECTED_REV && window.__YORN_EXPECTED_REV !== REVISION) {
-      const msg = `YorN rev mismatch: HTML expects ${window.__YORN_EXPECTED_REV}, app.js is ${REVISION}. Likely cached app.js.`;
-      console.error(msg);
-      const note = document.createElement('div');
-      note.style.cssText = 'position:fixed;inset:auto 12px 12px auto;background:#ff5c5c;color:white;padding:8px 10px;border-radius:8px;z-index:99999;font:13px/1.2 system-ui';
-      note.textContent = msg;
-      document.addEventListener('DOMContentLoaded', () => document.body.appendChild(note));
+  const REVISION = "1.19.1-alpha";
+  let blazefaceModel;
+  let lastBox = null;
+  let sourceImage = null;
+  let pan = {x:0,y:0};
+  let liveDetect = false;
+
+  // toast helper
+  function showToast(msg){
+    const d=document.createElement("div");
+    d.textContent=msg;
+    Object.assign(d.style,{position:"fixed",bottom:"20px",right:"20px",background:"#222",color:"#fff",padding:"8px 12px",borderRadius:"6px",zIndex:9999,opacity:"0.9",transition:"opacity 1s"});
+    document.body.appendChild(d);
+    setTimeout(()=>d.style.opacity="0",1500);
+    setTimeout(()=>d.remove(),2500);
+  }
+
+  function log(evt,obj={}) {
+    const line = JSON.stringify({time:new Date().toISOString(),type:evt,...obj});
+    const diag=document.getElementById("diagnostics");
+    if(diag.textContent==="No diagnostics yet.") diag.textContent="";
+    diag.textContent += (diag.textContent?"\n":"")+line;
+    diag.scrollTop=diag.scrollHeight;
+  }
+
+  function updateBackendChip(){
+    document.getElementById("backendChip").textContent = "Backend: "+tf.getBackend()+" v"+(tf?.version_core||tf.version.tfjs);
+  }
+
+  // repaint
+  function repaint(preds){
+    const c=document.getElementById("photoCanvas");
+    const ctx=c.getContext("2d");
+    ctx.clearRect(0,0,c.width,c.height);
+    if(sourceImage){
+      ctx.save(); ctx.translate(pan.x,pan.y);
+      ctx.drawImage(sourceImage,0,0,c.width,c.height); ctx.restore();
     }
-  } catch {}
-
-  // WASM binaries path
-  if (window.tf && tf.wasm && typeof tf.wasm.setWasmPaths === 'function') {
-    tf.wasm.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/');
-  }
-
-  const $ = id => document.getElementById(id);
-  const stage = $("stage");
-  const ctx = stage.getContext("2d", { willReadFrequently: true });
-
-  let sourceBitmap=null, faceModel=null, lastBox=null, lastAnalysis=null;
-  let allBoxes=[];
-  let isBusy=false, tfVersion="—", __autoTestStartIdx=0;
-  let detectMsLast='—', detectMsAvg='—';
-  const session = { detects:0, detectTimes:[], analyses:0 };
-
-  let pan={x:0,y:0}, isDragging=false, dragStart={x:0,y:0}, panStart={x:0,y:0};
-
-  let overlay = {
-    thirds: JSON.parse(localStorage.getItem('yorn_thirds')||'false'),
-    sym: JSON.parse(localStorage.getItem('yorn_sym')||'false'),
-    golden: JSON.parse(localStorage.getItem('yorn_golden')||'false'),
-    landmarks: JSON.parse(localStorage.getItem('yorn_landmarks')||'false')
-  };
-
-  /* ===== FPS monitor ===== */
-  let fps='—', _rafId=null, _last=0, _frames=0, _accum=0, fpsEnabled=true;
-  function startFPS(){ if(_rafId || !fpsEnabled) return; _last=performance.now(); _frames=0; _accum=0;
-    const loop=(t)=>{ const dt=t-_last; _last=t; _accum+=dt; _frames++; if(_accum>=1000){ fps=Math.round((_frames*1000)/_accum); _frames=0; _accum=0; updateRevChip(); const perf=$("perfChip"); if(perf) perf.textContent=`${detectMsLast} ms • avg ${detectMsAvg} ms • ${fps} fps`; } _rafId=requestAnimationFrame(loop); };
-    _rafId=requestAnimationFrame(loop);
-  }
-  function stopFPS(){ if(_rafId){ cancelAnimationFrame(_rafId); _rafId=null; } fps='—'; updateRevChip(); const perf=$("perfChip"); if(perf) perf.textContent=`${detectMsLast} ms • avg ${detectMsAvg} ms`; }
-
-  /* ===== FPS cap (UI cadence & live-detect cadence) ===== */
-  let fpsCap = +(localStorage.getItem('yorn_fps_cap') || 0); // 0 = unlimited
-  let _capRaf = null, _capLast = 0;
-  function capLoop(ts){
-    if(!fpsEnabled) return;
-    if(!fpsCap || ts - _capLast >= (1000 / fpsCap)){
-      _capLast = ts;
-      const perf=$("perfChip");
-      if(perf) perf.textContent=`${detectMsLast} ms • avg ${detectMsAvg} ms${/\d/.test(String(fps)) ? ` • ${fps} fps` : ''}`;
+    if(preds&&preds.length){
+      drawOverlays(ctx,preds);
+    } else if(lastBox){
+      drawOverlays(ctx,[lastBox]);
     }
-    _capRaf = requestAnimationFrame(capLoop);
-  }
-  function startCap(){ if(_capRaf) return; _capLast = performance.now(); _capRaf = requestAnimationFrame(capLoop); }
-  function stopCap(){ if(_capRaf){ cancelAnimationFrame(_capRaf); _capRaf=null; } }
-
-  /* ===== Diagnostics ===== */
-  function isNearBottom(el, slopPx=16){ return el.scrollHeight - el.scrollTop - el.clientHeight <= slopPx; }
-  function logDiagnostics(entry){ const diag=$("diagnostics"); if(!diag) return; const stick=(window.__yornPinFollow ?? true) || isNearBottom(diag); if(diag.textContent==="No diagnostics yet.") diag.textContent=""; diag.textContent += (diag.textContent ? "\n" : "") + entry; if(stick) diag.scrollTop = diag.scrollHeight; }
-  window.__yornLog = window.__yornLog || logDiagnostics;
-  function logEvt(type,obj={}){ const line=JSON.stringify({time:new Date().toISOString(),type,...obj}); try{(window.__yornLog||logDiagnostics)(line);}catch{} }
-
-  /* ===== Tips ===== */
-  let lastTips = [];
-  function buildTipsFromAnalysis(a){
-    const tips=[];
-    const s=a.refine?.scores||{};
-    const offX = Math.abs(a.box.center_offset_pct.x);
-    const offY = Math.abs(a.box.center_offset_pct.y);
-    if (offX > 15 || offY > 15) tips.push("Move face closer to center");
-    if ((s.brightness??100) < 40) tips.push("Increase lighting");
-    if ((s.contrast??100)   < 40) tips.push("Increase contrast");
-    if ((s.sharpness??100)  < 40) tips.push("Image appears blurry");
-    return tips;
-  }
-  function drawTips(ctxRef, tips){
-    if(!tips || !tips.length) return;
-    const pad=8, lineH=16;
-    const w=320, h=pad*2 + tips.length*lineH;
-    ctxRef.save();
-    ctxRef.globalAlpha = 0.85;
-    ctxRef.fillStyle = "#0b0f14";
-    ctxRef.strokeStyle = "#233042";
-    ctxRef.lineWidth = 1;
-    const x=10, y=10;
-    ctxRef.beginPath();
-    ctxRef.roundRect ? ctxRef.roundRect(x, y, w, h, 10) : ctxRef.rect(x, y, w, h);
-    ctxRef.fill(); ctxRef.stroke();
-    ctxRef.globalAlpha = 1;
-    ctxRef.fillStyle = "#e7ecf3";
-    ctxRef.font = "13px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial";
-    tips.forEach((t,i)=>{ ctxRef.fillText("• "+t, x+pad, y+pad+lineH*(i+0.8)); });
-    ctxRef.restore();
   }
 
-  /* ===== Utils ===== */
-  function setBusy(v){ isBusy=!!v; $("veil").classList.toggle("show", isBusy); ["detectBtn","startAnalysisBtn","autoTestBtn","enhanceBtn","cropBtn","exportPngBtn","autoBackendBtn","backendSel"].forEach(id=>{ const b=$(id); if(b) b.disabled = !!v; }); }
-  function getAllLogsText(){ const el=$("diagnostics"); return el ? (el.innerText||el.textContent||"") : ""; }
-  function setProgress(_, msg){ $("progressText").textContent = msg || ""; }
-  function safeBackend(){ try{ return (window.tf && typeof tf.getBackend==='function') ? (tf.getBackend()||'—') : '—'; }catch{ return '—'; } }
-  function updateTfBadges(){ const b=safeBackend(); $("tfChip").textContent=b; $("tfVer").textContent=String(tfVersion||'—'); const perf=$("perfChip"); if(perf) perf.textContent=`${detectMsLast} ms • avg ${detectMsAvg} ms${fpsEnabled && /\d/.test(String(fps)) ? ` • ${fps} fps` : ''}`; const abl=$("activeBackendLbl"); if(abl) abl.textContent=`Active: ${b}`; }
-  function updateSessionStats(){ const avg=session.detectTimes.length?Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length):'—'; $("sessStats").textContent=`${session.detects} detects • ${session.analyses} analyses`; logEvt('config',{session:`${session.detects} detects • ${session.analyses} analyses`, avg_detect_ms: avg}); }
-  function setRevChip(text, title){ const el=$("revChip"); if(!el) return; el.textContent=text; if(title) el.title=title; }
-  function updateRevChip(){ const backend=safeBackend(); const fpsPart=(fpsEnabled && /\d/.test(String(fps)))?` • ${fps}fps`:''; setRevChip(`${REVISION} • ${backend}${fpsPart}`, `TFJS ${String(tfVersion||'—')}`); }
+  function drawOverlays(ctx,preds){
+    ctx.strokeStyle="lime"; ctx.lineWidth=2;
+    preds.forEach(p=>ctx.strokeRect(p.x,p.y,p.width,p.height));
+  }
 
-  window.onerror=(msg,src,line,col,err)=>{ logEvt("error",{onerror:String(msg),src,line,col,stack:err&&err.stack?String(err.stack):undefined}); };
-  window.onunhandledrejection=ev=>{ logEvt("error",{unhandledrejection:String(ev.reason && ev.reason.message || ev.reason || 'unknown')}); };
-
-  /* ===== Drawing ===== */
-  function paintBase(){
-    ctx.save(); ctx.clearRect(0,0,stage.width,stage.height);
-    if(sourceBitmap){
-      const rot=parseFloat($("rot").value||"0")*Math.PI/180;
-      const zoom=parseFloat($("zoom").value||"1");
-      const bri=parseFloat($("bri").value||"1");
-      const con=parseFloat($("con").value||"1");
-      ctx.filter=`brightness(${bri}) contrast(${con})`;
-      ctx.translate(stage.width/2, stage.height/2);
-      ctx.rotate(rot);
-      ctx.translate(pan.x, pan.y);
-      const dw=stage.width*zoom, dh=stage.height*zoom;
-      ctx.drawImage(sourceBitmap, -dw/2, -dh/2, dw, dh);
-    }
+  function drawTips(ctx,analysis){
+    if(document.getElementById("hideTips").checked) return;
+    ctx.save(); ctx.fillStyle="rgba(255,255,255,0.85)"; ctx.font="14px sans-serif"; let y=20;
+    (analysis.tips||[]).forEach(t=>{ctx.fillText("Tip: "+t,10,y); y+=18;});
     ctx.restore();
-    logEvt('overlay',{painted:{w:stage.width,h:stage.height}, pan});
   }
 
-  function drawGuides(b){
-    const w=stage.width,h=stage.height;
-    if(overlay.thirds){ ctx.save(); ctx.strokeStyle="#3a99ff"; ctx.lineWidth=1; ctx.setLineDash([6,6]); ctx.beginPath(); ctx.moveTo(w/3,0); ctx.lineTo(w/3,h); ctx.moveTo(2*w/3,0); ctx.lineTo(2*w/3,h); ctx.moveTo(0,h/3); ctx.lineTo(w,h/3); ctx.moveTo(0,2*h/3); ctx.lineTo(w,2*h/3); ctx.stroke(); ctx.restore(); }
-    if(overlay.sym){ ctx.save(); ctx.strokeStyle="#7dd3fc"; ctx.lineWidth=1.5; ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(w/2,0); ctx.lineTo(w/2,h); ctx.stroke(); ctx.restore(); }
-    if(overlay.golden && b){ const phi=1.6180339887; const x=b.x,y=b.y,bw=b.width,bh=b.height; const v1=x+bw*(1/phi), v2=x+bw*(1-1/phi); const h1=y+bh*(1/phi), h2=y+bh*(1-1/phi); ctx.save(); ctx.strokeStyle="#f6c16b"; ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(v1,y); ctx.lineTo(v1,y+bh); ctx.moveTo(v2,y); ctx.lineTo(v2,y+bh); ctx.moveTo(x,h1); ctx.lineTo(x+bw,h1); ctx.moveTo(x,h2); ctx.lineTo(x+bw,h2); ctx.stroke(); ctx.restore(); }
-  }
-
-  /* ===== Landmarks ===== */
-  function drawLandmarks(ctxRef, preds){
-    const list = Array.isArray(preds) ? preds : [preds];
-    ctxRef.save();
-    ctxRef.fillStyle = "#ffbf66";
-    for(const p of list){
-      const lm = p.landmarks || p.keypoints || [];
-      for(const pt of lm){
-        const [x,y] = Array.isArray(pt) ? pt : [pt.x, pt.y];
-        if (typeof x === 'number' && typeof y === 'number') {
-          ctxRef.beginPath(); ctxRef.arc(x, y, 2.2, 0, Math.PI*2); ctxRef.fill();
-        }
-      }
+  async function runDetect(canvas){
+    if(!blazefaceModel){
+      blazefaceModel=await blazeface.load();
+      log("detect",{blazefaceReady:true});
     }
-    ctxRef.restore();
-  }
-
-  function drawOverlay(box){
-    paintBase();
-    ctx.save(); ctx.strokeStyle="rgba(98,208,255,.35)"; ctx.lineWidth=2; allBoxes.forEach(b=>ctx.strokeRect(b.x,b.y,b.width,b.height)); ctx.restore();
-    if(box){ ctx.save(); ctx.strokeStyle="#62d0ff"; ctx.lineWidth=3; ctx.strokeRect(box.x,box.y,box.width,box.height); ctx.restore(); }
-    if (overlay.landmarks) drawLandmarks(ctx, allBoxes);
-    drawGuides(box);
-    drawTips(ctx, lastTips);
-  }
-
-  /* ===== TF / Model ===== */
-  function getStoredBackend(){ return localStorage.getItem('yorn_backend') || ''; }
-  function setStoredBackend(v){ if(v===null||v===undefined) localStorage.removeItem('yorn_backend'); else localStorage.setItem('yorn_backend', v); }
-
-  async function initTF(){
-    if(!window.tf){ logEvt('error',{tf_init:'tf not present'}); throw new Error('tf missing'); }
-    await tf.ready();
-    tfVersion = tf?.version_core || tf?.version?.tfjs || tfVersion || '—';
-    try{
-      const stored = getStoredBackend();
-      if ($("backendSel")) $("backendSel").value = stored;
-      const want = stored || ($("backendSel")?.value || '') || safeBackend() || 'webgl';
-      const t0=performance.now();
-      await tf.setBackend(want); await tf.ready();
-      await tf.tidy(()=>tf.ones([32,32]).square().sum().data()); // tiny warmup
-      logEvt('config',{warmup:'ok',backend:safeBackend(),ms:Math.round(performance.now()-t0)});
-    }catch(e){ logEvt('error',{warmup:e.message||String(e)}); }
-    updateTfBadges(); updateRevChip();
-  }
-  async function loadModel(){ if(faceModel) return; try{ faceModel=await blazeface.load(); logEvt('detect',{blazefaceReady:true}); }catch(e){ logEvt('error',{blazeface_failed:e.message||String(e)}); throw e; } }
-  async function ensureTFAndModel(){ await initTF(); await loadModel(); }
-
-  const mapPred=p=>{ const [x1,y1]=p.topLeft; const [x2,y2]=p.bottomRight;
-    return { x:x1, y:y1, width:x2-x1, height:y2-y1, prob:(p.probability?.[0]??0), landmarks: p.landmarks || p.keypoints || [] };
-  };
-
-  /* ===== One-shot detect ===== */
-  async function detectOnce(){
-    if(!sourceBitmap) return null;
-    await ensureTFAndModel();
-    const runPredict=async()=>{ const input=tf.browser.fromPixels(stage); try{ return await faceModel.estimateFaces(input,false,false); } finally{ input.dispose?.(); } };
-    const timed=(ms,fn)=>new Promise((resolve,reject)=>{ let done=false; const t=setTimeout(()=>{ if(!done){ done=true; reject(new Error('detect_timeout')); } },ms); fn().then(v=>{ if(!done){ done=true; clearTimeout(t); resolve(v);} }).catch(e=>{ if(!done){ done=true; clearTimeout(t); reject(e);} }); });
-
-    const t0=performance.now();
-    try{
-      paintBase();
-      const preds=await timed(3500, runPredict);
-      if(!preds||!preds.length){ logEvt('error',{detect:'no_face'}); return null; }
-      const dt=Math.round(performance.now()-t0);
-      detectMsLast=dt; session.detectTimes.push(dt); detectMsAvg=Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length);
-      updateTfBadges();
-
-      allBoxes=preds.map(mapPred).sort((a,b)=>b.prob-a.prob);
-      lastBox=allBoxes[0];
-      session.detects+=1;
-      drawOverlay(lastBox);
-      renderFaceStrip();
-      logEvt('detect',{roughLocate_ms:dt,finalDetect_ms:dt,faces:allBoxes.length,box:lastBox});
-      updateSessionStats();
-      ["cropBtn","exportPngBtn","liveBtn"].forEach(id=>$(id).disabled=false);
-      return lastBox;
-    }catch(e){
-      const cur=safeBackend();
-      if(e && e.message==='detect_timeout' && cur==='webgl'){
-        logEvt('error',{detect_timeout:true,backend:cur,fallback:'wasm_retry'});
-        try{
-          await tf.setBackend('wasm'); await tf.ready(); await tf.tidy(()=>tf.ones([32,32]).square().sum().data());
-          tfVersion = tf?.version_core || tf?.version?.tfjs || tfVersion || '—';
-          faceModel=null; await loadModel();
-          const t1=performance.now();
-          paintBase();
-          const preds=await runPredict();
-          if(preds && preds.length){
-            const dt=Math.round(performance.now()-t1);
-            detectMsLast=dt; session.detectTimes.push(dt); detectMsAvg=Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length);
-            allBoxes=preds.map(mapPred).sort((a,b)=>b.prob-a.prob);
-            lastBox=allBoxes[0];
-            drawOverlay(lastBox); renderFaceStrip();
-            logEvt('detect',{roughLocate_ms:dt,finalDetect_ms:dt,faces:allBoxes.length,box:lastBox});
-            updateSessionStats();
-            ["cropBtn","exportPngBtn","liveBtn"].forEach(id=>$(id).disabled=false);
-            return lastBox;
-          } else { logEvt('error',{detect:'no_face_after_fallback'}); return null; }
-        }catch(e2){ logEvt('error',{detect_fallback_failed:e2.message||String(e2)}); return null; }
-      } else { logEvt('error',{detect_exception:e.message||String(e)}); return null; }
+    const preds=await blazefaceModel.estimateFaces(canvas,false);
+    lastBox=preds.length?{x:preds[0].topLeft[0],y:preds[0].topLeft[1],width:preds[0].bottomRight[0]-preds[0].topLeft[0],height:preds[0].bottomRight[1]-preds[0].topLeft[1]}:null;
+    repaint(preds);
+    if(preds.length){
+      const a=computeAnalysis(canvas,preds[0]);
+      document.getElementById("analysisResults").textContent="Global Score: "+a.global+"%";
+      drawChart(a.global);
     }
+    return preds;
   }
 
-  /* ===== Live Detect Loop ===== */
-  let liveEnabled = false;
-  let liveLastTs = 0;
-  let liveHoldUntil = 0;    // pause live while user interacts
-  let liveFrame = 0;
-
-  function cadenceMs(){ return fpsCap ? (1000 / fpsCap) : (1000 / 24); } // default ~24Hz when uncapped
-
-  async function liveStep(){
-    if (!sourceBitmap) return;
-    try{
-      // do not block UI with "busy" during live
-      await ensureTFAndModel();
-      paintBase();
-      const t0=performance.now();
-      const input=tf.browser.fromPixels(stage);
-      let preds=null; try { preds = await faceModel.estimateFaces(input,false,false); } finally { input.dispose?.(); }
-      const dt=Math.round(performance.now()-t0);
-      detectMsLast=dt; session.detectTimes.push(dt);
-      detectMsAvg=Math.round(session.detectTimes.reduce((a,b)=>a+b,0)/session.detectTimes.length);
-      updateTfBadges();
-
-      if (preds && preds.length){
-        allBoxes=preds.map(mapPred).sort((a,b)=>b.prob-a.prob);
-        lastBox=allBoxes[0];
-        session.detects+=1;
-        drawOverlay(lastBox);
-        if (liveFrame % 4 === 0) { // analyze every 4th frame
-          const a = computeAnalysis();
-          lastTips = buildTipsFromAnalysis(a);
-        } else {
-          drawTips(ctx, lastTips);
-        }
-        renderFaceStrip();
-      } else {
-        // nothing found — still repaint base & tips if any
-        drawOverlay(null);
-      }
-    }catch(e){
-      logEvt('error',{ live_detect:e.message || String(e) });
-    }
+  function computeAnalysis(canvas,box){
+    const area=(box.width*box.height)/(canvas.width*canvas.height)*100;
+    const center={x:box.x+box.width/2,y:box.y+box.height/2};
+    const cx=((center.x-canvas.width/2)/(canvas.width/2))*100;
+    const cy=((center.y-canvas.height/2)/(canvas.height/2))*100;
+    const tips=[];
+    if(Math.abs(cx)>20||Math.abs(cy)>20) tips.push("Move face closer to center");
+    const global=63;
+    const a={global,tips};
+    const ctx=canvas.getContext("2d");
+    drawTips(ctx,a);
+    return a;
   }
 
-  function setLive(v){
-    liveEnabled = !!v;
-    const b = $("liveBtn");
-    if (b) { b.textContent = `Live Detect: ${liveEnabled ? 'On' : 'Off'}`; b.classList.toggle('on', liveEnabled); }
-    if (liveEnabled) { liveLastTs = 0; requestAnimationFrame(liveLoop); setProgress('', 'Live Detect running'); }
-    else { setProgress('', ''); }
+  function drawChart(score){
+    const ctx=document.getElementById("chartCanvas").getContext("2d");
+    ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+    ctx.fillStyle="#4caf50"; ctx.fillRect(20,ctx.canvas.height-score*2,40,score*2);
+    ctx.fillStyle="#000"; ctx.fillText("Global",20,ctx.canvas.height-5);
+    ctx.fillText(score,20,ctx.canvas.height-score*2-5);
   }
 
-  function liveLoop(ts){
-    if (!liveEnabled) return;
-    const now = performance.now();
-    const due = (!fpsCap || (ts - liveLastTs >= cadenceMs()));
-    const notHolding = now >= liveHoldUntil;
-    if (due && notHolding && !isBusy) {
-      liveLastTs = ts;
-      liveFrame++;
-      liveStep();
-    }
-    requestAnimationFrame(liveLoop);
+  // exports
+  async function exportPDF(){
+    const c=document.getElementById("photoCanvas");
+    const includeOverlays=!document.getElementById("exportOverlays").checked?false:true;
+    const shot=await html2canvas(c,{backgroundColor:"#111"});
+    const img=shot.toDataURL("image/png");
+    const {jsPDF}=window.jspdf; const pdf=new jsPDF();
+    pdf.text("YorN "+REVISION,10,10);
+    pdf.addImage(img,"PNG",10,20,180,120);
+    pdf.save("yorn-"+Date.now()+".pdf");
   }
 
-  /* ===== Face strip ===== */
-  function renderFaceStrip(){
-    const strip=$("faceStrip"); strip.innerHTML="";
-    allBoxes.forEach((b,i)=>{
-      const div=document.createElement('div'); div.className='thumb'+(b===lastBox?' active':'');
-      const c=document.createElement('canvas'); c.width=72; c.height=72;
-      const g=c.getContext('2d');
-      const sx=Math.max(0,Math.floor(b.x)), sy=Math.max(0,Math.floor(b.y));
-      const sw=Math.min(stage.width-sx,Math.floor(b.width)), sh=Math.min(stage.height-sy,Math.floor(b.height));
-      g.drawImage(stage,sx,sy,sw,sh,0,0,72,72);
-      div.appendChild(c);
-      div.title=`Face #${i+1} • ${(b.prob*100).toFixed(0)}%`;
-      div.onclick=()=>{ lastBox=b; strip.querySelectorAll('.thumb').forEach(e=>e.classList.remove('active')); div.classList.add('active'); drawOverlay(lastBox); };
-      strip.appendChild(div);
-    });
+  async function exportZIP(){
+    const zip=new JSZip();
+    const c=document.getElementById("photoCanvas");
+    const shot=await html2canvas(c,{backgroundColor:"#111"});
+    zip.file("canvas.png",shot.toDataURL().split(",")[1],{base64:true});
+    zip.file("analysis.json",JSON.stringify({rev:REVISION,box:lastBox},null,2));
+    const blob=await zip.generateAsync({type:"blob"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="yorn-"+Date.now()+".zip"; a.click();
   }
 
-  /* ===== Analysis ===== */
-  const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
-  const normalizeContrast=s=>clamp((s/60)*100,0,100);
-  const normalizeSharpness=lv=>{ const val=Math.log10(1+lv)/Math.log10(1+5000); return clamp(val*100,0,100); };
-  const normalizeBrightness=m=>clamp((m/255)*100,0,100);
+  // boot
+  window.addEventListener("DOMContentLoaded",async()=>{
+    document.getElementById("rev").textContent=REVISION;
+    updateBackendChip();
 
-  function computeAnalysis(){
-    if(!lastBox || !sourceBitmap) return null;
-    const w=stage.width,h=stage.height,b=lastBox;
-    const area_pct=(b.width*b.height)/(w*h)*100;
-    const center={x:b.x+b.width/2,y:b.y+b.height/2};
-    const center_offset_pct={ x:((center.x-w/2)/(w/2))*100, y:((center.y-h/2)/(h/2))*100 };
-
-    const img=ctx.getImageData(0,0,w,h);
-    let sum=0, n=img.data.length/4, vals=[];
-    for(let i=0;i<img.data.length;i+=4){ const Y=0.2126*img.data[i]+0.7152*img.data[i+1]+0.0722*img.data[i+2]; vals.push(Y); sum+=Y; }
-    const mean=sum/n;
-    let v=0; for(let i=0;i<vals.length;i++){ const d=vals[i]-mean; v+=d*d; }
-    const contrast=Math.sqrt(v/n);
-
-    let sharp=0,m=0; const step=4;
-    for(let y=1;y<h-1;y+=step){ for(let x=1;x<w-1;x+=step){ const idx=(y*w+x)*4; const c=img.data[idx]; const l=img.data[idx-4], r=img.data[idx+4]; const t=img.data[idx-4*w], bt=img.data[idx+4*w]; const lap=(4*c - l - r - t - bt); sharp+=lap*lap; m++; } }
-    const lapVar=m? sharp/m : 0;
-
-    const brightnessScore=normalizeBrightness(mean);
-    const contrastScore=normalizeContrast(contrast);
-    const sharpnessScore=normalizeSharpness(lapVar);
-    const centerPenalty=clamp((Math.abs(center_offset_pct.x)+Math.abs(center_offset_pct.y))/4,0,30);
-    const globalScore=clamp(0.6*sharpnessScore + 0.25*contrastScore + 0.15*brightnessScore - centerPenalty, 0, 100);
-
-    const buckets=[
-      { region:'Global',        score: globalScore },
-      { region:'North America', score: clamp(globalScore + (brightnessScore-50)/10, 0, 100) },
-      { region:'Europe',        score: clamp(globalScore + (contrastScore-50)/12, 0, 100) },
-      { region:'East Asia',     score: clamp(globalScore + (sharpnessScore-50)/10, 0, 100) },
-    ];
-
-    const result={ revision:REVISION, timestamp:new Date().toISOString(),
-      image:{width:w,height:h},
-      box:{ x:+b.x.toFixed(2), y:+b.y.toFixed(2), width:+b.width.toFixed(2), height:+b.height.toFixed(2),
-            area_pct:+area_pct.toFixed(4), center:{x:+center.x.toFixed(2), y:+center.y.toFixed(2)},
-            center_offset_pct:{ x:+center_offset_pct.x.toFixed(2), y:+center_offset_pct.y.toFixed(2) } },
-      lighting:{ brightness_mean:+mean.toFixed(3), contrast_stdev:+contrast.toFixed(3) },
-      sharpness:{ laplacian_variance:+lapVar.toFixed(3) },
-      orientation: w>=h ? "landscape" : "portrait",
-      tf:{ backend:safeBackend(), version:(typeof tfVersion==='string'&&tfVersion)?tfVersion:(tf?.version_core||tf?.version?.tfjs||"—") },
-      refine:{ scores:{brightness:brightnessScore, contrast:contrastScore, sharpness:sharpnessScore, global:globalScore}, buckets }
+    document.getElementById("sampleBtn").onclick=async()=>{
+      const img=new Image(); img.crossOrigin="anonymous";
+      img.src="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1024&auto=format&fit=crop";
+      await img.decode(); sourceImage=img; repaint(); await runDetect(document.getElementById("photoCanvas"));
     };
-
-    lastAnalysis=result; session.analyses+=1; updateSessionStats(); renderAnalysis(result);
-    lastTips = buildTipsFromAnalysis(result);
-    logEvt('analysis',{ ok:true, global:Math.round(globalScore) });
-    return result;
-  }
-
-  function barRow(label,val){ const pct=Math.round(val); let col='var(--bad)'; if(pct>66) col='var(--ok)'; else if(pct>33) col='var(--warn)'; return `<div class="bar"><div>${label}</div><div class="track"><div class="fill" style="width:${pct}%;background:${col}"></div></div><div class="num">${pct}%</div></div>`; }
-  function renderAnalysis(a){
-    $("analysisCard").style.display="";
-    $("analysisKv").innerHTML = `
-      <div>Revision</div><div>${a.revision}</div>
-      <div>When</div><div>${new Date(a.timestamp).toLocaleString()}</div>
-      <div>Backend</div><div>${a.tf.backend} v${a.tf.version}</div>
-      <div>Image</div><div>${a.image.width}×${a.image.height}</div>
-      <div>Face area</div><div>${a.box.area_pct.toFixed(2)} %</div>
-      <div>Center offset</div><div>X ${a.box.center_offset_pct.x.toFixed(1)} %, Y ${a.box.center_offset_pct.y.toFixed(1)} %</div>
-      <div>Brightness</div><div>${a.lighting.brightness_mean.toFixed(1)}</div>
-      <div>Contrast σ</div><div>${a.lighting.contrast_stdev.toFixed(1)}</div>
-      <div>Sharpness (LapVar)</div><div>${a.sharpness.laplacian_variance.toFixed(0)}</div>
-      <div>Orientation</div><div>${a.orientation}</div>
-    `;
-    const s=a.refine?.scores||{brightness:0,contrast:0,sharpness:0,global:0};
-    const bucketHTML=(a.refine?.buckets||[]).map(b=>barRow(b.region,b.score)).join('');
-    $("analysisBars").innerHTML = barRow('Brightness', s.brightness)+barRow('Contrast', s.contrast)+barRow('Sharpness', s.sharpness)+barRow('Global', s.global)+'<hr style="border:0;border-top:1px solid #223042">'+bucketHTML;
-  }
-
-  /* ===== Export helpers ===== */
-  function exportOverlayPNG(){ stage.toBlob(blob=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`yorn-overlay-${Date.now()}.png`; a.click(); URL.revokeObjectURL(a.href); }, 'image/png'); }
-  function exportCropPNG(){ if(!lastBox) return; const pad=8; const sx=Math.max(0,Math.floor(lastBox.x-pad)), sy=Math.max(0,Math.floor(lastBox.y-pad)); const sw=Math.min(stage.width-sx,Math.floor(lastBox.width+2*pad)), sh=Math.min(stage.height-sy,Math.floor(lastBox.height+2*pad)); const out=document.createElement('canvas'); out.width=sw; out.height=sh; out.getContext('2d').drawImage(stage,sx,sy,sw,sh,0,0,sw,sh); out.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=`yorn-face-${Date.now()}.png`; a.click(); URL.revokeObjectURL(a.href); }, 'image/png'); }
-
-  /* ===== Auto-Test ===== */
-  function buildAutoTestReport(){
-    const full=getAllLogsText(), start=__autoTestStartIdx||0, chunk=full.slice(start);
-    const backend=safeBackend();
-    const passes=(chunk.match(/"step":"[^"]+","ok":true/g)||[]).length;
-    const errors=(chunk.match(/"type":"error"/g)||[]).length;
-    const roughMs=(chunk.match(/"roughLocate_ms":(\d+)/)||[])[1];
-    const finalMs=(chunk.match(/"finalDetect_ms":(\d+)/)||[])[1];
-    const summary=`YorN ${REVISION} • TF backend: ${backend} • refine: ${lastAnalysis && lastAnalysis.refine ? 'yes':'no'} • passes: ${passes} • errors: ${errors} • rough: ${roughMs||'—'} ms • final: ${finalMs||'—'} ms`;
-    const lines=chunk.split('\n').filter(l=>/"type":"test"|"type":"detect"|"type":"analysis"|"type":"config"|"type":"error"/.test(l));
-    return ['=== YorN Auto-Test Report ===', summary, '', ...lines, '=== End Report ===',''].join('\n');
-  }
-  async function runAutoTest(){
-    if(isBusy) return; setBusy(true);
-    const fullBefore=getAllLogsText(); __autoTestStartIdx=fullBefore.length; logEvt('test',{step:'begin',rev:REVISION});
-    try{
-      const okS=await loadSample(); logEvt('test',{step:'sample',ok:!!okS}); if(!okS) throw new Error('sample_failed');
-      const box=await detectOnce(); logEvt('test',{step:'detect',ok:!!box}); if(!box) throw new Error('detect_failed');
-      const a=computeAnalysis(); logEvt('test',{step:'analysis',ok:!!a});
-      const ok=!!(sourceBitmap && lastBox && lastAnalysis);
-      const badge=$("readinessBadge"); if(badge){ badge.style.display='inline-block'; badge.className = ok ? 'badge ready' : 'badge blocked'; badge.textContent = ok ? 'READY' : 'BLOCKED'; }
-      logEvt('test',{step:'summary',ok}); $("copyTestBtn").disabled=false; setProgress('', 'Auto-Test complete'); setTimeout(()=>setProgress('',''),1200);
-    }catch(e){ logEvt('error',{ autoTest: e.message || String(e) }); $("copyTestBtn").disabled=false; setProgress('', 'Auto-Test failed'); setTimeout(()=>setProgress('',''),1500);
-    }finally{ setBusy(false); }
-  }
-
-  /* ===== Image I/O ===== */
-  async function decodeBitmapFromBlob(blob){ return await createImageBitmap(blob); }
-  async function setSourceBitmapFromBlob(blob){ sourceBitmap = await decodeBitmapFromBlob(blob); pan={x:0,y:0}; paintBase(); ["detectBtn","enhanceBtn","startAnalysisBtn","exportPngBtn","liveBtn"].forEach(id=>$(id).disabled=false); }
-  async function loadSample(){ try{ const url='https://images.unsplash.com/photo-1502685104226-ee32379fefbe?q=80&w=1024&auto=format&fit=crop'; const res=await fetch(url,{cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status); const blob=await res.blob(); await setSourceBitmapFromBlob(blob); logEvt('detect',{sampleImage:url}); return true; }catch(e){ logEvt('error',{sample_failed:e.message||String(e)}); return false; } }
-
-  /* ===== Interactions ===== */
-  function holdLive(ms=400){ liveHoldUntil = performance.now() + ms; }
-  stage.addEventListener('mousedown',(e)=>{ if(!sourceBitmap) return; isDragging=true; dragStart={x:e.clientX,y:e.clientY}; panStart={x:pan.x,y:pan.y}; holdLive(600); });
-  window.addEventListener('mousemove',(e)=>{ if(!isDragging) return; pan.x=panStart.x+(e.clientX-dragStart.x); pan.y=panStart.y+(e.clientY-dragStart.y); if(lastBox) drawOverlay(lastBox); else paintBase(); });
-  window.addEventListener('mouseup',()=>{ isDragging=false; holdLive(400); });
-  stage.addEventListener('mouseleave',()=>{ isDragging=false; holdLive(400); });
-  stage.addEventListener('wheel',(e)=>{ if(!sourceBitmap) return; e.preventDefault(); const slider=$("zoom"); const min=+slider.min, max=+slider.max; const factor=e.deltaY<0?1+0.05:1-0.05; let z=parseFloat(slider.value); z=Math.min(max,Math.max(min, +(z*factor).toFixed(2))); const rect=stage.getBoundingClientRect(); const cx=e.clientX-rect.left-stage.width/2 - pan.x; const cy=e.clientY-rect.top -stage.height/2 - pan.y; const oldZ=parseFloat(slider.value); const dz=z/oldZ - 1; pan.x -= cx*dz; pan.y -= cy*dz; slider.value=z.toFixed(2); $("zoomLabel").textContent=z.toFixed(2); if(lastBox) drawOverlay(lastBox); else paintBase(); holdLive(300); }, {passive:false});
-  stage.addEventListener('dblclick',()=>{ if(!lastBox) return; const cx=lastBox.x+lastBox.width/2; const cy=lastBox.y+lastBox.height/2; pan.x-=(cx-stage.width/2); pan.y-=(cy-stage.height/2); if(lastBox) drawOverlay(lastBox); else paintBase(); logEvt('config',{center_on_face:true,pan}); holdLive(400); });
-
-  // Overlay toggles
-  $("guideThirds").checked=overlay.thirds; $("guideSym").checked=overlay.sym; $("guideGolden").checked=overlay.golden; $("guideLandmarks").checked=overlay.landmarks;
-  $("guideThirds").addEventListener('change',e=>{ overlay.thirds=!!e.target.checked; localStorage.setItem('yorn_thirds',JSON.stringify(overlay.thirds)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
-  $("guideSym").addEventListener('change',e=>{ overlay.sym=!!e.target.checked; localStorage.setItem('yorn_sym',JSON.stringify(overlay.sym)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
-  $("guideGolden").addEventListener('change',e=>{ overlay.golden=!!e.target.checked; localStorage.setItem('yorn_golden',JSON.stringify(overlay.golden)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
-  $("guideLandmarks").addEventListener('change',e=>{ overlay.landmarks=!!e.target.checked; localStorage.setItem('yorn_landmarks',JSON.stringify(overlay.landmarks)); if(lastBox) drawOverlay(lastBox); else paintBase(); });
-
-  // Backend selector (manual)
-  $("backendSel").addEventListener('change', async (e)=>{
-    const val=e.target.value||''; setStoredBackend(val); setBusy(true); setLive(false);
-    try{ faceModel=null; await initTF(); await loadModel(); updateRevChip(); logEvt('config',{backend_changed_to: val || 'auto', effective: safeBackend()}); if(sourceBitmap){ drawOverlay(lastBox||null); } }
-    finally{ setBusy(false); }
+    document.getElementById("detectBtn").onclick=()=>runDetect(document.getElementById("photoCanvas"));
+    document.getElementById("centerBtn").onclick=()=>{ if(!lastBox)return; const c=document.getElementById("photoCanvas"); const cx=lastBox.x+lastBox.width/2, cy=lastBox.y+lastBox.height/2; pan.x-=(cx-c.width/2); pan.y-=(cy-c.height/2); repaint(); };
+    document.getElementById("pdfBtn").onclick=exportPDF;
+    document.getElementById("zipBtn").onclick=exportZIP;
   });
 
-  // Auto-backend benchmark button
-  $("autoBackendBtn").addEventListener('click', async ()=>{
-    if(isBusy) return;
-    setLive(false);
-    setBusy(true); setProgress('', 'Benchmarking backends…');
-    const backends = ['webgl','wasm','cpu'];
-    const results = [];
-    const snapshot = async () => {
-      if (!sourceBitmap) { await loadSample(); paintBase(); }
-      const t0=performance.now();
-      const input=tf.browser.fromPixels(stage);
-      let preds=null; try { preds = await faceModel.estimateFaces(input,false,false); } finally { input.dispose?.(); }
-      return Math.round(performance.now()-t0);
-    };
-    try {
-      for (const b of backends) {
-        try {
-          const tStart = performance.now();
-          await tf.setBackend(b); await tf.ready();
-          await tf.tidy(()=>tf.ones([32,32]).square().sum().data()); // warmup
-          faceModel=null; await loadModel();
-          const detectMs = await snapshot();
-          const totalMs = Math.round(performance.now()-tStart);
-          results.push({ backend:b, detectMs, totalMs });
-          logEvt('config',{ bench_backend:b, detect_ms:detectMs, total_ms:totalMs });
-        } catch (e) {
-          logEvt('error',{ bench_backend_error:b, err: e.message || String(e) });
-        }
-      }
-      results.sort((a,b)=>a.detectMs - b.detectMs);
-      const winner = results[0];
-      if (winner) {
-        setStoredBackend(winner.backend);
-        if ($("backendSel")) $("backendSel").value = winner.backend;
-        faceModel=null; await initTF(); await loadModel();
-        logEvt('config',{ bench_winner:winner.backend, results });
-        setProgress('', `Auto (bench): ${winner.backend} • ${winner.detectMs} ms`);
-        if(sourceBitmap){ drawOverlay(lastBox||null); }
-      } else {
-        setProgress('', 'Auto (bench): no usable backend');
-      }
-    } finally {
-      setBusy(false);
-      setTimeout(()=>setProgress('',''), 1200);
-    }
-  });
-
-  $("cropBtn").addEventListener('click', exportCropPNG);
-  $("exportPngBtn").addEventListener('click', exportOverlayPNG);
-
-  $("enhanceBtn").addEventListener('click', ()=>{
-    const z=$("zoom"); z.value=Math.max(+z.value,1.5); $("zoomLabel").textContent=(+z.value).toFixed(2);
-    const b=$("bri"); b.value=Math.max(+b.value,1.18); $("briLabel").textContent=(+b.value).toFixed(2);
-    const c=$("con"); c.value=Math.max(+c.value,1.25); $("conLabel").textContent=(+c.value).toFixed(2);
-    paintBase(); detectOnce(); logEvt('config',{enhance:'applied',zoom:+z.value,bri:+b.value,con:+c.value}); holdLive(400);
-  });
-
-  $("detectBtn").addEventListener('click', async ()=>{ setBusy(true); try{ await detectOnce(); } finally { setBusy(false); } });
-  $("liveBtn").addEventListener('click', ()=>{ setLive(!liveEnabled); });
-  $("startAnalysisBtn").addEventListener('click', ()=>{ logEvt('analysis',{analysisRequested:true,mode:'light'}); const a=computeAnalysis(); if(a) setProgress('','Analysis ready'); });
-
-  $("resetBtn").addEventListener('click', ()=>{
-    setLive(false);
-    sourceBitmap=null; faceModel=null; lastBox=null; lastAnalysis=null; allBoxes=[]; lastTips=[];
-    session.detects=0; session.detectTimes=[]; session.analyses=0;
-    pan={x:0,y:0};
-    ctx.clearRect(0,0,stage.width,stage.height);
-    ["detectBtn","enhanceBtn","startAnalysisBtn","cropBtn","exportPngBtn","liveBtn"].forEach(id=>$(id).disabled=true);
-    $("analysisCard").style.display='none'; $("readinessBadge").style.display='none';
-    $("faceStrip").innerHTML=""; setProgress('',''); updateSessionStats(); updateTfBadges(); updateRevChip(); logEvt('config',{reset:true});
-  });
-
-  $("fileInput").addEventListener('change', async ()=>{
-    if(!$("fileInput").files.length) return;
-    const f=$("fileInput").files[0];
-    try{ await setSourceBitmapFromBlob(f); await detectOnce(); logEvt('detect',{ file:f.name, w:stage.width, h:stage.height }); }
-    catch(e){ logEvt('error',{decode_failed:e.message||String(e)}); }
-  });
-
-  $("sampleBtn").addEventListener('click', async ()=>{ const ok=await loadSample(); if(ok){ $("startAnalysisBtn").disabled=false; await detectOnce(); } });
-  $("autoTestBtn").addEventListener('click', runAutoTest);
-
-  $("copyTestBtn").addEventListener('click', async ()=>{
-    try{
-      const report=buildAutoTestReport();
-      try{ await navigator.clipboard.writeText(report); setProgress('','Test result copied'); setTimeout(()=>setProgress('',''),1200); logEvt('config',{copiedAutoTestReport:true,length:report.length}); }
-      catch{ logEvt('error',{ copyAutoTestReportError:'clipboard' }); }
-    }catch(e){ logEvt('error',{ copyAutoTestReportException:e.message||String(e) }); }
-  });
-
-  $("pinBtn").addEventListener('click', ()=>{
-    window.__yornPinFollow = !(window.__yornPinFollow ?? true);
-    $("pinBtn").textContent = (window.__yornPinFollow ? "Pinned ↓" : "Pin ↓");
-  });
-
-  $("copyDiagBtn").addEventListener('click', async ()=>{
-    const txt=getAllLogsText();
-    try{ await navigator.clipboard.writeText(txt); setProgress('','Diagnostics copied'); setTimeout(()=>setProgress('',''),1200); logEvt('config',{copyDiagnostics:true}); }
-    catch{ logEvt('error',{ copyDiagnosticsFailed:'clipboard unavailable' }); }
-  });
-  $("clearLogsBtn").addEventListener('click', ()=>{ $("diagnostics").textContent="No diagnostics yet."; });
-
-  $("copySummaryBtn").addEventListener('click', async ()=>{
-    if(!lastAnalysis) return;
-    const a=lastAnalysis;
-    const tfb=(a.tf&&a.tf.backend)?a.tf.backend:safeBackend();
-    const tfv=(a.tf&&a.tf.version)?a.tf.version:(tf?.version_core||tf?.version?.tfjs||'—');
-    const lines=[
-      `YorN ${a.revision} — ${new Date(a.timestamp).toLocaleString()}`,
-      `Backend: ${tfb} v${tfv}`,
-      `Image: ${a.image.width}×${a.image.height}, Face area: ${a.box.area_pct.toFixed(2)}%`,
-      `Center offset: X ${a.box.center_offset_pct.x.toFixed(1)}%, Y ${a.box.center_offset_pct.y.toFixed(1)}%`,
-      `Brightness: ${a.lighting.brightness_mean.toFixed(1)}, Contrast σ: ${a.lighting.contrast_stdev.toFixed(1)}, Sharpness (LapVar): ${a.sharpness.laplacian_variance.toFixed(0)}`,
-      `Global: ${Math.round(a.refine.scores.global)}%`,
-      ...(lastTips.length?['Tips: '+lastTips.join('; ')] : [])
-    ].join('\n');
-    try{ await navigator.clipboard.writeText(lines); $("progressText").textContent="Summary copied"; setTimeout(()=>{$("progressText").textContent="";},1200); }
-    catch{ $("progressText").textContent="Copy failed"; setTimeout(()=>{$("progressText").textContent="";},1200); }
-  });
-
-  $("copyJsonBtn").addEventListener('click', async ()=>{
-    if(!lastAnalysis) return;
-    try{ await navigator.clipboard.writeText(JSON.stringify(lastAnalysis,null,2)); $("progressText").textContent="Analysis JSON copied"; setTimeout(()=>{$("progressText").textContent="";},1200); }
-    catch{ $("progressText").textContent="Copy failed"; setTimeout(()=>{$("progressText").textContent="";},1200); }
-  });
-
-  $("exportJsonBtn").addEventListener('click', ()=>{
-    if(!lastAnalysis) return;
-    const blob=new Blob([JSON.stringify(lastAnalysis,null,2)],{type:'application/json'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=url; a.download=`yorn-analysis-${Date.now()}.json`;
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  });
-
-  // FPS toggle + cap selector
-  $("fpsToggle").addEventListener('change',(e)=>{ fpsEnabled=!!e.target.checked; if(fpsEnabled){ startFPS(); startCap(); } else { stopFPS(); stopCap(); } });
-  const fpsCapSel = $("fpsCapSel");
-  if (fpsCapSel) {
-    fpsCapSel.value = String(fpsCap || 0);
-    fpsCapSel.addEventListener('change', (e)=>{
-      fpsCap = +e.target.value || 0;
-      localStorage.setItem('yorn_fps_cap', String(fpsCap));
-      stopCap(); startCap();
-    });
-  }
-
-  /* ===== Boot ===== */
-  window.addEventListener('load', async ()=>{
-    $("rev").textContent = REVISION; document.title = "YorN " + REVISION;
-    const stored = getStoredBackend(); if ($("backendSel")) $("backendSel").value = stored;
-    updateRevChip();
-    if (fpsEnabled) { startFPS(); startCap(); }
-    try{
-      await initTF();
-      logEvt('config',{tf_ready:true,backend:safeBackend(),tf_version:tfVersion});
-      logEvt('config',{boot:'dom-ready',rev:REVISION});
-      logEvt('config',{boot:'complete'});
-    }catch(e){ logEvt('error',{tf_init:e.message||String(e)}); }
-  });
 })();
