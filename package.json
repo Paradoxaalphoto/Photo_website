@@ -1,0 +1,9 @@
+{
+  "name": "yorn",
+  "version": "1.19.3-alpha",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@vercel/blob": "latest"
+  }
+}
