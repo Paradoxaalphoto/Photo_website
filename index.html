@@ -1,66 +1,113 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"/>
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
   <title>YorN 1.19.1-alpha</title>
-  <link rel="stylesheet" href="style.css">
+  <meta name="description" content="YorN — facial analysis prototype" />
+  <style>
+    :root {
+      --bg: #0e0f12;
+      --card: #16181d;
+      --muted: #9aa3b2;
+      --text: #e8edf5;
+      --accent: #7aa2ff;
+      --ok: #2ecc71;
+      --warn: #ffb020;
+      --err: #ff5c5c;
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+      background: var(--bg); color: var(--text);
+    }
+    .wrap { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+    .bar {
+      display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 16px;
+    }
+    .card {
+      background: linear-gradient(180deg, #16181d, #121418);
+      border: 1px solid #222630;
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+    }
+    .row { display: grid; grid-template-columns: 1fr 360px; gap: 16px; }
+    .row > * { min-width: 0; }
+    .btn, label.btn {
+      appearance: none; border: 1px solid #2a2f3a; background: #1b1f27; color: var(--text);
+      padding: 10px 14px; border-radius: 12px; cursor: pointer; font-weight: 600;
+    }
+    .btn:hover { border-color: #3a4252; }
+    .btn.accent { background: #1f2430; border-color: #2e3646; color: #cfe0ff; }
+    .toggle {
+      display: inline-flex; gap: 8px; align-items: center; font-weight: 600; color: #cfe0ff;
+      background: #182036; border: 1px solid #2b3b68; padding: 8px 12px; border-radius: 999px;
+    }
+    .pill { background: #121721; border: 1px solid #273042; color: var(--muted); padding: 6px 10px; border-radius: 999px; }
+    canvas { width: 100%; height: auto; border-radius: 12px; background: #0a0c10; border: 1px solid #222630; }
+    .small { color: var(--muted); font-size: 12px; }
+    code.small { user-select: all; }
+    .grid {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
+    }
+    .kv { background:#12151b; border:1px solid #232834; padding:10px 12px; border-radius:12px; }
+    .kv b { color:#dfe7f4 }
+    details { border:1px solid #232834; border-radius:12px; padding:8px 12px; }
+    summary { cursor: pointer; font-weight: 700; margin: 4px 0 8px; }
+    .foot { margin-top: 10px; color: var(--muted); font-size: 12px; }
+  </style>
 </head>
 <body>
   <div class="wrap">
-    <header>
-      <h1>YorN <span id="rev"></span></h1>
-      <span id="backendChip"></span>
-    </header>
+    <div class="bar">
+      <span class="pill">YorN <b>1.19.1-alpha</b></span>
+      <label class="btn" for="file">Upload face photo</label>
+      <input id="file" type="file" accept="image/*" style="display:none" />
+      <button id="analyzeBtn" class="btn accent">Analyze</button>
+      <label class="toggle">
+        <input id="overlayChk" type="checkbox" checked />
+        Show overlays
+      </label>
+      <button id="pdfBtn" class="btn">Export PDF + JSON</button>
+      <span class="small">No server needed. Works on GitHub Pages + Android WebView.</span>
+    </div>
 
-    <main class="layout">
-      <section class="card" id="inputCard">
-        <h2>Upload</h2>
-        <input type="file" id="fileInput" accept="image/*" />
-        <button id="sampleBtn">Load Sample</button>
-        <canvas id="photoCanvas" width="1024" height="683"></canvas>
+    <div class="row">
+      <div class="card">
+        <canvas id="stage" width="1024" height="768"></canvas>
+        <div class="foot">Tip: higher-res images improve sharpness/landmark detection. Center face for best results.</div>
+      </div>
 
-        <div class="controls">
-          <button id="detectBtn">Detect</button>
-          <button id="liveBtn">Live Detect</button>
-          <button id="centerBtn">Center Face</button>
-          <button id="enhanceBtn">Enhance</button>
-          <label><input id="hideTips" type="checkbox"> Hide Tips</label>
-          <label><input id="exportOverlays" type="checkbox" checked> Include Overlays in Exports</label>
-        </div>
-      </section>
-
-      <section class="card" id="analysisCard">
-        <h2>Analysis</h2>
-        <div id="analysisResults">No analysis yet.</div>
-        <canvas id="chartCanvas" width="320" height="200"></canvas>
-      </section>
-    </main>
-
-    <footer>
-      <button id="shareBtn">Share</button>
-      <button id="pdfBtn">Export PDF</button>
-      <button id="zipBtn">Download ZIP</button>
-    </footer>
-
-    <section class="card" id="diagnosticsCard">
-      <h2>Diagnostics
-        <button id="pinBtn">Pinned ↓</button>
-        <button id="clearBtn">Clear</button>
-        <button id="copyBtn">Copy</button>
-      </h2>
-      <pre id="diagnostics">No diagnostics yet.</pre>
-    </section>
+      <div class="card">
+        <h3 style="margin:0 0 8px">Scan Summary</h3>
+        <div id="summary" class="grid" style="margin-bottom:12px"></div>
+        <details>
+          <summary>Raw JSON (scan data)</summary>
+          <pre id="raw" style="max-height:260px; overflow:auto; margin:6px 0 0"></pre>
+        </details>
+        <details style="margin-top:10px">
+          <summary>Baselines (from data/baselines.json)</summary>
+          <pre id="base" style="max-height:200px; overflow:auto; margin:6px 0 0"></pre>
+        </details>
+      </div>
+    </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.min.js"></script>
+  <!-- React + Babel (keeps 3-file flow) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin></script>
 
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <!-- html2canvas + jsPDF for PDF embedding -->
+  <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
-  <script src="app.js"></script>
+  <!-- App -->
+  <script type="text/babel" src="./app.jsx"></script>
 </body>
 </html>
