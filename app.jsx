@@ -1,227 +1,271 @@
-const {useEffect,useMemo,useRef,useState} = React;
-const VERSION = "1.18.0-alpha";
-const flags = { overlays:true, rawDataToggle:true, pdfExport:true, demoMode:true };
+/* YorN 1.19.1-alpha
+   - Overlay toggle (symmetry lines + simple landmarks)
+   - PDF export including canvas snapshot + embedded raw JSON
+   - Keeps 3-file structure (index.html, app.jsx, data/baselines.json)
+*/
 
-const DATA_URL = "/Photo_website/data/baselines.json";
+const { useEffect, useRef, useState } = React;
 
-// Demo landmarks (normalized 0..1)
-const demoLandmarks = {
-  faceTop:{x:.5,y:.12}, chin:{x:.5,y:.92},
-  leftZygion:{x:.18,y:.55}, rightZygion:{x:.82,y:.55},
-  leftEyeOuter:{x:.33,y:.40}, leftEyeInner:{x:.45,y:.41},
-  rightEyeInner:{x:.55,y:.41}, rightEyeOuter:{x:.67,y:.40},
-  noseTip:{x:.50,y:.55}, noseLeft:{x:.46,y:.56}, noseRight:{x:.54,y:.56},
-  mouthLeft:{x:.42,y:.68}, mouthRight:{x:.58,y:.68},
-  browLine:{x:.50,y:.33},
-};
+function useImageLoader() {
+  const [img, setImg] = useState(null);
+  const inputRef = useRef(null);
 
-// helpers
-const dist = (a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
-const symmetryScore = (lm)=>{
-  const pairs=[["leftZygion","rightZygion"],["leftEyeOuter","rightEyeOuter"],["leftEyeInner","rightEyeInner"],["noseLeft","noseRight"],["mouthLeft","mouthRight"]];
-  const diffs=pairs.map(([L,R])=>Math.abs((1-lm[L].x)-lm[R].x));
-  const scores=diffs.map(d=>Math.max(0,1-d*2));
-  return scores.reduce((a,b)=>a+b,0)/scores.length;
-};
-const fWHR=(lm)=>{
-  const width=dist(lm.leftZygion,lm.rightZygion);
-  const upperFaceH=Math.abs(lm.browLine.y - lm.noseTip.y) || .22;
-  return width/upperFaceH;
-};
-const phiClose=(r)=>{const PHI=1.618; const rel=Math.abs(r-PHI)/PHI; return Math.max(0,1-rel);};
-const goldenFace=(lm)=>phiClose(Math.abs(lm.faceTop.y-lm.chin.y)/Math.abs(lm.rightZygion.x-lm.leftZygion.x));
-const goldenMouth=(lm)=>phiClose(Math.abs(lm.mouthRight.x-lm.mouthLeft.x)/(Math.abs(lm.noseRight.x-lm.noseLeft.x)||.08));
-const eyeDistance=(lm)=>{const inner=dist(lm.leftEyeInner,lm.rightEyeInner); const eyeW=dist(lm.leftEyeInner,lm.leftEyeOuter); const ratio=inner/eyeW; return Math.max(0,1-Math.abs(ratio-1));};
-const jawWidth=(lm)=>{const jw=Math.abs(lm.rightZygion.x-lm.leftZygion.x); const faceH=Math.abs(lm.chin.y-lm.faceTop.y); const ratio=jw/faceH; return Math.max(0,1-Math.abs(ratio-1.3)/1.3);};
-const computeMetrics=(lm)=>{
-  const m={ symmetry:symmetryScore(lm), fWHR:fWHR(lm), goldenFace:goldenFace(lm), goldenMouth:goldenMouth(lm), eyeDistance:eyeDistance(lm), jawWidth:jawWidth(lm) };
-  const normalized={
-    symmetry:m.symmetry,
-    fWHR:(()=>{const c=Math.max(1.2,Math.min(2.6,m.fWHR));return (c-1.2)/(2.6-1.2);})(),
-    goldenFace:m.goldenFace, goldenMouth:m.goldenMouth, eyeDistance:m.eyeDistance, jawWidth:m.jawWidth
+  useEffect(() => {
+    const el = document.getElementById('file');
+    inputRef.current = el;
+    const onChange = e => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const im = new Image();
+        im.onload = () => setImg(im);
+        im.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    };
+    el.addEventListener('change', onChange);
+    return () => el.removeEventListener('change', onChange);
+  }, []);
+
+  return img;
+}
+
+async function fetchBaselines() {
+  const res = await fetch('./data/baselines.json', { cache: 'no-store' });
+  return res.json();
+}
+
+function drawImageCover(ctx, img, W, H) {
+  const iw = img.width, ih = img.height;
+  const r = Math.max(W / iw, H / ih);
+  const nw = iw * r, nh = ih * r;
+  const dx = (W - nw) / 2, dy = (H - nh) / 2;
+  ctx.drawImage(img, dx, dy, nw, nh);
+}
+
+function computeMetrics(canvas) {
+  // Minimal metrics to keep alpha stable & offline
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const { width: W, height: H } = canvas;
+  const { data } = ctx.getImageData(0, 0, W, H);
+
+  let sum = 0, sumSq = 0;
+  // luminance & contrast estimate
+  for (let i = 0; i < data.length; i += 4) {
+    const y = 0.2126 * data[i] + 0.7152 * data[i+1] + 0.0722 * data[i+2];
+    sum += y; sumSq += y * y;
+  }
+  const n = data.length / 4;
+  const mean = sum / n;
+  const variance = Math.max(0, sumSq / n - mean * mean);
+  const contrastSigma = Math.sqrt(variance);
+
+  // Sharpness via very light Laplacian variance proxy
+  // (subsampled to keep it fast on mobile)
+  let lapVarAccum = 0, lapCount = 0;
+  const step = 4; // subsample step
+  for (let y = 1; y < H - 1; y += step) {
+    for (let x = 1; x < W - 1; x += step) {
+      const idx = (y * W + x) * 4;
+      const c = data[idx];
+      const up = data[((y-1)*W + x) * 4];
+      const dn = data[((y+1)*W + x) * 4];
+      const lf = data[(y*W + (x-1)) * 4];
+      const rt = data[(y*W + (x+1)) * 4];
+      const lap = (4 * c) - (up + dn + lf + rt);
+      lapVarAccum += lap * lap;
+      lapCount++;
+    }
+  }
+  const sharpness = Math.sqrt(lapVarAccum / Math.max(1, lapCount));
+
+  // Center offset heuristic: assume face near brightest region centroid
+  // (kept simple for alpha; you may replace with real landmarks later)
+  let maxY = -1, maxX = 0, maxRow = 0;
+  for (let y = 0; y < H; y += 4) {
+    let rowSum = 0;
+    for (let x = 0; x < W; x += 4) {
+      const idx = (y * W + x) * 4;
+      const lum = 0.2126 * data[idx] + 0.7152 * data[idx+1] + 0.0722 * data[idx+2];
+      rowSum += lum;
+      if (lum > maxY) { maxY = lum; maxX = x; maxRow = y; }
+    }
+  }
+  const cx = W / 2, cy = H / 2;
+  const offX = ((maxX - cx) / W) * 100;
+  const offY = ((maxRow - cy) / H) * 100;
+
+  return {
+    time: new Date().toISOString(),
+    backend: "webgl",
+    brightness: Math.round(mean * 10) / 10,
+    contrast_sigma: Math.round(contrastSigma * 10) / 10,
+    sharpness: Math.round(sharpness * 10) / 10,
+    center_offset: { x_pct: Math.round(offX * 10) / 10, y_pct: Math.round(offY * 10) / 10 },
+    canvas: { w: W, h: H },
   };
-  return { raw:m, normalized };
-};
+}
 
-const useImage = ()=>{
-  const [src,setSrc]=useState(null);
-  const [img,setImg]=useState(null);
-  const onFile=(file)=>{ if(!file) return; const r=new FileReader(); r.onload=e=>setSrc(e.target.result); r.readAsDataURL(file); };
-  useEffect(()=>{ if(!src) return; const i=new Image(); i.onload=()=>setImg(i); i.src=src; },[src]);
-  return { img, src, onFile, setSrc };
-};
+function drawOverlays(ctx, W, H) {
+  // Symmetry lines
+  ctx.save();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(122,162,255,0.85)";
+  // vertical mid
+  ctx.beginPath(); ctx.moveTo(W/2, 0); ctx.lineTo(W/2, H); ctx.stroke();
+  // horizontal thirds (rule-of-thirds-ish to help centering)
+  const y1 = H/3, y2 = 2*H/3;
+  ctx.beginPath(); ctx.moveTo(0, y1); ctx.lineTo(W, y1); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, y2); ctx.lineTo(W, y2); ctx.stroke();
 
-function App(){
-  const { img, src, onFile, setSrc } = useImage();
+  // Very light "landmarks" mock (guide points)
+  const pts = [
+    { x: W/2, y: H/3 },         // nose/eyes center line
+    { x: W/2 - W*0.12, y: H/3 },// left eye approx
+    { x: W/2 + W*0.12, y: H/3 },// right eye approx
+    { x: W/2, y: H*0.58 },      // mouth center approx
+  ];
+  ctx.fillStyle = "rgba(122,162,255,0.9)";
+  pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fill(); });
+
+  ctx.restore();
+}
+
+function populateSummary(el, metrics) {
+  const cells = [
+    ["Brightness", metrics.brightness],
+    ["Contrast σ", metrics.contrast_sigma],
+    ["Sharpness (LapVar)", metrics.sharpness],
+    ["Center offset X%", metrics.center_offset.x_pct],
+    ["Center offset Y%", metrics.center_offset.y_pct],
+  ].map(([k, v]) => `<div class="kv"><b>${k}:</b> ${v}</div>`).join("");
+  el.innerHTML = cells;
+}
+
+function App() {
+  const img = useImageLoader();
   const canvasRef = useRef(null);
-  const [landmarks,setLandmarks]=useState(null);
-  const [metrics,setMetrics]=useState(null);
-  const [showOverlays,setShowOverlays]=useState(true);
-  const [showRaw,setShowRaw]=useState(false);
-  const [busy,setBusy]=useState(false);
-  const [note,setNote]=useState("");
+  const [baselines, setBaselines] = useState(null);
+  const [metrics, setMetrics] = useState(null);
+  const [showOverlays, setShowOverlays] = useState(true);
 
-  const chartData = useMemo(()=>{
-    if(!metrics) return [];
-    const n=metrics.normalized;
-    return [
-      {name:"Symmetry", val:+(n.symmetry*100).toFixed(1)},
-      {name:"fWHR", val:+(n.fWHR*100).toFixed(1)},
-      {name:"Golden (Face)", val:+(n.goldenFace*100).toFixed(1)},
-      {name:"Golden (Mouth)", val:+(n.goldenMouth*100).toFixed(1)},
-      {name:"Eye Distance", val:+(n.eyeDistance*100).toFixed(1)},
-      {name:"Jaw Width", val:+(n.jawWidth*100).toFixed(1)},
-    ];
-  },[metrics]);
+  useEffect(() => {
+    fetchBaselines().then(setBaselines).catch(() => setBaselines({ error: "Failed to load baselines.json"}));
+  }, []);
 
-  // draw
-  useEffect(()=>{
-    const cv=canvasRef.current; if(!cv||!img) return;
-    const ctx=cv.getContext("2d");
-    const W=640, H=Math.round((img.height/img.width)*W);
-    cv.width=W; cv.height=H;
-    ctx.clearRect(0,0,W,H);
-    ctx.drawImage(img,0,0,W,H);
-    if(!landmarks||!showOverlays) return;
-    const p2c=p=>({x:p.x*W,y:p.y*H});
-    const dots=Object.values(landmarks).map(p2c);
-    ctx.fillStyle="#10b981";
-    dots.forEach(d=>{ctx.beginPath();ctx.arc(d.x,d.y,3,0,Math.PI*2);ctx.fill();});
-    ctx.strokeStyle="#3b82f6"; ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
-    const draw=(a,b,c)=>{const A=p2c(landmarks[a]);const B=p2c(landmarks[b]);ctx.strokeStyle=c;ctx.beginPath();ctx.moveTo(A.x,A.y);ctx.lineTo(B.x,B.y);ctx.stroke();};
-    draw("leftZygion","rightZygion","#f59e0b");
-    draw("leftEyeOuter","leftEyeInner","#8b5cf6");
-    draw("rightEyeInner","rightEyeOuter","#8b5cf6");
-    draw("noseLeft","noseRight","#10b981");
-    draw("mouthLeft","mouthRight","#ef4444");
-    draw("faceTop","chin","#3b82f6");
-  },[img,landmarks,showOverlays]);
+  useEffect(() => {
+    const chk = document.getElementById('overlayChk');
+    const on = () => setShowOverlays(chk.checked);
+    chk.addEventListener('change', on);
+    return () => chk.removeEventListener('change', on);
+  }, []);
 
-  const runDemo = async ()=>{
-    setBusy(true); setNote("Demo analysis using built-in landmarks.");
-    try{
-      setLandmarks(demoLandmarks);
-      const m=computeMetrics(demoLandmarks);
-      setMetrics(m);
-      if(!src){
-        const placeholder="data:image/svg+xml;utf8,"+encodeURIComponent(
-          `<svg xmlns='http://www.w3.org/2000/svg' width='800' height='1000'>
-             <rect width='100%' height='100%' fill='white'/>
-             <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='28' fill='#333'>YorN Demo Placeholder</text>
-           </svg>`
-        );
-        setSrc(placeholder);
+  useEffect(() => {
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const onAnalyze = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      // clear
+      ctx.fillStyle = "#0b0e13"; ctx.fillRect(0,0,canvas.width, canvas.height);
+
+      if (img) {
+        drawImageCover(ctx, img, canvas.width, canvas.height);
+      } else {
+        // no image: just blank and bail
+        setMetrics(null);
+        document.getElementById('summary').innerHTML = "";
+        document.getElementById('raw').textContent = "";
+        return;
       }
-    } finally { setBusy(false); }
-  };
 
-  // NOTE: ML auto-landmarks disabled in 2-file build-free mode
-  const analyze = async ()=>{
-    if(!img){ setNote("Upload a photo or try Demo."); return; }
-    setNote("Auto-landmarks require a build. Using Demo for now."); await runDemo();
-  };
+      // compute metrics
+      const m = computeMetrics(canvas);
+      setMetrics(m);
 
-  const exportPDF = ()=>{
-    if(!flags.pdfExport || !metrics) return;
-    const doc = new window.jspdf.jsPDF({ unit:"pt", format:"a4" });
-    const margin=40; let y=margin;
-    doc.setFontSize(18); doc.text(`YorN Report — ${VERSION}`, margin, y); y+=28;
-    doc.setFontSize(11); doc.text("Prototype (no branding) — device-local analysis", margin, y); y+=18;
+      // overlays
+      if (document.getElementById('overlayChk').checked) {
+        drawOverlays(ctx, canvas.width, canvas.height);
+      }
 
-    const canvas=canvasRef.current;
-    if(canvas){
-      const imgData=canvas.toDataURL("image/png");
-      const maxW=520; const ratio=canvas.height/canvas.width; const w=maxW; const h=w*ratio;
-      doc.addImage(imgData, "PNG", margin, y, w, h); y+=h+12;
-    }
+      // update side panel
+      populateSummary(document.getElementById('summary'), m);
+      document.getElementById('raw').textContent = JSON.stringify(m, null, 2);
+      document.getElementById('base').textContent = JSON.stringify(baselines ?? {}, null, 2);
+    };
+    analyzeBtn.addEventListener('click', onAnalyze);
+    return () => analyzeBtn.removeEventListener('click', onAnalyze);
+  }, [img, baselines]);
 
-    const rows=(metrics?[
-      ["Symmetry", `${(metrics.normalized.symmetry*100).toFixed(1)}%`],
-      ["fWHR", `${(metrics.normalized.fWHR*100).toFixed(1)}%`],
-      ["Golden (Face)", `${(metrics.normalized.goldenFace*100).toFixed(1)}%`],
-      ["Golden (Mouth)", `${(metrics.normalized.goldenMouth*100).toFixed(1)}%`],
-      ["Eye Distance", `${(metrics.normalized.eyeDistance*100).toFixed(1)}%`],
-      ["Jaw Width", `${(metrics.normalized.jawWidth*100).toFixed(1)}%`],
-    ]:[]);
-    doc.setFontSize(13); doc.text("Key Metrics", margin, y); y+=18; doc.setFontSize(11);
-    const colX=[margin, margin+240];
-    rows.forEach((r,i)=>{ const yy=y+i*18+14; doc.text(r[0], colX[0], yy); doc.text(r[1], colX[1], yy); });
-    y+=rows.length*18+10;
+  useEffect(() => {
+    // redraw overlays toggle without recomputing metrics
+    const canvas = canvasRef.current;
+    if (!canvas || !img) return;
+    const ctx = canvas.getContext('2d');
+    // redraw image
+    ctx.fillStyle = "#0b0e13"; ctx.fillRect(0,0,canvas.width, canvas.height);
+    drawImageCover(ctx, img, canvas.width, canvas.height);
+    if (showOverlays) drawOverlays(ctx, canvas.width, canvas.height);
+  }, [showOverlays]);
 
-    if(flags.rawDataToggle){
-      doc.setFontSize(13); doc.text("Raw Data (landmarks + metrics)", margin, y+=22); doc.setFontSize(9);
-      const raw={version:VERSION, landmarks, metrics}; const lines=doc.splitTextToSize(JSON.stringify(raw,null,2), 520);
-      doc.text(lines.slice(0,40), margin, y+=16);
-    }
-    doc.save(`YorN_Report_${Date.now()}.pdf`);
-  };
+  useEffect(() => {
+    // PDF button
+    const pdfBtn = document.getElementById('pdfBtn');
+    const onPdf = async () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+
+      // Page 1: canvas snapshot
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const margin = 36;
+      const availW = pageW - margin*2;
+      const availH = pageH - margin*2;
+
+      // Fit image inside page
+      const imgW = canvas.width, imgH = canvas.height;
+      const r = Math.min(availW / imgW, availH / imgH);
+      const w = imgW * r, h = imgH * r;
+      const x = (pageW - w) / 2, y = (pageH - h) / 2;
+
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+      doc.text('YorN 1.19.1-alpha — Analysis Snapshot', margin, margin - 10);
+      doc.addImage(dataUrl, 'JPEG', x, y, w, h);
+
+      // Page 2: Raw JSON
+      doc.addPage();
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+      doc.text('Raw JSON — Scan Metrics', margin, margin);
+
+      doc.setFont('courier', 'normal'); doc.setFontSize(10);
+      const json = JSON.stringify({
+        version: '1.19.1-alpha',
+        metrics: metrics ?? {},
+        baselines: baselines ?? {},
+      }, null, 2);
+
+      // Add wrapped text
+      const lines = doc.splitTextToSize(json, pageW - margin*2);
+      doc.text(lines, margin, margin + 18);
+
+      doc.save(`YorN_1.19.1-alpha_${Date.now()}.pdf`);
+    };
+    pdfBtn.addEventListener('click', onPdf);
+    return () => pdfBtn.removeEventListener('click', onPdf);
+  }, [metrics, baselines]);
 
   return (
-    <div>
-      <main className="row">
-        <section className="card">
-          <div style={{display:"flex", gap:8, flexWrap:"wrap", marginBottom:12}}>
-            <label className="btn primary">
-              <input type="file" accept="image/*" style={{display:"none"}}
-                     onChange={e=>onFile(e.target.files?.[0])}/>
-              Select image
-            </label>
-            <button className="btn" onClick={runDemo} disabled={busy}>Demo</button>
-            <button className="btn" onClick={analyze} disabled={busy}>Analyze</button>
-            <button className="btn" onClick={()=>setShowOverlays(s=>!s)}>
-              {showOverlays ? "Hide overlays" : "Show overlays"}
-            </button>
-            <button className="btn" onClick={()=>setShowRaw(s=>!s)}>Raw data</button>
-          </div>
-
-          <div className="card" style={{padding:0, overflow:"hidden"}}>
-            <canvas ref={canvasRef} />
-          </div>
-
-          <div className="muted">{busy ? "Working…" : note}</div>
-        </section>
-
-        <section className="card">
-          <div style={{fontWeight:600, marginBottom:8}}>Key metrics (normalized)</div>
-          {!metrics && <div className="muted">Upload and Analyze, or run Demo.</div>}
-          <div className="metrics">
-            {chartData.map(r=>(
-              <div key={r.name}>
-                <div style={{display:"flex", justifyContent:"space-between", gap:8}}>
-                  <div className="label">{r.name}</div>
-                  <div className="val">{r.val}%</div>
-                </div>
-                <div className="bar"><div style={{width:`${r.val}%`}}></div></div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{marginTop:12, display:"flex", gap:8, flexWrap:"wrap"}}>
-            <button className="btn" onClick={exportPDF} disabled={!metrics}>Export PDF</button>
-            <button className="btn" onClick={()=>{
-              if(!metrics) return;
-              const summary = `YorN alpha metrics: ` + chartData.map(x=>`${x.name} ${x.val}%`).join(" · ");
-              navigator.clipboard?.writeText(summary);
-              alert("Copied summary to clipboard.");
-            }} disabled={!metrics}>Share (copy)</button>
-          </div>
-
-          {showRaw && (
-            <pre className="json">
-{JSON.stringify(
-  { version: VERSION, landmarks: landmarks ?? "(analyze to populate)", metrics },
-  null, 2
-)}
-            </pre>
-          )}
-        </section>
-      </main>
-
-      <footer className="muted" style={{padding:"16px 0"}}>
-        Built for phone-only deployment • 2-file version • device-local • no branding.
-      </footer>
-    </div>
+    <>
+      <canvas id="stage" ref={canvasRef} width={1024} height={768} style={{display:"none"}} />
+      {/* Canvas is manipulated directly by id=stage in index.html for CSS sizing */}
+    </>
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+const root = ReactDOM.createRoot(document.getElementById('stage').parentElement);
+root.render(<App />);
