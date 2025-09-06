@@ -1,0 +1,18 @@
+{
+  "version": "1.19.1-alpha",
+  "last_updated": "2025-09-06T00:00:00Z",
+  "uploads": [
+    {
+      "id": "scan_001",
+      "filename": "example_face.jpg",
+      "time": "2025-09-01T14:22:36Z",
+      "metrics": {
+        "brightness": 152.2,
+        "contrast_sigma": 55.9,
+        "sharpness": 704,
+        "center_offset": { "x_pct": 25.8, "y_pct": -34.0 }
+      },
+      "notes": "Demo scan — replace with real user data"
+    }
+  ]
+}
