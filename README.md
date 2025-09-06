@@ -1,12 +1,10 @@
-YorN Alpha — Mobile Multi‑CDN Build
------------------------------------
-What’s new:
-- Multi‑CDN weights loader (jsDelivr npm → unpkg → jsDelivr GitHub), uses GET (not HEAD)
-- Manual override field to paste a weights base URL
-- Analyze button + progress + diagnostics
-- Mobile‑friendly: TinyFaceDetector with size retries and 10s timeout
-- Center‑crop to 768px to reduce work
+# YorN — Facial Attractiveness Prototype
+**Version:** 1.19.3-alpha  
 
-Deploy (GitHub → Vercel):
-  1) Upload all files to a GitHub repo (keep index.html at repo root).
-  2) Vercel → Import → Framework: Other → Build: (empty) → Output: `.`
+YorN (“Yes or No”) is a research-grade prototype web app that analyzes facial metrics for attractiveness.  
+It runs fully client-side with a lightweight backend for persistence (Vercel serverless + Vercel Blob).  
+
+---
+
+## 🚀 Live Demo
+Once deployed on Vercel, your site will be available at:
