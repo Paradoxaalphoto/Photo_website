@@ -2,6 +2,8 @@ const {useEffect,useMemo,useRef,useState} = React;
 const VERSION = "1.18.0-alpha";
 const flags = { overlays:true, rawDataToggle:true, pdfExport:true, demoMode:true };
 
+const DATA_URL = "/Photo_website/data/baselines.json";
+
 // Demo landmarks (normalized 0..1)
 const demoLandmarks = {
   faceTop:{x:.5,y:.12}, chin:{x:.5,y:.92},
