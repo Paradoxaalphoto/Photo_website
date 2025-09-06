@@ -1,0 +1,10 @@
+{
+  "version": "1.19.3-alpha",
+  "brightness": { "target": 140, "range": [110, 190] },
+  "contrast_sigma": { "target": 60, "range": [35, 95] },
+  "sharpness": { "target": 700, "range": [400, 1200] },
+  "center_offset_pct": {
+    "target": { "x": 0, "y": 0 },
+    "acceptable": { "x": 30, "y": 30 }
+  }
+}
